@@ -4,6 +4,9 @@ import "@/styles/studySchedule.css";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
@@ -567,7 +570,7 @@ function App() {
               {message.role === "user" ? (
                 <div>{typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}</div>
               ) : (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
                 </ReactMarkdown>
               )}

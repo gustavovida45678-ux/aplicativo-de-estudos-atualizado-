@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 import base64
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from routes.prompts import MATH_SYSTEM_PROMPT
 
 # Load environment variables
 load_dotenv()
@@ -57,7 +58,7 @@ async def chat(message: ChatMessage, x_custom_api_key: Optional[str] = Header(No
         chat_instance = LlmChat(
             api_key=api_key,
             session_id=f"chat-{int(datetime.now().timestamp())}",
-            system_message="Você é um assistente útil focado em ajudar estudantes com seus estudos, especialmente em cálculo e matemática. Responda sempre em português (pt-BR)."
+            system_message=MATH_SYSTEM_PROMPT
         )
         
         # Use gpt-4o-mini as default (it's faster and cheaper)
@@ -193,7 +194,7 @@ async def chat_with_image(
         chat_instance = LlmChat(
             api_key=api_key,
             session_id=f"chat-img-{int(datetime.now().timestamp())}",
-            system_message="Você é um assistente útil que pode ver e analisar imagens. Ajude estudantes com suas dúvidas, especialmente em matemática. Responda sempre em português (pt-BR)."
+            system_message="Você é um assistente que analisa imagens de exercícios matemáticos. Ao identificar um exercício na imagem, resolva seguindo EXATAMENTE o padrão abaixo:\n\n" + MATH_SYSTEM_PROMPT
         )
         
         # Use GPT-4o for vision

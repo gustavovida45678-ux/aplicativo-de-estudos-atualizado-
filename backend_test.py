@@ -229,6 +229,115 @@ class BackendTester:
         except Exception as e:
             self.log_test("GET /api/auth/me", False, f"Exception: {str(e)}")
 
+    def test_chat_endpoint(self):
+        """Test POST /api/chat endpoint with math problem"""
+        if not self.access_token:
+            self.log_test("POST /api/chat", False, "No access token available")
+            return
+            
+        # Test message from the review request
+        math_problem = "Uma prova de múltipla escolha com 60 questões foi corrigida da seguinte forma: o aluno ganhava 5 pontos por questão que acertava e perdia 1 ponto por questão que errava ou deixava em branco. Se um aluno totalizou 210 pontos, qual o número de questões que ele acertou?"
+        
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            }
+            
+            chat_data = {
+                "message": math_problem
+            }
+            
+            print(f"   Sending math problem to chat endpoint...")
+            response = self.session.post(f"{self.base_url}/api/chat", json=chat_data, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check response structure
+                if "assistant_message" in data and "user_message" in data:
+                    assistant_msg = data["assistant_message"]
+                    content = assistant_msg.get("content", "")
+                    
+                    if content:
+                        # Verify format requirements
+                        format_checks = self.verify_math_response_format(content)
+                        
+                        if format_checks["all_passed"]:
+                            self.log_test("POST /api/chat", True, 
+                                        f"Math response format correct. Checks passed: {format_checks['passed_count']}/{format_checks['total_count']}")
+                        else:
+                            self.log_test("POST /api/chat", True, 
+                                        f"Chat works but format needs adjustment. Checks passed: {format_checks['passed_count']}/{format_checks['total_count']}")
+                        
+                        # Log the actual response for review
+                        print(f"   📝 Assistant Response:")
+                        print(f"   {'='*50}")
+                        print(f"   {content}")
+                        print(f"   {'='*50}")
+                        
+                    else:
+                        self.log_test("POST /api/chat", False, 
+                                    "Empty assistant message content", data)
+                else:
+                    self.log_test("POST /api/chat", False, 
+                                "Missing assistant_message or user_message", data)
+            else:
+                self.log_test("POST /api/chat", False, 
+                            f"Status code: {response.status_code}", response.text)
+                
+        except Exception as e:
+            self.log_test("POST /api/chat", False, f"Exception: {str(e)}")
+
+    def verify_math_response_format(self, content: str) -> Dict[str, Any]:
+        """Verify the assistant response follows the expected math format"""
+        checks = []
+        
+        # 1. Check if starts with "Seja x o número de ..."
+        starts_with_seja = content.strip().startswith("Seja x o número de")
+        checks.append(("Starts with 'Seja x o número de'", starts_with_seja))
+        
+        # 2. Check for "Então o número de ... é ..."
+        has_entao = "Então o número de" in content
+        checks.append(("Contains 'Então o número de ... é'", has_entao))
+        
+        # 3. Check for LaTeX formulas wrapped in $$...$$
+        has_latex = "$$" in content
+        latex_count = content.count("$$")
+        checks.append(("Has LaTeX formulas ($$...$$)", has_latex and latex_count >= 2))
+        
+        # 4. Check for "Simplificando:" section
+        has_simplificando = "Simplificando:" in content
+        checks.append(("Has 'Simplificando:' section", has_simplificando))
+        
+        # 5. Check if ends with "Portanto, ..." and bold answer
+        has_portanto = "Portanto," in content
+        has_bold_answer = "**" in content and "questões**" in content
+        checks.append(("Has 'Portanto,' conclusion", has_portanto))
+        checks.append(("Has bold final answer (**...questões**)", has_bold_answer))
+        
+        # 6. Check for expected answer (45 questões)
+        has_correct_answer = "45" in content and "questões" in content
+        checks.append(("Contains expected answer (45 questões)", has_correct_answer))
+        
+        # Print individual check results
+        print(f"   📋 Format verification:")
+        passed_count = 0
+        for check_name, passed in checks:
+            status = "✅" if passed else "❌"
+            print(f"   {status} {check_name}")
+            if passed:
+                passed_count += 1
+        
+        all_passed = passed_count == len(checks)
+        
+        return {
+            "all_passed": all_passed,
+            "passed_count": passed_count,
+            "total_count": len(checks),
+            "checks": checks
+        }
+
     def run_all_tests(self):
         """Run all backend tests"""
         print(f"🚀 Starting Backend API Tests")
@@ -242,6 +351,7 @@ class BackendTester:
         self.test_auth_register()
         self.test_auth_login()
         self.test_auth_me()
+        self.test_chat_endpoint()
         
         # Summary
         print("=" * 60)

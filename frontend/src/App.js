@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -523,18 +523,51 @@ function App() {
       {messages.length === 0 && !isLoading ? (
         <div className="empty-state">
           <h1 data-testid="welcome-heading">
-            Olá, {currentUser?.name || 'Usuário'}! 👋
+            Olá, {currentUser?.name || 'Usuário'}
           </h1>
-          <p className="welcome-subtitle-chat">Seja bem-vindo ao Chat</p>
+          <p className="welcome-subtitle-chat">Como posso ajudar você hoje?</p>
           <p data-testid="welcome-message">
-            Comece uma conversa digitando sua mensagem ou enviando uma imagem.
-            <br />
-            <span className="tip-text">
-              💡 Você também pode arrastar imagens ou usar Ctrl+V para colar
-              <br />
-              🎨 Use /gerar [descrição] para criar imagens com IA
-            </span>
+            Digite sua dúvida ou selecione uma das opções abaixo para começar.
           </p>
+
+          <div className="quick-actions-grid">
+            <button
+              type="button"
+              className="quick-action-btn"
+              onClick={() => setInputMessage("Resolva a equação x² + 5x + 6 = 0 passo a passo")}
+            >
+              <Calculator size={20} />
+              <span>Resolver equação</span>
+            </button>
+            <button
+              type="button"
+              className="quick-action-btn"
+              onClick={() => setInputMessage("Explique regra de três de forma simples com exemplos")}
+            >
+              <BookOpen size={20} />
+              <span>Explicar matéria</span>
+            </button>
+            <button
+              type="button"
+              className="quick-action-btn"
+              onClick={() => setInputMessage("Crie um resumo completo sobre equações diferenciais de 1ª ordem")}
+            >
+              <FileText size={20} />
+              <span>Criar resumo</span>
+            </button>
+            <button
+              type="button"
+              className="quick-action-btn"
+              onClick={() => setInputMessage("Gere 3 exercícios de cálculo numérico com gabarito detalhado")}
+            >
+              <ListChecks size={20} />
+              <span>Gerar exercícios</span>
+            </button>
+          </div>
+
+          <span className="tip-text">
+            Dica: você também pode arrastar imagens ou usar Ctrl+V para colar. Use /gerar [descrição] para criar imagens com IA.
+          </span>
         </div>
       ) : (
         <div className="chat-container" data-testid="chat-container">

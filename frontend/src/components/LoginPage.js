@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { UserPlus, LogIn, Mail, Lock, User } from "lucide-react";
+import { UserPlus, LogIn, Mail, Lock, User, ShieldCheck } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -117,23 +117,18 @@ export default function LoginPage({ onLoginSuccess }) {
       
       <div className="login-container">
         <div className="login-card">
-          {/* Bible Verse Banner */}
-          <div className="bible-verse-banner">
-            <div className="verse-icon">✝️</div>
-            <div className="verse-content">
-              <p className="verse-text">"{bibleVerse.text}"</p>
-              <p className="verse-reference">— {bibleVerse.reference}</p>
-            </div>
+          <div className="login-shield">
+            <ShieldCheck size={28} />
           </div>
 
           <div className="login-header">
             <h1 data-testid="login-title">
-              {isLogin ? "Bem-vindo de Volta" : "Criar Conta"}
+              {isLogin ? "Bem-vindo de volta" : "Criar sua conta"}
             </h1>
             <p className="login-subtitle">
-              {isLogin 
-                ? "Entre para continuar seus estudos" 
-                : "Comece sua jornada de aprendizado"}
+              {isLogin
+                ? "Acesse sua conta para continuar seus estudos"
+                : "Comece sua jornada de aprendizado profissional"}
             </p>
           </div>
 

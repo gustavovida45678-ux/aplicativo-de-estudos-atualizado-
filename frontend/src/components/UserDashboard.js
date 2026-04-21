@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Users, Calendar, BookOpen, LogOut, User, Mail, Clock } from "lucide-react";
-import WelcomeScreen from "./CinemaSeat";
+import { Users, Calendar, BookOpen, LogOut, User, Mail, Clock, Activity, CheckCircle2 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -10,7 +9,6 @@ const API = `${BACKEND_URL}/api`;
 export default function UserDashboard({ currentUser, onLogout }) {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(true);
   const [stats, setStats] = useState({
     totalUsers: 0,
     todayUsers: 0
@@ -18,13 +16,6 @@ export default function UserDashboard({ currentUser, onLogout }) {
 
   useEffect(() => {
     loadUsers();
-    
-    // Show welcome for 3 seconds
-    const timer = setTimeout(() => {
-      setShowWelcome(false);
-    }, 3000);
-    
-    return () => clearTimeout(timer);
   }, []);
 
   const loadUsers = async () => {
@@ -81,24 +72,15 @@ export default function UserDashboard({ currentUser, onLogout }) {
 
   return (
     <div className="dashboard-page" data-testid="dashboard-page">
-      <div className="noise-overlay" />
-      
-      {/* Welcome Screen */}
-      {showWelcome && (
-        <div className="welcome-overlay">
-          <WelcomeScreen userName={currentUser.name} />
-        </div>
-      )}
-      
       <div className="dashboard-container">
         {/* Header */}
         <div className="dashboard-header">
           <div>
             <h1 data-testid="dashboard-title">
-              Olá, {currentUser.name}! 👋
+              Olá, {currentUser.name}!
             </h1>
             <p className="dashboard-subtitle">
-              Bem-vindo ao painel de controle
+              Bem-vindo ao seu painel de estudos
             </p>
           </div>
           
@@ -114,37 +96,59 @@ export default function UserDashboard({ currentUser, onLogout }) {
 
         {/* Stats Cards */}
         <div className="stats-grid">
-          <div className="stat-card stat-card-purple">
+          <div className="stat-card stat-card-purple" data-testid="stat-total">
             <div className="stat-icon">
-              <Users size={32} />
+              <Users size={26} />
             </div>
             <div className="stat-info">
               <p className="stat-label">Total de Usuários</p>
               <p className="stat-value" data-testid="total-users">
                 {stats.totalUsers}
               </p>
+              <div className="stat-progress">
+                <div className="stat-progress-bar" style={{ width: `${Math.min(stats.totalUsers * 10, 100)}%` }} />
+              </div>
             </div>
           </div>
 
-          <div className="stat-card stat-card-green">
+          <div className="stat-card stat-card-green" data-testid="stat-today">
             <div className="stat-icon">
-              <Calendar size={32} />
+              <Calendar size={26} />
             </div>
             <div className="stat-info">
               <p className="stat-label">Cadastros Hoje</p>
               <p className="stat-value" data-testid="today-users">
                 {stats.todayUsers}
               </p>
+              <div className="stat-progress">
+                <div className="stat-progress-bar" style={{ width: `${Math.min(stats.todayUsers * 20, 100)}%` }} />
+              </div>
             </div>
           </div>
 
-          <div className="stat-card stat-card-blue">
+          <div className="stat-card stat-card-blue" data-testid="stat-subjects">
             <div className="stat-icon">
-              <BookOpen size={32} />
+              <BookOpen size={26} />
+            </div>
+            <div className="stat-info">
+              <p className="stat-label">Matérias Ativas</p>
+              <p className="stat-value">4</p>
+              <div className="stat-progress">
+                <div className="stat-progress-bar" style={{ width: '100%' }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card stat-card-green" data-testid="stat-system">
+            <div className="stat-icon">
+              <Activity size={26} />
             </div>
             <div className="stat-info">
               <p className="stat-label">Sistema</p>
-              <p className="stat-value">Ativo</p>
+              <p className="stat-value">Online</p>
+              <div className="stat-progress">
+                <div className="stat-progress-bar" style={{ width: '100%' }} />
+              </div>
             </div>
           </div>
         </div>
@@ -155,7 +159,7 @@ export default function UserDashboard({ currentUser, onLogout }) {
           
           <div className="profile-card">
             <div className="profile-avatar">
-              <User size={48} />
+              {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <User size={38} />}
             </div>
             
             <div className="profile-info">

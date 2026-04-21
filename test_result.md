@@ -178,21 +178,33 @@ backend:
         comment: "✅ Protected user info endpoint working - correctly validates JWT token and returns user data"
 
 frontend:
-  # No frontend testing requested
+  - task: "Roteiro 110 Dias (Cálculo Numérico - EDO)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/RoadmapPlan.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New feature: 110-day study roadmap for Prof. Thiago Vedovato (IFJ-Jataí/GO) — Cálculo Numérico EDO. Added as new tab 'Roteiro 110d' inside Cronograma view. 5 phases, 15 weeks, collapsible phases, day-level checkboxes persisted to localStorage, type legend (Estudo/Exercícios/Revisão/Entrega), progress bars per phase and overall."
 
 metadata:
-  created_by: "testing_agent"
-  version: "1.0"
-  test_sequence: 1
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 2
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Backend API validation after restore/clone"
+    - "Roteiro 110 Dias (Cálculo Numérico - EDO)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "testing"
-    message: "✅ Backend validation complete after restore/clone. All 6 critical API endpoints tested and working: Hello World, Schedule (subjects/tasks), Auth (register/login/me). Backend is healthy and ready for use. Base URL: https://numerical-calc-1.preview.emergentagent.com"
+    message: "✅ Backend validation complete after restore/clone. All 6 critical API endpoints tested and working."
+  - agent: "main"
+    message: "Cloned the full app from ZIP + added Roteiro 110d feature. Backend healthy. Awaiting user approval for frontend automated testing."

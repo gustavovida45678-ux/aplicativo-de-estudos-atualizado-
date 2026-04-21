@@ -9,6 +9,15 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List
 import uuid
 from datetime import datetime, timezone
+from routes.schedule import router as schedule_router
+from routes.chat import router as chat_router
+from routes.study import router as study_router
+from routes.exercises import router as exercises_router
+from routes.commands import router as commands_router
+from routes.math import router as math_router
+from routes.auth import router as auth_router
+from routes.exercise_generator import router as exercise_generator_router
+from routes.feedback import router as feedback_router
 
 
 ROOT_DIR = Path(__file__).parent
@@ -66,8 +75,21 @@ async def get_status_checks():
     
     return status_checks
 
-# Include the router in the main app
+# Include routers
+api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
+api_router.include_router(chat_router, tags=["chat"])
+api_router.include_router(study_router, prefix="/study", tags=["study"])
+api_router.include_router(exercises_router, prefix="/study", tags=["exercises"])
+api_router.include_router(exercise_generator_router, prefix="/exercises", tags=["exercise-generator"])
+api_router.include_router(commands_router, prefix="/commands", tags=["commands"])
+api_router.include_router(math_router, prefix="/math", tags=["math"])
+api_router.include_router(feedback_router, prefix="/feedback", tags=["feedback"])
 app.include_router(api_router)
+
+# Include schedule router with /api/schedule prefix
+schedule_api_router = APIRouter(prefix="/api/schedule")
+schedule_api_router.include_router(schedule_router)
+app.include_router(schedule_api_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -101,3 +101,98 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Test the backend is working properly after a restore/clone"
+
+backend:
+  - task: "GET /api/ endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Hello World endpoint working correctly - returns expected message"
+
+  - task: "GET /api/schedule/subjects endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/routes/schedule.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Schedule subjects endpoint working - returns 4 subjects with all required fields (id, name, color, icon, topics)"
+
+  - task: "GET /api/schedule/tasks endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/routes/schedule.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Schedule tasks endpoint working - returns list of 4 tasks"
+
+  - task: "POST /api/auth/register endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/routes/auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ User registration working - successfully created user with test data, returns 201 status with user data"
+
+  - task: "POST /api/auth/login endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/routes/auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ User login working - successfully authenticates and returns access_token with bearer type"
+
+  - task: "GET /api/auth/me endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/routes/auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Protected user info endpoint working - correctly validates JWT token and returns user data"
+
+frontend:
+  # No frontend testing requested
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Backend API validation after restore/clone"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "✅ Backend validation complete after restore/clone. All 6 critical API endpoints tested and working: Hello World, Schedule (subjects/tasks), Auth (register/login/me). Backend is healthy and ready for use. Base URL: https://numerical-calc-1.preview.emergentagent.com"

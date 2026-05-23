@@ -23,10 +23,14 @@ from routes.feedback import router as feedback_router
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+# MongoDB connection (suporta MONGO_URL e MONGODB_URI - Render Atlas)
+mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
+if not mongo_url:
+    raise RuntimeError("MONGO_URL (ou MONGODB_URI) não configurado nas variáveis de ambiente")
+
+db_name = os.environ.get('DB_NAME', 'study_app')
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[db_name]
 
 # Create the main app without a prefix
 app = FastAPI()

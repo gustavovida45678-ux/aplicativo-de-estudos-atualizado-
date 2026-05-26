@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: aplicativo-estudos
+    env: static
+    buildCommand: npm install
+    startCommand: npm start
+    staticPublishPath: ./public
+    routes:
+      - path: /
+        destination: index.html
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: api-python
+    env: python-3
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+
+databases:
+  - name: aplicativo_db
+    engine: postgres
+    plan: free

@@ -56,16 +56,16 @@ DÚVIDA DO ALUNO: ${userQuestion}
 
 Por favor, explique de forma CLARA e DETALHADA, usando linguagem simples. Se houver fórmulas matemáticas, explique o significado de cada variável. Seja um professor paciente e didático.`;
 
-      const response = await axios.post(`${API}/api/chat/send`, {
+      const response = await axios.post(`${API}/api/chat`, {
         message: fullContext,
         session_id: `math-help-${Date.now()}`
       });
 
       const assistantMessage = {
         role: 'assistant',
-        content: typeof response.data.response === 'string' 
-          ? response.data.response 
-          : response.data.assistant_message?.content || 'Desculpe, não consegui processar sua pergunta. Por favor, reformule sua dúvida.',
+        content: response.data?.assistant_message?.content
+          || response.data?.response
+          || 'Desculpe, não consegui processar sua pergunta. Por favor, reformule sua dúvida.',
         timestamp: new Date()
       };
 

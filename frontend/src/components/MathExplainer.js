@@ -820,19 +820,15 @@ export default function MathExplainer() {
                                 </div>
                                 <Button
                                   onClick={() => {
-                                    const videoId = prereq.video_id;
-                                    console.log('Opening prerequisite video:', videoId);
-                                    if (videoId && videoId.length > 0) {
-                                      window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
-                                    } else {
-                                      toast.error('ID de vídeo inválido');
-                                    }
+                                    const q = prereq.search_query || prereq.topic || prereq.video_title || 'matemática';
+                                    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+                                    window.open(url, '_blank');
                                   }}
                                   size="sm"
                                   className="w-full bg-yellow-600 hover:bg-yellow-700"
                                 >
                                   <Play size={14} className="mr-2" />
-                                  Assistir Aula
+                                  Buscar no YouTube
                                 </Button>
                               </div>
                             </div>
@@ -884,19 +880,15 @@ export default function MathExplainer() {
                                   <Button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      const videoId = question.video_id;
-                                      console.log('Opening similar question video:', videoId);
-                                      if (videoId && videoId.length > 0) {
-                                        window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
-                                      } else {
-                                        toast.error('ID de vídeo inválido');
-                                      }
+                                      const q = question.search_query || question.question || 'matemática';
+                                      const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+                                      window.open(url, '_blank');
                                     }}
                                     size="sm"
                                     className="flex-1 bg-green-600 hover:bg-green-700"
                                   >
                                     <Play size={14} className="mr-2" />
-                                    Ver Resolução
+                                    Buscar Resolução
                                   </Button>
                                   <Button
                                     onClick={() => {
@@ -974,7 +966,10 @@ export default function MathExplainer() {
                     <Card
                       key={index}
                       className="bg-black/40 backdrop-blur-xl border-white/10 p-4 cursor-pointer hover:border-violet-500/50 transition-all"
-                      onClick={() => setSelectedVideo(video)}
+                      onClick={() => {
+                        const url = video.search_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(video.search_query || video.title || 'matemática')}`;
+                        window.open(url, '_blank');
+                      }}
                     >
                       <div className="space-y-3">
                         <div className="relative">
@@ -1004,14 +999,15 @@ export default function MathExplainer() {
                         <Button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedVideo(video);
+                            const url = video.search_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(video.search_query || video.title || 'matemática')}`;
+                            window.open(url, '_blank');
                           }}
                           variant="outline"
                           size="sm"
                           className="w-full border-white/10 hover:bg-white/5"
                         >
                           <Play size={16} className="mr-2" />
-                          Assistir Agora
+                          Abrir no YouTube
                         </Button>
                       </div>
                     </Card>
@@ -1020,8 +1016,8 @@ export default function MathExplainer() {
               </div>
             )}
 
-            {/* Video Player Modal */}
-            {selectedVideo && (
+            {/* Video Player Modal - apenas para vídeos com videoId real */}
+            {selectedVideo && selectedVideo.videoId && (
               <div
                 className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
                 onClick={() => setSelectedVideo(null)}

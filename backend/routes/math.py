@@ -138,18 +138,18 @@ Retorne um JSON válido neste formato:
     {{
       "topic": "Conceito Base Necessário",
       "description": "Conceito matemático ou regra que o aluno precisa saber",
-      "video_id": "example123",
-      "video_title": "Vídeo sobre o conceito",
-      "duration": "10:00"
+      "search_query": "termo de busca real para o YouTube (ex: regra da cadeia derivada explicação)",
+      "video_title": "Sugestão de título de vídeo a procurar",
+      "duration": "—"
     }}
   ],
   "similar_questions": [
     {{
       "question": "Questão similar para praticar",
       "difficulty": "Médio",
-      "video_id": "ex001",
-      "video_title": "Resolução Similar",
-      "channel": "Matemática"
+      "search_query": "termo de busca real para o YouTube (ex: resolver equação segundo grau exemplo)",
+      "video_title": "Sugestão de título de vídeo a procurar",
+      "channel": "Buscar no YouTube"
     }}
   ]
 }}
@@ -367,7 +367,7 @@ def generate_mock_explanation(question: str):
                 {
                     "topic": "Regras de Derivação",
                     "description": "Conheça as regras fundamentais: potência, produto, quociente e cadeia.",
-                    "video_id": "deriv01"
+                    "search_query": "regra de derivação passo a passo"
                 }
             ],
             "similar_questions": []
@@ -403,7 +403,7 @@ def generate_mock_explanation(question: str):
                 {
                     "topic": "Técnicas de Integração",
                     "description": "Domine substituição, partes e frações parciais.",
-                    "video_id": "int01"
+                    "search_query": "técnicas de integração explicação"
                 }
             ],
             "similar_questions": []
@@ -473,7 +473,7 @@ def generate_mock_explanation(question: str):
                             {
                                 "topic": "Limites e Continuidade",
                                 "description": "Entenda quando pode usar substituição direta.",
-                                "video_id": "lim01"
+                                "search_query": "como calcular limites passo a passo"
                             }
                         ],
                         "similar_questions": []
@@ -512,7 +512,7 @@ def generate_mock_explanation(question: str):
                 {
                     "topic": "Limites e Continuidade",
                     "description": "Entenda limites laterais, infinitos e indeterminações.",
-                    "video_id": "lim01"
+                    "search_query": "como calcular limites passo a passo"
                 }
             ],
             "similar_questions": []
@@ -552,14 +552,14 @@ def generate_mock_explanation(question: str):
             {
                 "topic": "Fundamentos Matemáticos",
                 "description": "Revise os conceitos básicos relacionados ao problema.",
-                "video_id": "fund01"
+                "search_query": "fundamentos matemáticos básico"
             }
         ],
         "similar_questions": [
             {
                 "question": "Configure a chave API para ver questões similares",
                 "difficulty": "Variado",
-                "video_id": "config",
+                "search_query": "como configurar api emergent",
                 "video_title": "Como Configurar API",
                 "channel": "Ajuda"
             }
@@ -681,39 +681,47 @@ async def generate_video(data: dict):
 @router.post("/youtube-search")
 async def youtube_search(data: dict):
     """
-    Search YouTube for similar questions (mock for now)
+    Build YouTube search URLs (no fake IDs) so links sempre abrem
+    busca real no YouTube com vídeos relevantes ao tópico pesquisado.
     """
-    logger.info("🔍 YouTube search requested (mock)")
-    
-    # Return mock results
-    return {
-        "results": [
-            {
-                "videoId": "dQw4w9WgXcQ",
-                "title": "Resolução Completa - Questões de Matemática",
-                "channel": "Professor João",
-                "thumbnail": "https://via.placeholder.com/320x180/4c1d95/ffffff?text=Vídeo+1",
-                "duration": "15:30",
-                "views": "125K",
-                "publishedAt": "há 2 meses"
-            },
-            {
-                "videoId": "abc123def",
-                "title": "Passo a Passo - Exercícios Resolvidos",
-                "channel": "Matemática Fácil",
-                "thumbnail": "https://via.placeholder.com/320x180/7c3aed/ffffff?text=Vídeo+2",
-                "duration": "10:15",
-                "views": "89K",
-                "publishedAt": "há 1 mês"
-            },
-            {
-                "videoId": "xyz789ghi",
-                "title": "Teoria e Prática - Aula Completa",
-                "channel": "Aprenda Matemática",
-                "thumbnail": "https://via.placeholder.com/320x180/8b5cf6/ffffff?text=Vídeo+3",
-                "duration": "20:45",
-                "views": "200K",
-                "publishedAt": "há 3 semanas"
-            }
-        ]
-    }
+    from urllib.parse import quote_plus
+    query = (data.get("query") or data.get("question") or "matemática").strip()
+    logger.info(f"🔍 YouTube search query: {query[:80]}")
+
+    base_q = quote_plus(query)
+    variations = [
+        ("Resolução passo a passo", f"{query} resolução passo a passo"),
+        ("Aula completa", f"{query} aula completa"),
+        ("Exercícios resolvidos", f"{query} exercícios resolvidos"),
+        ("Explicação teórica", f"{query} explicação"),
+    ]
+
+    results = []
+    for title, q in variations:
+        encoded = quote_plus(q)
+        results.append({
+            "videoId": None,
+            "search_query": q,
+            "search_url": f"https://www.youtube.com/results?search_query={encoded}",
+            "title": f"{title} — {query[:60]}",
+            "channel": "Buscar no YouTube",
+            "thumbnail": f"https://placehold.co/320x180/1E293B/60A5FA?text={quote_plus(title)}",
+            "duration": "—",
+            "views": "—",
+            "publishedAt": "Busca em tempo real",
+        })
+
+    # Link direto também para o termo original
+    results.insert(0, {
+        "videoId": None,
+        "search_query": query,
+        "search_url": f"https://www.youtube.com/results?search_query={base_q}",
+        "title": f"Buscar no YouTube: {query[:80]}",
+        "channel": "YouTube",
+        "thumbnail": f"https://placehold.co/320x180/3B82F6/FFFFFF?text=YouTube+Search",
+        "duration": "—",
+        "views": "—",
+        "publishedAt": "",
+    })
+
+    return {"results": results, "query": query}

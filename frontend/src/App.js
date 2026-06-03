@@ -527,47 +527,8 @@ function App() {
           </h1>
           <p className="welcome-subtitle-chat">Como posso ajudar você hoje?</p>
           <p data-testid="welcome-message">
-            Digite sua dúvida ou selecione uma das opções abaixo para começar.
+            Digite sua dúvida abaixo para começar.
           </p>
-
-          <div className="quick-actions-grid">
-            <button
-              type="button"
-              className="quick-action-btn"
-              onClick={() => setInputMessage("Resolva a equação x² + 5x + 6 = 0 passo a passo")}
-            >
-              <Calculator size={20} />
-              <span>Resolver equação</span>
-            </button>
-            <button
-              type="button"
-              className="quick-action-btn"
-              onClick={() => setInputMessage("Explique regra de três de forma simples com exemplos")}
-            >
-              <BookOpen size={20} />
-              <span>Explicar matéria</span>
-            </button>
-            <button
-              type="button"
-              className="quick-action-btn"
-              onClick={() => setInputMessage("Crie um resumo completo sobre equações diferenciais de 1ª ordem")}
-            >
-              <FileText size={20} />
-              <span>Criar resumo</span>
-            </button>
-            <button
-              type="button"
-              className="quick-action-btn"
-              onClick={() => setInputMessage("Gere 3 exercícios de cálculo numérico com gabarito detalhado")}
-            >
-              <ListChecks size={20} />
-              <span>Gerar exercícios</span>
-            </button>
-          </div>
-
-          <span className="tip-text">
-            Dica: você também pode arrastar imagens ou usar Ctrl+V para colar. Use /gerar [descrição] para criar imagens com IA.
-          </span>
         </div>
       ) : (
         <div className="chat-container" data-testid="chat-container">

@@ -570,19 +570,26 @@ def generate_mock_explanation(question: str):
 @router.post("/generate-video")
 async def generate_video(data: dict):
     """
-    Generate video from math explanation using Sora 2
+    Generate video from math explanation using Sora 2.
+    Prefers OPENAI_API_KEY (direct, has Sora access).
+    Falls back to EMERGENT_LLM_KEY only if OpenAI not configured.
     """
     try:
         logger.info("🎬 Video generation requested with Sora 2")
-        
-        # Check if we have Emergent key for AI
+
+        # Prefer real OpenAI key (required for Sora 2)
+        openai_key = os.environ.get('OPENAI_API_KEY')
         emergent_key = os.environ.get('EMERGENT_LLM_KEY')
-        if not emergent_key:
-            logger.warning("⚠️ No EMERGENT_LLM_KEY found")
+        api_key = openai_key or emergent_key
+        using_openai = bool(openai_key)
+
+        if not api_key:
             raise HTTPException(
                 status_code=400,
-                detail="API key não configurada. Configure a chave Emergent primeiro."
+                detail="Nenhuma chave API configurada (OPENAI_API_KEY ou EMERGENT_LLM_KEY)."
             )
+
+        logger.info(f"🔑 Using {'OPENAI_API_KEY (Sora 2 direct)' if using_openai else 'EMERGENT_LLM_KEY (may not support Sora)'}")
         
         # Extract explanation data
         title = data.get('title', 'Explicação Matemática')
@@ -616,7 +623,7 @@ async def generate_video(data: dict):
         from emergentintegrations.llm.openai.video_generation import OpenAIVideoGeneration
         
         # Initialize video generator
-        video_gen = OpenAIVideoGeneration(api_key=emergent_key)
+        video_gen = OpenAIVideoGeneration(api_key=api_key)
         
         # Validate and adjust duration (Sora accepts 4, 8, or 12)
         valid_durations = [4, 8, 12]

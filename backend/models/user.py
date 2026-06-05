@@ -15,6 +15,8 @@ class User(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
     is_admin: bool = False
+    email_verified: bool = False
+    verification_token: Optional[str] = None
 
 
 class UserCreate(BaseModel):
@@ -38,6 +40,25 @@ class UserResponse(BaseModel):
     created_at: datetime
     is_active: bool
     is_admin: bool
+    email_verified: bool = False
+
+
+class RegisterResponse(BaseModel):
+    """Schema for register response with verification info (mock mode)"""
+    user: UserResponse
+    verification_required: bool = True
+    verification_link: Optional[str] = None
+    message: str = "Confirme seu email para ativar a conta"
+
+
+class VerifyEmailRequest(BaseModel):
+    """Schema for email verification"""
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Schema for resending verification email"""
+    email: EmailStr
 
 
 class Token(BaseModel):

@@ -1,14 +1,23 @@
+import os
+import sys
+import logging
+import uuid
+from pathlib import Path
+from datetime import datetime, timezone
+
+ROOT_DIR = Path(__file__).parent
+
+# Ensure the backend directory is importable when the app is started as
+# `uvicorn backend.server:app` from the repository root (Render/Procfile).
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List
-import uuid
-from datetime import datetime, timezone
 from routes.schedule import router as schedule_router
 from routes.chat import router as chat_router
 from routes.study import router as study_router
@@ -19,8 +28,6 @@ from routes.auth import router as auth_router
 from routes.exercise_generator import router as exercise_generator_router
 from routes.feedback import router as feedback_router
 
-
-ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection (suporta MONGO_URL e MONGODB_URI - Render Atlas)

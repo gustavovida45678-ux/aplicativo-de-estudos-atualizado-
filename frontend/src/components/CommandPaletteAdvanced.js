@@ -178,7 +178,7 @@ export default function CommandPaletteAdvanced({ onNavigate, onThemeChange }) {
       changes.tasks.forEach((taskName, index) => {
         const newTask = {
           id: Date.now() + index,
-          subject: changes.subject || 'calc1',
+          subject: changes.subject || 'calc2',
           task: taskName,
           completed: false,
           created: new Date().toISOString(),
@@ -213,7 +213,7 @@ export default function CommandPaletteAdvanced({ onNavigate, onThemeChange }) {
       
       const newTask = {
         id: Date.now(),
-        subject: changes.subject || 'calc1',
+        subject: changes.subject || 'calc2',
         task: changes.task || changes.description || 'Nova tarefa',
         completed: false,
         created: new Date().toISOString(),

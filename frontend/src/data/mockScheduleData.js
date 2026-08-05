@@ -2,24 +2,6 @@
 
 export const subjects = [
   {
-    id: 'calc1',
-    name: 'Cálculo 1',
-    color: '#3b82f6',
-    icon: '∫',
-    topics: [
-      { id: 1, title: 'Limites e Continuidade', completed: false },
-      { id: 2, title: 'Derivadas - Definição e Regras Básicas', completed: false },
-      { id: 3, title: 'Regra da Cadeia e Derivadas Implícitas', completed: false },
-      { id: 4, title: 'Aplicações de Derivadas - Máximos e Mínimos', completed: false },
-      { id: 5, title: 'Teorema do Valor Médio', completed: false },
-      { id: 6, title: 'Integrais Indefinidas', completed: false },
-      { id: 7, title: 'Integrais Definidas e Teorema Fundamental', completed: false },
-      { id: 8, title: 'Técnicas de Integração - Substituição', completed: false },
-      { id: 9, title: 'Técnicas de Integração - Por Partes', completed: false },
-      { id: 10, title: 'Aplicações de Integrais - Áreas', completed: false },
-    ],
-  },
-  {
     id: 'calc2',
     name: 'Cálculo 2',
     color: '#8b5cf6',
@@ -118,8 +100,8 @@ export const weekSchedule = [
       { time: '08:45', subject: 'Transporte', type: 'other', room: 'Sala 203' },
       { time: '10:30', subject: '', type: 'study', room: '' },
       { time: '14:00', subject: '', type: 'study', room: '' },
-      { time: '19:00', subject: 'Cálculo I (Noturno)', type: 'class', room: 'Sala 101' },
-      { time: '20:45', subject: 'Cálculo I (Noturno)', type: 'class', room: 'Sala 101' },
+      { time: '19:00', subject: '', type: 'study', room: '' },
+      { time: '20:45', subject: '', type: 'study', room: '' },
     ],
   },
   {
@@ -138,7 +120,7 @@ export const weekSchedule = [
     dayShort: 'Qua',
     slots: [
       { time: '07:00', subject: 'Cálculo Diferencial e Integral II', type: 'class', room: 'Sala 103' },
-      { time: '08:45', subject: 'Cálculo Diferencial e Integral I', type: 'class', room: 'Sala 103' },
+      { time: '08:45', subject: '', type: 'study', room: '' },
       { time: '10:30', subject: '', type: 'study', room: '' },
       { time: '14:00', subject: '', type: 'study', room: '' },
       { time: '19:00', subject: 'Eletricidade e Magnetismo', type: 'other', room: 'Lab. Física' },
@@ -148,23 +130,23 @@ export const weekSchedule = [
     day: 'Quinta',
     dayShort: 'Qui',
     slots: [
-      { time: '07:00', subject: 'Cálculo Diferencial e Integral I', type: 'class', room: 'Sala 102' },
+      { time: '07:00', subject: '', type: 'study', room: '' },
       { time: '08:45', subject: 'Geometria Analítica', type: 'other', room: 'Sala 104' },
       { time: '10:30', subject: 'Cálculo Numérico', type: 'class', room: 'Lab. Informática 1' },
       { time: '14:00', subject: '', type: 'study', room: '' },
       { time: '19:00', subject: 'Engenharia Elétrica', type: 'other', room: 'Sala 205' },
-      { time: '20:45', subject: 'Cálculo I (Noturno)', type: 'class', room: 'Sala 101' },
+      { time: '20:45', subject: '', type: 'study', room: '' },
     ],
   },
   {
     day: 'Sexta',
     dayShort: 'Sex',
     slots: [
-      { time: '07:00', subject: 'Cálculo Diferencial e Integral I', type: 'class', room: 'Sala 102' },
+      { time: '07:00', subject: '', type: 'study', room: '' },
       { time: '08:45', subject: '', type: 'study', room: '' },
       { time: '10:30', subject: '', type: 'study', room: '' },
       { time: '14:00', subject: '', type: 'study', room: '' },
-      { time: '19:00', subject: 'Cálculo I (Noturno)', type: 'class', room: 'Sala 101' },
+      { time: '19:00', subject: '', type: 'study', room: '' },
       { time: '20:45', subject: 'Geometria Analítica (Noturno)', type: 'other', room: 'Sala 104' },
     ],
   },
@@ -190,14 +172,6 @@ export const weekSchedule = [
 ];
 
 export const studyTasks = [
-  {
-    id: 1,
-    subject: 'calc1',
-    task: 'Resolver lista de limites',
-    dueDate: '2026-03-25',
-    completed: false,
-    priority: 'high',
-  },
   {
     id: 2,
     subject: 'calc2',

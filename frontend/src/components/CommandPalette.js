@@ -82,7 +82,7 @@ export default function CommandPalette() {
       cmd: '/focus [matéria]',
       description: 'Define o foco de estudo para uma matéria',
       action: (args) => {
-        if (args.length === 0) return 'Use: /focus [calc1|calc2|calc3|calcnum]';
+        if (args.length === 0) return 'Use: /focus [calc2|calc3|calcnum|ed1|sdig]';
         const subject = args[0];
         localStorage.setItem('focus_subject', subject);
         return `🎯 Foco definido em: ${subject}`;

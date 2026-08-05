@@ -2,92 +2,13 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 import logging
 from models.exercise import Exercise, ExerciseAttemptCreate
+from routes.extra_exercises import EXTRA_EXERCISES
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Database de exercícios (em produção, viria do MongoDB)
 EXERCISES_DB = {
-    "calc1_1": [  # Limites
-        {
-            "id": "ex_calc1_1_1",
-            "topic_id": "calc1_1",
-            "question": "Calcule o limite: lim (x→2) (x² - 4)/(x - 2)",
-            "options": ["0", "2", "4", "O limite não existe"],
-            "correct_answer": 2,
-            "explanation": "Fatorando o numerador: (x² - 4) = (x-2)(x+2). Simplificando: (x-2)(x+2)/(x-2) = x+2. Quando x→2, o resultado é 4.",
-            "difficulty": "Básico"
-        },
-        {
-            "id": "ex_calc1_1_2",
-            "topic_id": "calc1_1",
-            "question": "Calcule: lim (x→0) (sen(x))/x",
-            "options": ["0", "1", "∞", "O limite não existe"],
-            "correct_answer": 1,
-            "explanation": "Este é um limite fundamental: lim (x→0) sen(x)/x = 1. É um resultado importante usado em muitas demonstrações.",
-            "difficulty": "Intermediário"
-        },
-        {
-            "id": "ex_calc1_1_3",
-            "topic_id": "calc1_1",
-            "question": "Para qual valor de 'a' a função f(x) = (x² + ax + 6)/(x - 2) é contínua em x = 2?",
-            "options": ["a = -5", "a = -4", "a = 4", "Não existe tal valor"],
-            "correct_answer": 0,
-            "explanation": "Para ser contínua em x=2, o limite deve existir. O numerador deve ter (x-2) como fator: x²+ax+6=(x-2)(x+3)=x²+x-6. Logo a=-1... Ops! Vamos recalcular: (x-2)(x-b)=x²-(2+b)x+2b. Se 2b=6, b=3. Então -(2+3)=-5, logo a=-5.",
-            "difficulty": "Avançado"
-        }
-    ],
-    "calc1_2": [  # Derivadas
-        {
-            "id": "ex_calc1_2_1",
-            "topic_id": "calc1_2",
-            "question": "Calcule a derivada de f(x) = 3x² + 2x - 5",
-            "options": ["6x + 2", "3x + 2", "6x² + 2x", "3x²"],
-            "correct_answer": 0,
-            "explanation": "Usando a regra da potência: d/dx(xⁿ) = n·xⁿ⁻¹. Portanto: f'(x) = 3·2x + 2·1 - 0 = 6x + 2",
-            "difficulty": "Básico"
-        },
-        {
-            "id": "ex_calc1_2_2",
-            "topic_id": "calc1_2",
-            "question": "Qual é a derivada de f(x) = sen(x)·cos(x)?",
-            "options": ["cos²(x) - sen²(x)", "cos(x) - sen(x)", "cos(2x)", "sen²(x) - cos²(x)"],
-            "correct_answer": 0,
-            "explanation": "Usando a regra do produto: (uv)' = u'v + uv'. Então: f'(x) = cos(x)·cos(x) + sen(x)·(-sen(x)) = cos²(x) - sen²(x). Note que isso também equivale a cos(2x)!",
-            "difficulty": "Intermediário"
-        }
-    ],
-    "calc1_3": [  # Aplicações de Derivadas
-        {
-            "id": "ex_calc1_3_1",
-            "topic_id": "calc1_3",
-            "question": "Em que ponto a reta tangente à curva y = x³ é paralela à reta y = 3x + 1?",
-            "options": ["x = 0", "x = 1", "x = -1 e x = 1", "x = 2"],
-            "correct_answer": 2,
-            "explanation": "A derivada y' = 3x² deve ser igual ao coeficiente angular 3. Logo 3x² = 3, então x² = 1, resultando em x = ±1.",
-            "difficulty": "Intermediário"
-        }
-    ],
-    "calc1_4": [  # Integrais
-        {
-            "id": "ex_calc1_4_1",
-            "topic_id": "calc1_4",
-            "question": "Calcule ∫ 2x dx",
-            "options": ["x² + C", "2x² + C", "x²/2 + C", "2x"],
-            "correct_answer": 0,
-            "explanation": "∫ 2x dx = 2 · ∫ x dx = 2 · (x²/2) + C = x² + C",
-            "difficulty": "Básico"
-        },
-        {
-            "id": "ex_calc1_4_2",
-            "topic_id": "calc1_4",
-            "question": "Calcule ∫₀² (x² + 1) dx",
-            "options": ["10/3", "14/3", "8/3", "6"],
-            "correct_answer": 1,
-            "explanation": "∫(x² + 1)dx = x³/3 + x. Aplicando os limites: [2³/3 + 2] - [0] = 8/3 + 2 = 8/3 + 6/3 = 14/3",
-            "difficulty": "Intermediário"
-        }
-    ],
     "calc2_1": [  # Funções de Várias Variáveis
         {
             "id": "ex_calc2_1_1",
@@ -773,14 +694,10 @@ async def get_exercises_for_topic(topic_id: str):
     Get all exercises for a specific topic
     """
     try:
-        exercises = EXERCISES_DB.get(topic_id, [])
+        exercises = EXERCISES_DB.get(topic_id, []) + EXTRA_EXERCISES.get(topic_id, [])
         
         # Get topic name from the topics data
         topic_names = {
-            "calc1_1": {"name": "Limites", "category": "Cálculo 1", "difficulty": "Básico"},
-            "calc1_2": {"name": "Derivadas", "category": "Cálculo 1", "difficulty": "Intermediário"},
-            "calc1_3": {"name": "Aplicações de Derivadas", "category": "Cálculo 1", "difficulty": "Intermediário"},
-            "calc1_4": {"name": "Integrais", "category": "Cálculo 1", "difficulty": "Avançado"},
             "calc2_1": {"name": "Funções de Várias Variáveis", "category": "Cálculo 2", "difficulty": "Intermediário"},
             "calc2_2": {"name": "Derivadas Parciais", "category": "Cálculo 2", "difficulty": "Avançado"},
             "calc2_3": {"name": "Integrais Múltiplas", "category": "Cálculo 2", "difficulty": "Avançado"},
@@ -798,12 +715,14 @@ async def get_exercises_for_topic(topic_id: str):
             "ed_6": {"name": "Pilhas e Filas", "category": "Estrutura de Dados", "difficulty": "Intermediário"},
             "ed_7": {"name": "Listas Encadeadas", "category": "Estrutura de Dados", "difficulty": "Intermediário"},
             "ed_8": {"name": "Árvores", "category": "Estrutura de Dados", "difficulty": "Avançado"},
+            "ed_simulado": {"name": "Simulado - Estrutura de Dados (formato de prova)", "category": "Estrutura de Dados", "difficulty": "Avançado"},
             "sd_1": {"name": "Sistemas de Numeração", "category": "Sistemas Digitais", "difficulty": "Básico"},
             "sd_2": {"name": "Portas e Funções Lógicas", "category": "Sistemas Digitais", "difficulty": "Básico"},
             "sd_3": {"name": "Álgebra de Boole e Simplificação", "category": "Sistemas Digitais", "difficulty": "Intermediário"},
             "sd_4": {"name": "Circuitos Combinacionais", "category": "Sistemas Digitais", "difficulty": "Intermediário"},
             "sd_5": {"name": "Flip-Flops e Contadores", "category": "Sistemas Digitais", "difficulty": "Intermediário"},
-            "sd_6": {"name": "Conversores, Multiplex e Memórias", "category": "Sistemas Digitais", "difficulty": "Avançado"}
+            "sd_6": {"name": "Conversores, Multiplex e Memórias", "category": "Sistemas Digitais", "difficulty": "Avançado"},
+            "sd_simulado": {"name": "Simulado - Sistemas Digitais (formato de prova)", "category": "Sistemas Digitais", "difficulty": "Avançado"}
         }
         
         topic_info = topic_names.get(topic_id, {"name": "Tópico Desconhecido", "category": "Desconhecido", "difficulty": "Intermediário"})

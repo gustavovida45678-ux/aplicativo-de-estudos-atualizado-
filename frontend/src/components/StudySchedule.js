@@ -21,6 +21,7 @@ const scheduleApi = axios.create({
 
 const StudySchedule = () => {
   const [activeView, setActiveView] = useState('roadmap');
+  const [roadmapVariant, setRoadmapVariant] = useState('calcnum');
   const [subjectsData, setSubjectsData] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [studySessions, setStudySessions] = useState([]);
@@ -185,7 +186,7 @@ const StudySchedule = () => {
           <BookOpen className="schedule-icon" size={32} />
           <div>
             <h1 className="schedule-title">Cronograma de Estudos</h1>
-            <p className="schedule-subtitle">Cálculo Numérico • EDO • Prof. Thiago Vedovato — IFJ/Jataí-GO</p>
+            <p className="schedule-subtitle">Cálculo Numérico (Thiago Vedovato) • Estrutura de Dados (Roney Lopes Lima) • Sistemas Digitais (Jose Antonio Lambert) — IFG/Jataí-GO</p>
           </div>
         </div>
       </div>
@@ -275,7 +276,32 @@ const StudySchedule = () => {
           />
         )}
         {activeView === 'roadmap' && (
-          <RoadmapPlan />
+          <div className="space-y-4">
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => setRoadmapVariant('calcnum')}
+                className={`schedule-tab ${roadmapVariant === 'calcnum' ? 'active' : ''}`}
+              >
+                <GraduationCap size={18} />
+                Cálculo Numérico
+              </button>
+              <button
+                onClick={() => setRoadmapVariant('estruturadados')}
+                className={`schedule-tab ${roadmapVariant === 'estruturadados' ? 'active' : ''}`}
+              >
+                <GraduationCap size={18} />
+                Estrutura de Dados
+              </button>
+              <button
+                onClick={() => setRoadmapVariant('sistemasdigitais')}
+                className={`schedule-tab ${roadmapVariant === 'sistemasdigitais' ? 'active' : ''}`}
+              >
+                <GraduationCap size={18} />
+                Sistemas Digitais
+              </button>
+            </div>
+            <RoadmapPlan variant={roadmapVariant} />
+          </div>
         )}
         {activeView === 'reviews' && (
           <ReviewSchedule 

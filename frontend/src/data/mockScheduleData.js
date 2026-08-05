@@ -73,6 +73,40 @@ export const subjects = [
       { id: 40, title: 'Integração Numérica - Regra de Simpson', completed: false },
     ],
   },
+  {
+    id: 'ed1',
+    name: 'Estrutura de Dados',
+    color: '#f59e0b',
+    icon: '{ }',
+    topics: [
+      { id: 41, title: 'Programação Estruturada e Modular', completed: false },
+      { id: 42, title: 'Introdução à Análise de Algoritmos', completed: false },
+      { id: 43, title: 'Vetores e Strings', completed: false },
+      { id: 44, title: 'Matrizes Multidimensionais', completed: false },
+      { id: 45, title: 'Estruturas Estáticas e Dinâmicas', completed: false },
+      { id: 46, title: 'Pilhas e Filas', completed: false },
+      { id: 47, title: 'Listas Encadeadas', completed: false },
+      { id: 48, title: 'Árvores', completed: false },
+    ],
+  },
+  {
+    id: 'sdig',
+    name: 'Sistemas Digitais',
+    color: '#06b6d4',
+    icon: '01',
+    topics: [
+      { id: 49, title: 'Aplicações da Eletrônica Digital na Engenharia Elétrica', completed: false },
+      { id: 50, title: 'Sistemas de Numeração e Conversões', completed: false },
+      { id: 51, title: 'Portas e Funções Lógicas', completed: false },
+      { id: 52, title: 'Álgebra de Boole e Simplificação (Karnaugh)', completed: false },
+      { id: 53, title: 'Circuitos Combinacionais (projetos e códigos)', completed: false },
+      { id: 54, title: 'Codificadores e Decodificadores', completed: false },
+      { id: 55, title: 'Flip-Flops', completed: false },
+      { id: 56, title: 'Registradores e Contadores', completed: false },
+      { id: 57, title: 'Conversores D/A e A/D, Multiplex e Memórias', completed: false },
+      { id: 58, title: 'Famílias de Circuitos Lógicos (TTL e CMOS)', completed: false },
+    ],
+  },
 ];
 
 export const weekSchedule = [

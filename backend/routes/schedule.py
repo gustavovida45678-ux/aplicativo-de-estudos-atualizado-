@@ -89,6 +89,40 @@ INITIAL_SUBJECTS = [
             {"id": 40, "title": "Integração Numérica - Regra de Simpson", "completed": False},
         ],
     },
+    {
+        "subject_id": "ed1",
+        "name": "Estrutura de Dados",
+        "color": "#f59e0b",
+        "icon": "{ }",
+        "topics": [
+            {"id": 41, "title": "Programação Estruturada e Modular", "completed": False},
+            {"id": 42, "title": "Introdução à Análise de Algoritmos", "completed": False},
+            {"id": 43, "title": "Vetores e Strings", "completed": False},
+            {"id": 44, "title": "Matrizes Multidimensionais", "completed": False},
+            {"id": 45, "title": "Estruturas Estáticas e Dinâmicas", "completed": False},
+            {"id": 46, "title": "Pilhas e Filas", "completed": False},
+            {"id": 47, "title": "Listas Encadeadas", "completed": False},
+            {"id": 48, "title": "Árvores", "completed": False},
+        ],
+    },
+    {
+        "subject_id": "sdig",
+        "name": "Sistemas Digitais",
+        "color": "#06b6d4",
+        "icon": "01",
+        "topics": [
+            {"id": 49, "title": "Aplicações da Eletrônica Digital na Engenharia Elétrica", "completed": False},
+            {"id": 50, "title": "Sistemas de Numeração e Conversões", "completed": False},
+            {"id": 51, "title": "Portas e Funções Lógicas", "completed": False},
+            {"id": 52, "title": "Álgebra de Boole e Simplificação (Karnaugh)", "completed": False},
+            {"id": 53, "title": "Circuitos Combinacionais (projetos e códigos)", "completed": False},
+            {"id": 54, "title": "Codificadores e Decodificadores", "completed": False},
+            {"id": 55, "title": "Flip-Flops", "completed": False},
+            {"id": 56, "title": "Registradores e Contadores", "completed": False},
+            {"id": 57, "title": "Conversores D/A e A/D, Multiplex e Memórias", "completed": False},
+            {"id": 58, "title": "Famílias de Circuitos Lógicos (TTL e CMOS)", "completed": False},
+        ],
+    },
 ]
 
 INITIAL_TASKS = [
@@ -124,28 +158,64 @@ INITIAL_TASKS = [
         "completed": False,
         "priority": "medium",
     },
+    {
+        "id": 5,
+        "subject": "ed1",
+        "task": "Implementar pilha com alocação dinâmica",
+        "dueDate": "2026-09-30",
+        "completed": False,
+        "priority": "high",
+    },
+    {
+        "id": 6,
+        "subject": "sdig",
+        "task": "Simplificar função lógica com mapa de Karnaugh",
+        "dueDate": "2026-09-07",
+        "completed": False,
+        "priority": "high",
+    },
 ]
 
 async def initialize_data():
-    """Initialize database with default data if empty"""
+    """Initialize database with default data (idempotent upsert)"""
     try:
-        # Check if subjects exist
-        subjects_count = await db.subjects.count_documents({"user_id": "default"})
-        if subjects_count == 0:
-            logger.info("Initializing subjects data...")
-            for subject_data in INITIAL_SUBJECTS:
-                subject_data["user_id"] = "default"
-                await db.subjects.insert_one(subject_data)
-            logger.info(f"Initialized {len(INITIAL_SUBJECTS)} subjects")
-        
-        # Check if tasks exist
-        tasks_count = await db.tasks.count_documents({"user_id": "default"})
-        if tasks_count == 0:
-            logger.info("Initializing tasks data...")
-            for task_data in INITIAL_TASKS:
-                task_data["user_id"] = "default"
-                await db.tasks.insert_one(task_data)
-            logger.info(f"Initialized {len(INITIAL_TASKS)} tasks")
+        # Upsert each subject, preserving any existing topic completion state
+        for subject_data in INITIAL_SUBJECTS:
+            existing = await db.subjects.find_one({
+                "user_id": "default",
+                "subject_id": subject_data["subject_id"],
+            })
+            if existing:
+                existing_topics = {t["id"]: t for t in existing.get("topics", [])}
+                merged_topics = [
+                    existing_topics.get(t["id"], t) for t in subject_data["topics"]
+                ]
+                await db.subjects.update_one(
+                    {"user_id": "default", "subject_id": subject_data["subject_id"]},
+                    {"$set": {
+                        "name": subject_data["name"],
+                        "color": subject_data["color"],
+                        "icon": subject_data["icon"],
+                        "topics": merged_topics,
+                    }},
+                )
+            else:
+                insert_data = dict(subject_data)
+                insert_data["user_id"] = "default"
+                await db.subjects.insert_one(insert_data)
+        logger.info(f"Upserted {len(INITIAL_SUBJECTS)} subjects")
+
+        # Insert each task only if it does not exist yet
+        for task_data in INITIAL_TASKS:
+            existing = await db.tasks.find_one({
+                "user_id": "default",
+                "id": task_data["id"],
+            })
+            if not existing:
+                insert_data = dict(task_data)
+                insert_data["user_id"] = "default"
+                await db.tasks.insert_one(insert_data)
+        logger.info(f"Ensured {len(INITIAL_TASKS)} tasks")
     except Exception as e:
         logger.error(f"Error initializing data: {e}")
 

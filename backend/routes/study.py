@@ -41,6 +41,30 @@ TOPICS_DATA = {
             {"id": "calcnum_2", "name": "Sistemas Lineares", "exercises_count": 15},
             {"id": "calcnum_3", "name": "Interpolação", "exercises_count": 10},
         ]
+    },
+    "estruturadedados": {
+        "name": "Estrutura de Dados",
+        "topics": [
+            {"id": "ed_1", "name": "Programação Estruturada e Modular", "exercises_count": 10},
+            {"id": "ed_2", "name": "Análise de Algoritmos", "exercises_count": 8},
+            {"id": "ed_3", "name": "Vetores e Strings", "exercises_count": 12},
+            {"id": "ed_4", "name": "Matrizes Multidimensionais", "exercises_count": 8},
+            {"id": "ed_5", "name": "Estruturas Estáticas e Dinâmicas", "exercises_count": 8},
+            {"id": "ed_6", "name": "Pilhas e Filas", "exercises_count": 12},
+            {"id": "ed_7", "name": "Listas Encadeadas", "exercises_count": 12},
+            {"id": "ed_8", "name": "Árvores", "exercises_count": 10},
+        ]
+    },
+    "sistemasdigitais": {
+        "name": "Sistemas Digitais",
+        "topics": [
+            {"id": "sd_1", "name": "Sistemas de Numeração", "exercises_count": 12},
+            {"id": "sd_2", "name": "Portas e Funções Lógicas", "exercises_count": 10},
+            {"id": "sd_3", "name": "Álgebra de Boole e Simplificação", "exercises_count": 12},
+            {"id": "sd_4", "name": "Circuitos Combinacionais", "exercises_count": 10},
+            {"id": "sd_5", "name": "Flip-Flops e Contadores", "exercises_count": 12},
+            {"id": "sd_6", "name": "Conversores, Multiplex e Memórias", "exercises_count": 10},
+        ]
     }
 }
 

@@ -3,6 +3,7 @@
 // 110 dias | 01 Abril 2026 → 10 Julho 2026
 
 export const roadmapInfo = {
+  title: 'Roteiro 110 Dias',
   professor: 'Thiago Vedovato',
   institution: 'IFJ - Jataí/GO',
   course: 'Engenharia Elétrica',

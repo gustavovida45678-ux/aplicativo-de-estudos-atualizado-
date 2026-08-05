@@ -3,6 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from models.schedule import Subject, SubjectInDB, Task, TaskInDB, TaskResponse
 from typing import List
 import os
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -10,9 +11,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # MongoDB connection
-mongo_url = os.environ.get('MONGO_URL')
+mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME', 'study_schedule_db')]
+db = client[os.environ.get('DB_NAME', 'study_app')]
 
 # Initial subjects data
 INITIAL_SUBJECTS = [
@@ -150,7 +151,15 @@ async def initialize_data():
 
 @router.on_event("startup")
 async def startup_event():
-    await initialize_data()
+    # Never block server startup on MongoDB. If the database is unreachable
+    # (e.g. misconfigured MONGODB_URI or IP allowlist), the server must still
+    # bind its port; otherwise Render kills the instance (502).
+    try:
+        await asyncio.wait_for(initialize_data(), timeout=5)
+    except asyncio.TimeoutError:
+        logger.warning("MongoDB initialization timed out during startup (db unreachable?)")
+    except Exception as e:
+        logger.warning(f"MongoDB initialization failed during startup: {e}")
 
 # Subjects endpoints
 @router.get("/subjects", response_model=List[Subject])

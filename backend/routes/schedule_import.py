@@ -31,9 +31,9 @@ async def import_detailed_schedule(
         from motor.motor_asyncio import AsyncIOMotorClient
         import os
         
-        mongo_url = os.environ['MONGO_URL']
+        mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
         client = AsyncIOMotorClient(mongo_url)
-        db = client[os.environ['DB_NAME']]
+        db = client[os.environ.get('DB_NAME', 'study_app')]
         
         # Parse dates
         start_date = datetime.fromisoformat(request.start_date)

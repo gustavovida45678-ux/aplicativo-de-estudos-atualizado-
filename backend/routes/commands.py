@@ -4,9 +4,17 @@ import logging
 import os
 from datetime import datetime
 from models.command import CommandRequest, CommandResponse
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    EMERGENT_AVAILABLE = True
+except ImportError:
+    LlmChat = None
+    UserMessage = None
+    EMERGENT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+if not EMERGENT_AVAILABLE:
+    logger.warning("emergentintegrations nao instalado - endpoint de comandos IA indisponivel")
 router = APIRouter()
 
 def get_api_key(x_custom_api_key: Optional[str] = None):
@@ -301,6 +309,15 @@ async def execute_command(
             return CommandResponse(
                 success=False,
                 result="⚠️ Comandos com IA requerem configuração de API key. Use comandos com '/' (ex: /tema-escuro) ou configure sua chave API.",
+                action_type="frontend",
+                changes=None,
+                preview=None
+            )
+        
+        if not EMERGENT_AVAILABLE:
+            return CommandResponse(
+                success=False,
+                result="Comandos com IA indisponiveis neste deploy (biblioteca emergentintegrations ausente).",
                 action_type="frontend",
                 changes=None,
                 preview=None

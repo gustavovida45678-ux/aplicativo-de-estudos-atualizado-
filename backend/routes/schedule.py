@@ -18,24 +18,6 @@ db = client[os.environ.get('DB_NAME', 'study_app')]
 # Initial subjects data
 INITIAL_SUBJECTS = [
     {
-        "subject_id": "calc1",
-        "name": "Cálculo 1",
-        "color": "#3b82f6",
-        "icon": "∫",
-        "topics": [
-            {"id": 1, "title": "Limites e Continuidade", "completed": False},
-            {"id": 2, "title": "Derivadas - Definição e Regras Básicas", "completed": False},
-            {"id": 3, "title": "Regra da Cadeia e Derivadas Implícitas", "completed": False},
-            {"id": 4, "title": "Aplicações de Derivadas - Máximos e Mínimos", "completed": False},
-            {"id": 5, "title": "Teorema do Valor Médio", "completed": False},
-            {"id": 6, "title": "Integrais Indefinidas", "completed": False},
-            {"id": 7, "title": "Integrais Definidas e Teorema Fundamental", "completed": False},
-            {"id": 8, "title": "Técnicas de Integração - Substituição", "completed": False},
-            {"id": 9, "title": "Técnicas de Integração - Por Partes", "completed": False},
-            {"id": 10, "title": "Aplicações de Integrais - Áreas", "completed": False},
-        ],
-    },
-    {
         "subject_id": "calc2",
         "name": "Cálculo 2",
         "color": "#8b5cf6",
@@ -127,14 +109,6 @@ INITIAL_SUBJECTS = [
 
 INITIAL_TASKS = [
     {
-        "id": 1,
-        "subject": "calc1",
-        "task": "Resolver lista de limites",
-        "dueDate": "2026-03-25",
-        "completed": False,
-        "priority": "high",
-    },
-    {
         "id": 2,
         "subject": "calc2",
         "task": "Estudar derivadas parciais",
@@ -204,6 +178,25 @@ async def initialize_data():
                 insert_data["user_id"] = "default"
                 await db.subjects.insert_one(insert_data)
         logger.info(f"Upserted {len(INITIAL_SUBJECTS)} subjects")
+
+        # Remove subjects (and only their tasks) that are no longer in the initial data
+        known_subject_ids = {s["subject_id"] for s in INITIAL_SUBJECTS}
+        existing_subjects = await db.subjects.find(
+            {"user_id": "default"}, {"subject_id": 1}
+        ).to_list(100)
+        removed_ids = {
+            s["subject_id"] for s in existing_subjects
+        } - known_subject_ids
+        if removed_ids:
+            await db.tasks.delete_many({
+                "user_id": "default",
+                "subject": {"$in": list(removed_ids)},
+            })
+            removed = await db.subjects.delete_many({
+                "user_id": "default",
+                "subject_id": {"$in": list(removed_ids)},
+            })
+            logger.info(f"Removed {removed.deleted_count} stale subjects: {sorted(removed_ids)}")
 
         # Insert each task only if it does not exist yet
         for task_data in INITIAL_TASKS:

@@ -69,7 +69,7 @@ export default function DebugPanel({ onNavigate }) {
     
     const newTask = {
       id: Date.now(),
-      subject: 'calc1',
+      subject: 'calc2',
       task: `Tarefa de Teste ${Date.now()}`,
       completed: false,
       created: new Date().toISOString(),

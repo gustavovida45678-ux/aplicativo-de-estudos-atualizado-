@@ -9,15 +9,6 @@ router = APIRouter()
 
 # Mock data for exercises/topics
 TOPICS_DATA = {
-    "calculo1": {
-        "name": "Cálculo 1",
-        "topics": [
-            {"id": "calc1_1", "name": "Limites", "exercises_count": 15},
-            {"id": "calc1_2", "name": "Derivadas", "exercises_count": 20},
-            {"id": "calc1_3", "name": "Aplicações de Derivadas", "exercises_count": 18},
-            {"id": "calc1_4", "name": "Integrais", "exercises_count": 25},
-        ]
-    },
     "calculo2": {
         "name": "Cálculo 2",
         "topics": [
@@ -45,25 +36,27 @@ TOPICS_DATA = {
     "estruturadedados": {
         "name": "Estrutura de Dados",
         "topics": [
-            {"id": "ed_1", "name": "Programação Estruturada e Modular", "exercises_count": 10},
-            {"id": "ed_2", "name": "Análise de Algoritmos", "exercises_count": 8},
-            {"id": "ed_3", "name": "Vetores e Strings", "exercises_count": 12},
-            {"id": "ed_4", "name": "Matrizes Multidimensionais", "exercises_count": 8},
-            {"id": "ed_5", "name": "Estruturas Estáticas e Dinâmicas", "exercises_count": 8},
-            {"id": "ed_6", "name": "Pilhas e Filas", "exercises_count": 12},
-            {"id": "ed_7", "name": "Listas Encadeadas", "exercises_count": 12},
-            {"id": "ed_8", "name": "Árvores", "exercises_count": 10},
+            {"id": "ed_1", "name": "Programação Estruturada e Modular", "exercises_count": 6},
+            {"id": "ed_2", "name": "Análise de Algoritmos", "exercises_count": 6},
+            {"id": "ed_3", "name": "Vetores e Strings", "exercises_count": 7},
+            {"id": "ed_4", "name": "Matrizes Multidimensionais", "exercises_count": 6},
+            {"id": "ed_5", "name": "Estruturas Estáticas e Dinâmicas", "exercises_count": 6},
+            {"id": "ed_6", "name": "Pilhas e Filas", "exercises_count": 7},
+            {"id": "ed_7", "name": "Listas Encadeadas", "exercises_count": 6},
+            {"id": "ed_8", "name": "Árvores", "exercises_count": 6},
+            {"id": "ed_simulado", "name": "Simulado - Estrutura de Dados (formato de prova)", "exercises_count": 10},
         ]
     },
     "sistemasdigitais": {
         "name": "Sistemas Digitais",
         "topics": [
-            {"id": "sd_1", "name": "Sistemas de Numeração", "exercises_count": 12},
-            {"id": "sd_2", "name": "Portas e Funções Lógicas", "exercises_count": 10},
-            {"id": "sd_3", "name": "Álgebra de Boole e Simplificação", "exercises_count": 12},
-            {"id": "sd_4", "name": "Circuitos Combinacionais", "exercises_count": 10},
-            {"id": "sd_5", "name": "Flip-Flops e Contadores", "exercises_count": 12},
-            {"id": "sd_6", "name": "Conversores, Multiplex e Memórias", "exercises_count": 10},
+            {"id": "sd_1", "name": "Sistemas de Numeração", "exercises_count": 8},
+            {"id": "sd_2", "name": "Portas e Funções Lógicas", "exercises_count": 7},
+            {"id": "sd_3", "name": "Álgebra de Boole e Simplificação", "exercises_count": 7},
+            {"id": "sd_4", "name": "Circuitos Combinacionais", "exercises_count": 7},
+            {"id": "sd_5", "name": "Flip-Flops e Contadores", "exercises_count": 7},
+            {"id": "sd_6", "name": "Conversores, Multiplex e Memórias", "exercises_count": 7},
+            {"id": "sd_simulado", "name": "Simulado - Sistemas Digitais (formato de prova)", "exercises_count": 10},
         ]
     }
 }

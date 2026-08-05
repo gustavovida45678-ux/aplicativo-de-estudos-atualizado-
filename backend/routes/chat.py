@@ -6,13 +6,22 @@ import os
 import logging
 from datetime import datetime
 import base64
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+    EMERGENT_AVAILABLE = True
+except ImportError:
+    LlmChat = None
+    UserMessage = None
+    ImageContent = None
+    EMERGENT_AVAILABLE = False
 from routes.prompts import MATH_SYSTEM_PROMPT
 
 # Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+if not EMERGENT_AVAILABLE:
+    logger.warning("emergentintegrations nao instalado - endpoints de IA indisponiveis (restante do app funciona)")
 router = APIRouter()
 
 class ChatMessage(BaseModel):
@@ -52,6 +61,12 @@ async def chat(message: ChatMessage, x_custom_api_key: Optional[str] = Header(No
             raise HTTPException(
                 status_code=400, 
                 detail="⚠️ Para usar o chat, você precisa configurar sua chave API.\n\n👉 Clique no botão roxo 'Configurar API Keys' no canto superior direito e adicione sua chave na aba Emergent (recomendado) ou OpenAI."
+            )
+        
+        if not EMERGENT_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Recurso de chat nao configurado neste deploy (biblioteca emergentintegrations ausente)"
             )
         
         # Initialize LlmChat with emergentintegrations
@@ -190,6 +205,12 @@ async def chat_with_image(
         image_base64 = base64.b64encode(image_contents).decode('utf-8')
         logger.info(f"📊 Image size: {len(image_contents)} bytes")
         
+        if not EMERGENT_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Recurso de chat nao configurado neste deploy (biblioteca emergentintegrations ausente)"
+            )
+        
         # Initialize chat with GPT-4o (supports vision)
         chat_instance = LlmChat(
             api_key=api_key,
@@ -288,6 +309,12 @@ async def generate_image(data: dict):
             }
         
         logger.info(f"📝 Prompt: {prompt[:100]}...")
+        
+        if not EMERGENT_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Geracao de imagem nao configurada neste deploy (biblioteca emergentintegrations ausente)"
+            )
         
         # Use emergentintegrations for image generation
         from emergentintegrations.llm.openai.image_generation import OpenAIImageGeneration

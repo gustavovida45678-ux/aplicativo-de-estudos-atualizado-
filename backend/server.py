@@ -11,6 +11,10 @@ ROOT_DIR = Path(__file__).parent
 # `uvicorn backend.server:app` from the repository root (Render/Procfile).
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+# Repo root is added so the local `emergentintegrations` shim (kept at the
+# repository root) is importable even when Render runs from backend/.
+if str(ROOT_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR.parent))
 
 from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
@@ -30,14 +34,23 @@ from routes.feedback import router as feedback_router
 
 load_dotenv(ROOT_DIR / '.env')
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # MongoDB connection (suporta MONGO_URL e MONGODB_URI - Render Atlas)
 mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
-if not mongo_url:
-    raise RuntimeError("MONGO_URL (ou MONGODB_URI) não configurado nas variáveis de ambiente")
-
 db_name = os.environ.get('DB_NAME', 'study_app')
-client = AsyncIOMotorClient(mongo_url)
-db = client[db_name]
+logger.info(
+    "Startup env check -> MONGO_URL set: %s | MONGODB_URI set: %s | DB_NAME: %s",
+    bool(os.environ.get('MONGO_URL')),
+    bool(os.environ.get('MONGODB_URI')),
+    db_name,
+)
+client = AsyncIOMotorClient(mongo_url) if mongo_url else None
+db = client[db_name] if client else None
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -61,6 +74,17 @@ class StatusCheckCreate(BaseModel):
 @api_router.get("/")
 async def root():
     return {"message": "Hello World"}
+
+@api_router.get("/health")
+async def health():
+    import asyncio as _asyncio
+    if client is None:
+        return {"status": "degraded", "mongo": "MONGO_URL/MONGODB_URI not set"}
+    try:
+        await _asyncio.wait_for(client.admin.command("ping"), timeout=3)
+        return {"status": "ok", "mongo": "ok"}
+    except Exception as e:
+        return {"status": "degraded", "mongo": f"error: {e}"}
 
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
@@ -118,8 +142,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    if client is not None:
+        client.close()

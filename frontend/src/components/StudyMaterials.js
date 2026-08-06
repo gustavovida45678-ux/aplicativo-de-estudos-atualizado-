@@ -18,7 +18,10 @@ import {
 } from 'recharts';
 import '../styles/studyMaterials.css';
 import MindMapModal from './MindMap';
+import DailySchedule from './DailySchedule';
+import AssessmentPractice from './AssessmentPractice';
 import { VIDEO_EXERCISES } from '../data/videoExercises';
+import { getAvaliacaoByPart } from '../data/avaliacoesDisciplinas';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/study`;
@@ -1052,6 +1055,7 @@ const StudyMaterials = () => {
   const [openTopic, setOpenTopic] = useState(null);
   const [progress, setProgress] = useState(loadProgress);
   const [practicing, setPracticing] = useState(null);
+  const [takingAssessment, setTakingAssessment] = useState(null);
   const [backendTopics, setBackendTopics] = useState(null);
   const [grades, setGrades] = useState(loadGrades);
   const [mindMapTopic, setMindMapTopic] = useState(null);
@@ -1363,9 +1367,17 @@ const StudyMaterials = () => {
             <LayoutDashboard size={18} />
             Dashboard
           </button>
+          <button
+            onClick={() => setActiveTab('daily')}
+            className={`schedule-tab ${activeTab === 'daily' ? 'active' : ''}`}
+          >
+            <CalendarDays size={18} />
+            Cronograma Diário
+          </button>
         </div>
 
         <div className="materials-content">
+          {activeTab === 'daily' && <DailySchedule />}
           {activeTab === 'topics' && (
             <div className="materials-grid">
               {materialsData.map((discipline) => {
@@ -1705,6 +1717,14 @@ const StudyMaterials = () => {
           )}
 
           {activeTab === 'avaliacoes' && (
+            takingAssessment ? (
+              <AssessmentPractice
+                assessment={takingAssessment.assessment}
+                disciplineName={takingAssessment.disciplineName}
+                onBack={() => setTakingAssessment(null)}
+                onRegister={(score) => setGrade(takingAssessment.disciplineId, takingAssessment.partId, Math.max(0, Math.min(10, score)))}
+              />
+            ) : (
             <div className="materials-avaliacoes">
               <div className="materials-avaliacoes-header">
                 <Calculator size={24} />
@@ -1738,9 +1758,12 @@ const StudyMaterials = () => {
                       </div>
 
                       <div className="materials-avaliacao-parts">
-                        {model.parts.map((part) => (
+                        {model.parts.map((part) => {
+                          const assessment = getAvaliacaoByPart(discipline.id, part.id);
+                          return (
                           <div className="materials-avaliacao-part" key={part.id}>
                             <label htmlFor={`grade-${discipline.id}-${part.id}`}>{part.label}</label>
+                            <div className="materials-avaliacao-input-row">
                             <input
                               id={`grade-${discipline.id}-${part.id}`}
                               type="number"
@@ -1754,8 +1777,26 @@ const StudyMaterials = () => {
                                 setGrade(discipline.id, part.id, v === '' ? null : Math.max(0, Math.min(10, Number(v))));
                               }}
                             />
+                            {assessment && (
+                              <button
+                                className="materials-avaliacao-do"
+                                onClick={() =>
+                                  setTakingAssessment({
+                                    disciplineId: discipline.id,
+                                    partId: part.id,
+                                    disciplineName: model.title,
+                                    assessment,
+                                  })
+                                }
+                              >
+                                <PenLine size={14} />
+                                Fazer avaliação
+                              </button>
+                            )}
+                            </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       <div className="materials-avaliacao-result">
@@ -1788,6 +1829,7 @@ const StudyMaterials = () => {
                 })}
               </div>
             </div>
+            )
           )}
 
           {activeTab === 'dashboard' && (

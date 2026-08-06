@@ -95,28 +95,27 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
     setCompleted(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleExerciseClick = (e, day) => {
+  const handleDayClick = (e, day) => {
     e.stopPropagation();
-    if (day.type === 'exercise') {
-      const topic = day.topic.toLowerCase();
-      let exercises = [];
-      
-      // Determine which exercise set to use based on topic
-      if (topic.includes('fundament') || topic.includes('introdu') || topic.includes('básic')) {
-        exercises = exercisesData.exercises?.fundamentos || [];
-      } else {
-        exercises = [...(exercisesData.exercises?.fundamentos || []), ...(exercisesData.exercises?.avancado || [])];
-      }
-      
-      setSelectedExercise({
-        topic: day.topic,
-        date: day.date,
-        exercises: exercises,
-        professor: professorName,
-        subject: exercisesData.subject
-      });
-      setExerciseModalOpen(true);
+    // Always show exercises modal for any topic type
+    const topic = day.topic.toLowerCase();
+    let exercises = [];
+    
+    // Determine which exercise set to use based on topic
+    if (topic.includes('fundament') || topic.includes('introdu') || topic.includes('básic') || topic.includes('revis')) {
+      exercises = exercisesData.exercises?.fundamentos || [];
+    } else {
+      exercises = [...(exercisesData.exercises?.fundamentos || []), ...(exercisesData.exercises?.avancado || [])];
     }
+    
+    setSelectedExercise({
+      topic: day.topic,
+      date: day.date,
+      exercises: exercises,
+      professor: professorName,
+      subject: exercisesData.subject
+    });
+    setExerciseModalOpen(true);
   };
 
   const closeExerciseModal = () => {
@@ -384,24 +383,24 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                           const isDone = !!completed[key];
                           const cfg = typeConfig[day.type];
                           const disc = day.discipline && disciplineConfig ? disciplineConfig[day.discipline] : null;
-                          const isExercise = day.type === 'exercise';
 
                           const handleDayClick = (e) => {
-                            if (isExercise) {
-                              handleExerciseClick(e, day);
-                            } else {
+                            // If already completed, just toggle. Otherwise show exercises.
+                            if (isDone) {
                               toggleDay(phase.id, week.number, day.range);
+                            } else {
+                              handleDayClick(e, day);
                             }
                           };
 
                           return (
                             <div
                               key={idx}
-                              className={`day-item ${isDone ? 'done' : ''} ${isExercise ? 'exercise-clickable' : ''}`}
+                              className={`day-item ${isDone ? 'done' : ''} exercise-clickable`}
                               style={{
                                 background: isDone ? 'rgba(16, 185, 129, 0.1)' : cfg.bgColor,
                                 borderColor: isDone ? 'rgba(16, 185, 129, 0.4)' : cfg.borderColor,
-                                cursor: isExercise ? 'pointer' : 'default',
+                                cursor: isDone ? 'default' : 'pointer',
                               }}
                               onClick={handleDayClick}
                             >
@@ -429,7 +428,7 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                                     </span>
                                   )}
                                   <span
-                                    className={`day-type-badge ${isExercise ? 'exercise-badge' : ''}`}
+                                    className="day-type-badge"
                                     style={{
                                       color: cfg.color,
                                       borderColor: cfg.borderColor,
@@ -438,7 +437,7 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                                   >
                                     {getTypeIcon(day.type)}
                                     {cfg.label}
-                                    {isExercise && <Play size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />}
+                                    {!isDone && <Play size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />}
                                   </span>
                                 </div>
                                 <div className={`day-topic ${isDone ? 'strikethrough' : ''}`}>

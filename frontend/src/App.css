@@ -1892,12 +1892,12 @@ code, pre {
   box-shadow: var(--shadow-md);
 }
 
-.day-item.exercise-clickable .exercise-badge {
+.day-item.exercise-clickable .day-type-badge {
   position: relative;
 }
 
-.day-item.exercise-clickable .exercise-badge::after {
-  content: 'Clique para ver exercícios';
+.day-item.exercise-clickable .day-type-badge::after {
+  content: 'Clique para ver exercícios relacionados';
   position: absolute;
   bottom: 100%;
   left: 50%;
@@ -1917,7 +1917,7 @@ code, pre {
   margin-bottom: 0.35rem;
 }
 
-.day-item.exercise-clickable:hover .exercise-badge::after {
+.day-item.exercise-clickable:hover .day-type-badge::after {
   opacity: 1;
   visibility: visible;
 }

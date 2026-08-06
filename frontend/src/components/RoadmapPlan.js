@@ -401,7 +401,7 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                           const cfg = typeConfig[day.type];
                           const disc = day.discipline && disciplineConfig ? disciplineConfig[day.discipline] : null;
 
-                          const handleDayClick = (e) => {
+                          const handleItemClick = (e) => {
                             // If already completed, just toggle. Otherwise show exercises.
                             if (isDone) {
                               toggleDay(phase.id, week.number, day.range);
@@ -419,7 +419,7 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                                 borderColor: isDone ? 'rgba(16, 185, 129, 0.4)' : cfg.borderColor,
                                 cursor: isDone ? 'default' : 'pointer',
                               }}
-                              onClick={handleDayClick}
+                              onClick={handleItemClick}
                             >
                               <div className="day-check">
                                 {isDone ? (

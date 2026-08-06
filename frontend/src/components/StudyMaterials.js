@@ -1,15 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   BookOpen, FileText, Folder, Video, GraduationCap,
   Cpu, ArrowUpRight, Brain, Library, ChevronDown, ChevronUp,
   CalendarDays, Clock, MapPin, ClipboardList, Target, Sigma,
   RefreshCw, ListChecks, PlayCircle, BookOpenCheck, CheckCircle2,
   Circle, LayoutDashboard, BarChart3, Trophy, ChevronRight, X,
+  AlertTriangle, TrendingDown, Lightbulb, PenLine, Calculator,
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
+  CartesianGrid, Cell, PieChart, Pie, Legend,
+} from 'recharts';
 import '../styles/studyMaterials.css';
 import ExerciseSidebar from './ExerciseSidebar';
+import MindMapModal from './MindMap';
+import { VIDEO_EXERCISES } from '../data/videoExercises';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/study`;
@@ -33,6 +40,66 @@ const SIDEBAR_TOPIC_MAP = {
   'flipflops-contadores': 'sd_5',
   'conversores-memorias': 'sd_6',
   'simulado-sd': 'sd_simulado',
+};
+
+const EVALUATION_MODELS = {
+  ed: {
+    title: 'Mecanismo de Avaliação - Estrutura de Dados',
+    formula: 'Média = (Lista × 2,0 + Simulado × 3,0 + Prova × 5,0) ÷ 10',
+    pass: 6.0,
+    parts: [
+      { id: 'lista', label: 'Lista de exercícios', weight: 2.0 },
+      { id: 'simulado', label: 'Exercícios simulados (plataforma online)', weight: 3.0 },
+      { id: 'prova', label: 'Provas', weight: 5.0 },
+    ],
+    compute: (g) => {
+      const w = { lista: 2.0, simulado: 3.0, prova: 5.0 };
+      const total = w.lista + w.simulado + w.prova;
+      const acc = (g.lista || 0) * w.lista + (g.simulado || 0) * w.simulado + (g.prova || 0) * w.prova;
+      return { media: acc / total };
+    },
+  },
+  sd: {
+    title: 'Mecanismo de Avaliação - Sistemas Digitais',
+    formula: 'MB1 = (VAE1 + PB1) ÷ 2  •  MB2 = (VAE2 + PRO + PB2) ÷ 3  •  MS = (MB1 + MB2) ÷ 2',
+    pass: 6.0,
+    parts: [
+      { id: 'vae1', label: 'VAE1 - Avaliações parciais 1º Bimestre', weight: null },
+      { id: 'pb1', label: 'PB1 - Prova bimestral 1º Bimestre', weight: null },
+      { id: 'vae2', label: 'VAE2 - Avaliações parciais 2º Bimestre', weight: null },
+      { id: 'pro', label: 'PRO - Projeto de circuito eletrônico digital', weight: null },
+      { id: 'pb2', label: 'PB2 - Prova bimestral 2º Bimestre', weight: null },
+    ],
+    compute: (g) => {
+      const mb1 = g.vae1 != null && g.pb1 != null ? (g.vae1 + g.pb1) / 2 : null;
+      const mb2 = g.vae2 != null && g.pro != null && g.pb2 != null ? (g.vae2 + g.pro + g.pb2) / 3 : null;
+      const media = mb1 != null && mb2 != null ? (mb1 + mb2) / 2 : null;
+      return { mb1, mb2, media };
+    },
+  },
+  al: {
+    title: 'Mecanismo de Avaliação - Álgebra Linear',
+    formula: 'Média = (Avaliação 1 + Avaliação 2 + Prova Final) ÷ 3',
+    pass: 6.0,
+    parts: [
+      { id: 'a1', label: 'Avaliação 1', weight: null },
+      { id: 'a2', label: 'Avaliação 2', weight: null },
+      { id: 'prova_final', label: 'Prova final', weight: null },
+    ],
+    compute: (g) => {
+      const vals = [g.a1, g.a2, g.prova_final].filter((v) => v != null);
+      const media = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+      return { media };
+    },
+  },
+};
+
+const loadGrades = () => {
+  try {
+    return JSON.parse(localStorage.getItem('materialsGrades')) || {};
+  } catch {
+    return {};
+  }
 };
 
 const materialsData = [
@@ -71,6 +138,7 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Programação Estruturada e Modular',
         icon: '🛠️',
+        keywords: ['Funções', 'Módulos', 'Escopo', 'Valor vs Referência', 'Protótipos'],
         videoaulas: [
           { title: 'Funções em C++ (Curso em Vídeo)', url: yt('funções em C++ curso em vídeo') },
           { title: 'Passagem por valor e por referência', url: yt('passagem por valor e por referência C++') },
@@ -89,6 +157,7 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Análise de Algoritmos',
         icon: '📊',
+        keywords: ['Big O', 'O(1)', 'O(n)', 'O(n²)', 'O(log n)'],
         videoaulas: [
           { title: 'Notação Big O (Prof. Guanabara)', url: yt('big O notação guanabara') },
           { title: 'Complexidade de algoritmos (Univesp)', url: yt('análise de complexidade de algoritmos univesp') },
@@ -106,13 +175,15 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Vetores e Strings',
         icon: '📚',
+        keywords: ['Arrays', 'Índices', 'Busca linear', 'Ordenação', 'Strings'],
         videoaulas: [
           { title: 'Vetores e arrays em C++', url: yt('vetores e arrays em C++ aula') },
           { title: 'Ordenação bolha e inserção', url: yt('ordenação bolha inserção C++') },
         ],
         revisoes: [
           { title: 'Resumo de vetores e strings', note: 'Declaração, acesso, funções de string' },
-        ],
+        { title: 'Revisão Semana 3 - Vetores e listas', note: 'Conteúdo das semanas 1 a 3: C/ponteiros, alocação e vetores', week: 3 },
+          ],
         exercicios: [
           { name: 'Lista 3 - Vetores e Strings', count: 7, icon: '📚' },
         ],
@@ -123,6 +194,7 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Matrizes Multidimensionais',
         icon: '🔲',
+        keywords: ['Linhas e colunas', 'Percurso', 'Alocação estática', 'Alocação dinâmica', 'Operações'],
         videoaulas: [
           { title: 'Matrizes em C++', url: yt('matrizes em C++ aula') },
           { title: 'Alocação dinâmica de matrizes', url: yt('alocação dinâmica de matrizes C++') },
@@ -140,6 +212,7 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Estruturas Estáticas e Dinâmicas',
         icon: '🧩',
+        keywords: ['Ponteiros', 'new', 'delete', 'Heap', 'Endereços'],
         videoaulas: [
           { title: 'Ponteiros em C++ (Curso em Vídeo)', url: yt('ponteiros C++ curso em vídeo') },
           { title: 'new e delete - alocação dinâmica', url: yt('alocação dinâmica C++ new delete') },
@@ -157,13 +230,15 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Pilhas e Filas',
         icon: '🥞',
+        keywords: ['LIFO', 'FIFO', 'push/pop', 'enqueue/dequeue', 'Topo/Frente'],
         videoaulas: [
           { title: 'Pilha (stack) - implementação', url: yt('pilha stack C++ implementação') },
           { title: 'Fila (queue) - implementação', url: yt('fila queue C++ implementação') },
         ],
         revisoes: [
           { title: 'Resumo LIFO/FIFO', note: 'Operações push/pop, enqueue/dequeue' },
-        ],
+        { title: 'Revisão Semana 6 - Pilhas e Filas', note: 'Semanas 4 a 6: listas encadeadas, pilhas e filas', week: 6 },
+          ],
         exercicios: [
           { name: 'Lista 6 - Pilhas e Filas', count: 7, icon: '🥞' },
         ],
@@ -174,13 +249,15 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Listas Encadeadas',
         icon: '🔗',
+        keywords: ['Nós', 'next', 'prev', 'Circular', 'Inserção/remoção'],
         videoaulas: [
           { title: 'Lista simplesmente encadeada', url: yt('lista simplesmente encadeada C++') },
           { title: 'Lista duplamente encadeada', url: yt('lista duplamente encadeada C++') },
         ],
         revisoes: [
           { title: 'Resumo de listas encadeadas', note: 'Inserção, remoção, busca, circular' },
-        ],
+        { title: 'Revisão Semana 12 - Listas e avançado', note: 'Semanas 10 a 12: árvores B, hash e listas', week: 12 },
+          ],
         exercicios: [
           { name: 'Lista 7 - Listas Encadeadas', count: 6, icon: '🔗' },
         ],
@@ -191,6 +268,7 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Árvores',
         icon: '🌳',
+        keywords: ['Nó raiz', 'Folhas', 'BST', 'AVL', 'Rotações'],
         videoaulas: [
           { title: 'Árvores binárias - implementação', url: yt('árvores binárias C++') },
           { title: 'Árvore binária de busca (BST)', url: yt('árvore binária de busca C++') },
@@ -198,7 +276,8 @@ const materialsData = [
         ],
         revisoes: [
           { title: 'Resumo de árvores', note: 'Percursos, BST, AVL, balanceamento' },
-        ],
+        { title: 'Revisão Semana 9 - Árvores', note: 'Semanas 7 a 9: filas, árvores binárias e AVL', week: 9 },
+          ],
         exercicios: [
           { name: 'Lista 8 - Árvores', count: 6, icon: '🌳' },
         ],
@@ -209,6 +288,7 @@ const materialsData = [
         subject: 'Estrutura de Dados',
         name: 'Simulado - Avaliação',
         icon: '📝',
+        keywords: ['Prova', 'Lista 2,0', 'Simulado 3,0', 'Revisão', 'Estratégia'],
         videoaulas: [
           { title: 'Revisão completa de Estrutura de Dados', url: yt('revisão estrutura de dados prova') },
         ],
@@ -284,6 +364,7 @@ const materialsData = [
         subject: 'Sistemas Digitais',
         name: 'Sistemas de Numeração',
         icon: '🔢',
+        keywords: ['Binário', 'Octal', 'Hexadecimal', 'BCD', 'Aritmética'],
         videoaulas: [
           { title: 'Conversão entre bases (Prof. João Lucas)', url: yt('conversão entre bases numéricas professor joão lucas') },
           { title: 'Number System Conversions (Neso Academy)', url: yt('neso academy number system conversion') },
@@ -304,6 +385,7 @@ const materialsData = [
         subject: 'Sistemas Digitais',
         name: 'Portas e Funções Lógicas',
         icon: '⚡',
+        keywords: ['AND', 'OR', 'NOT', 'NAND', 'NOR', 'XOR', 'Tabela-verdade'],
         videoaulas: [
           { title: 'Portas lógicas AND, OR, NOT (Prof. João Lucas)', url: yt('portas lógicas professor joão lucas') },
           { title: 'Logic Gates (Neso Academy)', url: yt('neso academy logic gates') },
@@ -324,6 +406,7 @@ const materialsData = [
         subject: 'Sistemas Digitais',
         name: 'Álgebra de Boole e Simplificação',
         icon: '🧠',
+        keywords: ['Postulados', 'De Morgan', 'Formas canônicas', 'Karnaugh', 'Simplificação'],
         videoaulas: [
           { title: 'Álgebra de Boole e De Morgan (Prof. João Lucas)', url: yt('álgebra de boole de morgan professor joão lucas') },
           { title: 'Boolean Algebra (Neso Academy)', url: yt('neso academy boolean algebra') },
@@ -332,7 +415,8 @@ const materialsData = [
         revisoes: [
           { title: 'Resumo postulados e teoremas', note: 'De Morgan, formas canônicas, identidades' },
           { title: 'Roteiro de simplificação', note: 'Passo a passo para usar Karnaugh' },
-        ],
+        { title: 'Revisão Semana 3 - Álgebra Booleana', note: 'Semanas 1 a 3: numeração, portas e Boole', week: 3 },
+          ],
         exercicios: [
           { name: 'Lista 5 - Álgebra de Boole', count: 7, icon: '🧠' },
           { name: 'Lista 6 - Mapa de Karnaugh', count: 7, icon: '🗺️' },
@@ -344,6 +428,7 @@ const materialsData = [
         subject: 'Sistemas Digitais',
         name: 'Circuitos Combinacionais',
         icon: '⚙️',
+        keywords: ['Somadores', 'MUX', 'DEMUX', 'Decodificadores', 'Display 7 segmentos'],
         videoaulas: [
           { title: 'Somadores e subtratores (Prof. João Lucas)', url: yt('somadores subtratores circuitos digitais') },
           { title: 'MUX/DEMUX - circuitos combinacionais', url: yt('multiplexador demultiplexador sistemas digitais') },
@@ -352,7 +437,8 @@ const materialsData = [
         revisoes: [
           { title: 'Resumo de circuitos combinacionais', note: 'Somadores, comparadores, MUX, DEMUX, display' },
           { title: 'Roteiro de projeto', note: 'Do enunciado ao circuito implementado' },
-        ],
+        { title: 'Revisão Semana 6 - Circuitos combinacionais', note: 'Semanas 4 a 6: Karnaugh e combinacionais', week: 6 },
+          ],
         exercicios: [
           { name: 'Lista 7 - Circuitos Combinacionais', count: 7, icon: '⚙️' },
           { name: 'Lista 8 - Projeto com MUX', count: 7, icon: '🧩' },
@@ -364,6 +450,7 @@ const materialsData = [
         subject: 'Sistemas Digitais',
         name: 'Flip-Flops e Contadores',
         icon: '⏱️',
+        keywords: ['RS', 'JK', 'D', 'T', 'Registradores', 'Síncrono/Assíncrono'],
         videoaulas: [
           { title: 'Flip-flops RS, JK, D e T (Prof. João Lucas)', url: yt('flip flop rs jk d t sistemas digitais') },
           { title: 'Registradores e contadores síncronos', url: yt('registradores contadores síncronos sistemas digitais') },
@@ -372,7 +459,8 @@ const materialsData = [
         revisoes: [
           { title: 'Resumo dos flip-flops', note: 'Tabelas de excitação, características e aplicações' },
           { title: 'Mapa mental de contadores', note: 'Síncronos vs assíncronos, módulos' },
-        ],
+        { title: 'Revisão Semana 9 - Flip-Flops e Contadores', note: 'Semanas 7 a 9: registradores, flip-flops e contadores', week: 9 },
+          ],
         exercicios: [
           { name: 'Lista 9 - Flip-Flops', count: 7, icon: '⏱️' },
           { name: 'Lista 10 - Registradores e Contadores', count: 7, icon: '🔢' },
@@ -384,6 +472,7 @@ const materialsData = [
         subject: 'Sistemas Digitais',
         name: 'Conversores, Multiplex e Memórias',
         icon: '💾',
+        keywords: ['D/A', 'A/D', 'ROM', 'RAM', 'TTL', 'CMOS'],
         videoaulas: [
           { title: 'Conversor D/A e A/D', url: yt('conversor digital analógico analógico digital') },
           { title: 'Memórias ROM e RAM', url: yt('memórias rom ram sistemas digitais') },
@@ -392,10 +481,51 @@ const materialsData = [
         revisoes: [
           { title: 'Resumo de conversores', note: 'D/A, A/D, resolução e aplicações' },
           { title: 'Resumo de memórias', note: 'ROM, RAM, organização e famílias TTL/CMOS' },
-        ],
+        { title: 'Revisão Semana 12 - Conversores e Memórias', note: 'Semanas 10 a 12: contadores, máquinas de estado e memórias', week: 12 },
+          ],
         exercicios: [
           { name: 'Lista 11 - Conversores D/A e A/D', count: 7, icon: '💾' },
           { name: 'Lista 12 - Memórias e Famílias Lógicas', count: 7, icon: '🔌' },
+        ],
+      },
+      {
+        id: 'sd-microprocessadores',
+        topicId: null,
+        subject: 'Sistemas Digitais',
+        name: 'Microprocessadores e Microcontroladores',
+        icon: '🖥️',
+        keywords: ['Arquitetura von Neumann', 'CPU', 'Barramentos', 'Microcontrolador', 'Programa'],
+        videoaulas: [
+          { title: 'Como funciona um processador', url: yt('como funciona um processador arquitetura') },
+          { title: 'Microcontroladores - introdução', url: yt('introdução microcontroladores arquitetura') },
+        ],
+        revisoes: [
+          { title: 'Resumo de microprocessadores', note: 'CPU, registradores, ciclo de instrução' },
+          { title: 'Diferença micro vs microcontrolador', note: 'Arquitetura von Neumann x Harvard' },
+        ],
+        exercicios: [
+          { name: 'Lista 13 - Microprocessadores', count: 6, icon: '🖥️' },
+          { name: 'Lista 14 - Microcontroladores', count: 6, icon: '🎛️' },
+        ],
+      },
+      {
+        id: 'sd-projeto-digital',
+        topicId: null,
+        subject: 'Sistemas Digitais',
+        name: 'Projeto de Circuitos Digitais (PRO)',
+        icon: '🔧',
+        keywords: ['Projeto', 'Protoboard', 'Voltímetro digital', 'Relógio digital', 'Documentação'],
+        videoaulas: [
+          { title: 'Como projetar um circuito digital', url: yt('como projetar circuito digital passo a passo') },
+          { title: 'Montagem em protoboard', url: yt('montagem circuito digital protoboard') },
+        ],
+        revisoes: [
+          { title: 'Roteiro do projeto (PRO)', note: 'Voltímetro, relógio, cronômetro, temporizador - vale nota em MB2' },
+          { title: 'Do esquema à prática', note: 'Tabela-verdade → expressão → circuito → protótipo' },
+        ],
+        exercicios: [
+          { name: 'Projeto: voltímetro digital', count: 5, icon: '🔧' },
+          { name: 'Projeto: relógio digital', count: 5, icon: '⏰' },
         ],
       },
       {
@@ -404,6 +534,7 @@ const materialsData = [
         subject: 'Sistemas Digitais',
         name: 'Simulado - Avaliação',
         icon: '📝',
+        keywords: ['MB1', 'MB2', 'VAE', 'Prova bimestral', 'Projeto'],
         videoaulas: [
           { title: 'Revisão completa para a prova', url: yt('revisão sistemas digitais prova') },
         ],
@@ -478,6 +609,7 @@ const materialsData = [
         subject: 'Álgebra Linear',
         name: 'Vetores no Plano e no Espaço',
         icon: '➡️',
+        keywords: ['Produto escalar', 'Produto vetorial', 'Módulo', 'Ortogonalidade', 'Combinação'],
         videoaulas: [
           { title: 'Vectors - Essence of Linear Algebra (3Blue1Brown)', url: 'https://www.youtube.com/playlist?list=PLZHQObOWTQDPD3MizzM2xVFitgF8hE_ab' },
           { title: 'Vetores (Prof. José Natal / IMPA)', url: yt('josé natal álgebra linear vetores') },
@@ -495,6 +627,7 @@ const materialsData = [
         subject: 'Álgebra Linear',
         name: 'Sistemas Lineares e Matrizes',
         icon: '📐',
+        keywords: ['Gauss', 'Escalonamento', 'Posto', 'Inversa', 'Matriz identidade'],
         videoaulas: [
           { title: 'Eliminação de Gauss (José Natal)', url: yt('eliminação de gauss álgebra linear josé natal') },
           { title: 'Matrizes e operações', url: yt('matrizes álgebra linear aula') },
@@ -512,6 +645,7 @@ const materialsData = [
         subject: 'Álgebra Linear',
         name: 'Espaços Vetoriais',
         icon: '🧠',
+        keywords: ['Axiomas', 'Subespaços', 'Base', 'Dimensão', 'LI/LD'],
         videoaulas: [
           { title: 'Espaços vetoriais (José Natal)', url: yt('espaços vetoriais josé natal álgebra linear') },
           { title: 'Base e dimensão', url: yt('base e dimensão espaço vetorial') },
@@ -529,6 +663,7 @@ const materialsData = [
         subject: 'Álgebra Linear',
         name: 'Transformações Lineares',
         icon: '🔄',
+        keywords: ['Núcleo', 'Imagem', 'Matriz associada', 'Linearidade', 'Injetora/Sobrejetora'],
         videoaulas: [
           { title: 'Transformações lineares (José Natal)', url: yt('transformações lineares josé natal') },
           { title: 'Matriz de uma transformação', url: yt('matriz de transformação linear') },
@@ -546,6 +681,7 @@ const materialsData = [
         subject: 'Álgebra Linear',
         name: 'Determinantes',
         icon: '🔢',
+        keywords: ['Sarrus', 'Laplace', 'Propriedades', 'Singularidade', 'Inversibilidade'],
         videoaulas: [
           { title: 'Determinantes - Sarrus e Laplace', url: yt('determinantes regra de sarrus laplace') },
           { title: 'Propriedades dos determinantes', url: yt('propriedades dos determinantes') },
@@ -563,6 +699,7 @@ const materialsData = [
         subject: 'Álgebra Linear',
         name: 'Autovalores e Autovetores',
         icon: '🔑',
+        keywords: ['Polinômio característico', 'Autovetores', 'Diagonalização', 'Traço', 'Determinante'],
         videoaulas: [
           { title: 'Autovalores e autovetores (José Natal)', url: yt('autovalores e autovetores josé natal') },
           { title: 'Diagonalização de matrizes', url: yt('diagonalização de matrizes álgebra linear') },
@@ -602,6 +739,10 @@ const materialsData = [
   },
 ];
 
+const TOPIC_ID_TO_KEY = Object.fromEntries(
+  materialsData.flatMap((d) => d.topics.map((t) => [t.topicId, t.id]))
+);
+
 const loadProgress = () => {
   try {
     return JSON.parse(localStorage.getItem('materialsProgress')) || {};
@@ -634,12 +775,12 @@ const ScheduleBlock = ({ schedule }) => (
   </div>
 );
 
-const ExercisePractice = ({ topicInfo, onBack, onAnswer }) => {
-  const [exercises, setExercises] = useState([]);
+const ExercisePractice = ({ topicInfo, onBack, onAnswer, localExercises }) => {
+  const [exercises, setExercises] = useState(localExercises || []);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showResult, setShowResult] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!localExercises);
   const [error, setError] = useState(null);
 
   const load = async () => {
@@ -662,7 +803,9 @@ const ExercisePractice = ({ topicInfo, onBack, onAnswer }) => {
   };
 
   useEffect(() => {
-    load();
+    if (!localExercises) {
+      load();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicInfo.topicId]);
 
@@ -671,7 +814,7 @@ const ExercisePractice = ({ topicInfo, onBack, onAnswer }) => {
     const ex = exercises[currentIndex];
     const isCorrect = selectedAnswer === ex.correct_answer;
     setShowResult(true);
-    if (onAnswer) onAnswer(topicInfo.topicId, isCorrect);
+    if (onAnswer) onAnswer(topicInfo.topicKey || topicInfo.topicId, isCorrect);
   };
 
   const nextExercise = () => {
@@ -793,6 +936,8 @@ const StudyMaterials = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [highlightSubject, setHighlightSubject] = useState(null);
   const [backendTopics, setBackendTopics] = useState(null);
+  const [grades, setGrades] = useState(loadGrades);
+  const [mindMapTopic, setMindMapTopic] = useState(null);
 
   useEffect(() => {
     try {
@@ -801,6 +946,21 @@ const StudyMaterials = () => {
       console.error('Error saving progress:', e);
     }
   }, [progress]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('materialsGrades', JSON.stringify(grades));
+    } catch (e) {
+      console.error('Error saving grades:', e);
+    }
+  }, [grades]);
+
+  const setGrade = (disciplineId, partId, value) => {
+    setGrades((prev) => ({
+      ...prev,
+      [disciplineId]: { ...(prev[disciplineId] || {}), [partId]: value },
+    }));
+  };
 
   useEffect(() => {
     if (!BACKEND_URL) return;
@@ -844,7 +1004,23 @@ const StudyMaterials = () => {
       toast.info('Exercícios deste tópico estarão disponíveis em breve.');
       return;
     }
-    setPracticing({ topicId: topic.topicId, name: topic.name, subject: topic.subject });
+    setPracticing({ topicId: topic.topicId, topicKey: topic.id, name: topic.name, subject: topic.subject });
+    setActiveTab('exercises');
+  };
+
+  const startVideoPractice = (topic, videoIdx) => {
+    const list = VIDEO_EXERCISES[`${topic.id}:${videoIdx}`];
+    if (!list || list.length === 0) {
+      toast.info('Exercícios desta videoaula estarão disponíveis em breve.');
+      return;
+    }
+    setPracticing({
+      topicId: null,
+      topicKey: topic.id,
+      name: `${topic.name} - ${topic.videoaulas[videoIdx].title}`,
+      subject: topic.subject,
+      localExercises: list,
+    });
     setActiveTab('exercises');
   };
 
@@ -855,7 +1031,7 @@ const StudyMaterials = () => {
       return;
     }
     setHighlightSubject(ex.subject);
-    setPracticing({ topicId, name: ex.topicName, subject: ex.subject });
+    setPracticing({ topicId, topicKey: TOPIC_ID_TO_KEY[topicId] || topicId, name: ex.topicName, subject: ex.subject });
     setActiveTab('exercises');
     setSidebarOpen(false);
   };
@@ -919,6 +1095,50 @@ const StudyMaterials = () => {
     { videos: 0, totalVideos: 0, reviews: 0, totalReviews: 0, done: 0, totalTopics: 0, attempts: 0, correct: 0 }
   );
 
+  const accuracyData = useMemo(() => {
+    return materialsData.flatMap((discipline) =>
+      discipline.topics
+        .filter((topic) => {
+          const p = progress[topic.id] || {};
+          return (p.attempts || 0) > 0;
+        })
+        .map((topic) => {
+          const p = progress[topic.id] || {};
+          const correct = p.correct || 0;
+          const attempts = p.attempts || 0;
+          return {
+            name: topic.name.length > 24 ? `${topic.name.slice(0, 23)}…` : topic.name,
+            fullName: topic.name,
+            discipline: discipline.name,
+            acertos: correct,
+            erros: attempts - correct,
+            attempts,
+            pct: Math.round((correct / attempts) * 100),
+          };
+        })
+    );
+  }, [progress]);
+
+  const improvementData = useMemo(() => {
+    return materialsData.flatMap((discipline) =>
+      discipline.topics.map((topic) => {
+        const p = progress[topic.id] || {};
+        const attempts = p.attempts || 0;
+        const correct = p.correct || 0;
+        const pct = attempts > 0 ? Math.round((correct / attempts) * 100) : null;
+        return { topic, discipline: discipline.name, attempts, correct, pct };
+      })
+    );
+  }, [progress]);
+
+  const needsImprovement = useMemo(() => {
+    const withData = improvementData.filter((i) => i.attempts > 0 && i.pct < 70);
+    const withoutData = improvementData.filter((i) => i.attempts === 0);
+    return [...withData.sort((a, b) => a.pct - b.pct), ...withoutData];
+  }, [improvementData]);
+
+  const CHART_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#06b6d4', '#f43f5e', '#84cc16'];
+
   return (
     <div className="materials-page-wrapper">
       <div className="materials-page">
@@ -949,6 +1169,13 @@ const StudyMaterials = () => {
           >
             <ListChecks size={18} />
             Exercícios
+          </button>
+          <button
+            onClick={() => setActiveTab('avaliacoes')}
+            className={`schedule-tab ${activeTab === 'avaliacoes' ? 'active' : ''}`}
+          >
+            <Calculator size={18} />
+            Avaliações
           </button>
           <button
             onClick={() => setActiveTab('dashboard')}
@@ -1042,6 +1269,13 @@ const StudyMaterials = () => {
                                     <span className="materials-topic-status" onClick={(e) => { e.stopPropagation(); toggleTopicDone(topic.id); }} title={stats.done ? 'Marcar como pendente' : 'Marcar como concluído'}>
                                       {stats.done ? <CheckCircle2 size={18} className="ok" /> : <Circle size={18} />}
                                     </span>
+                                    <span
+                                      className="materials-topic-mindmap"
+                                      onClick={(e) => { e.stopPropagation(); setMindMapTopic(topic); }}
+                                      title="Criar mapa mental deste tópico"
+                                    >
+                                      <Brain size={17} />
+                                    </span>
                                     {isTopicOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                                   </button>
 
@@ -1057,8 +1291,10 @@ const StudyMaterials = () => {
                                           <ul className="materials-topic-links">
                                             {topic.videoaulas.map((video, idx) => {
                                               const watched = stats.videos.includes(idx);
+                                              const videoEx = VIDEO_EXERCISES[`${topic.id}:${idx}`];
+                                              const exCount = videoEx ? videoEx.length : 0;
                                               return (
-                                                <li key={idx}>
+                                                <li key={idx} className="materials-topic-link-row">
                                                   <a
                                                     href={video.url}
                                                     target="_blank"
@@ -1069,6 +1305,16 @@ const StudyMaterials = () => {
                                                     <span className="materials-topic-link-title">{video.title}</span>
                                                     {watched ? <CheckCircle2 size={14} className="ok" /> : <ArrowUpRight size={14} />}
                                                   </a>
+                                                  {exCount > 0 && (
+                                                    <button
+                                                      className="materials-video-ex-btn"
+                                                      onClick={() => startVideoPractice(topic, idx)}
+                                                      title={`${exCount} exercícios sobre "${video.title}"`}
+                                                    >
+                                                      <PenLine size={13} />
+                                                      {exCount} ex.
+                                                    </button>
+                                                  )}
                                                 </li>
                                               );
                                             })}
@@ -1094,7 +1340,10 @@ const StudyMaterials = () => {
                                                   >
                                                     <span>
                                                       <span className="materials-topic-link-title">{review.title}</span>
-                                                      <span className="materials-topic-link-note">{review.note}</span>
+                                                      <span className="materials-topic-link-note">
+                                                        {review.week ? <span className="materials-review-week">Semana {review.week}</span> : null}
+                                                        {review.note}
+                                                      </span>
                                                     </span>
                                                     {done ? <CheckCircle2 size={14} className="ok" /> : <BookOpenCheck size={14} />}
                                                   </button>
@@ -1220,6 +1469,7 @@ const StudyMaterials = () => {
                 topicInfo={practicing}
                 onBack={() => setPracticing(null)}
                 onAnswer={recordAnswer}
+                localExercises={practicing.localExercises}
               />
             ) : (
               <div className="materials-exercise-browse">
@@ -1243,7 +1493,7 @@ const StudyMaterials = () => {
                               <button
                                 key={topic.id}
                                 className="materials-exercise-browse-btn"
-                                onClick={() => startPractice({ topicId: topic.id, name: topic.name, subject: data.name })}
+                                onClick={() => startPractice({ topicId: topic.id, topicKey: TOPIC_ID_TO_KEY[topic.id] || topic.id, name: topic.name, subject: data.name })}
                               >
                                 <span className="materials-exercise-browse-name">{topic.name}</span>
                                 <span className="materials-exercise-browse-count">{topic.exercises_count} ex.</span>
@@ -1257,6 +1507,92 @@ const StudyMaterials = () => {
                 )}
               </div>
             )
+          )}
+
+          {activeTab === 'avaliacoes' && (
+            <div className="materials-avaliacoes">
+              <div className="materials-avaliacoes-header">
+                <Calculator size={24} />
+                <div>
+                  <h2>Mecanismos de Avaliação</h2>
+                  <p>Calcule sua média em cada disciplina conforme o plano de ensino (mínimo {EVALUATION_MODELS.ed.pass.toFixed(1).replace('.', ',')} para aprovação)</p>
+                </div>
+              </div>
+              <div className="materials-avaliacoes-grid">
+                {materialsData.map((discipline) => {
+                  const model = EVALUATION_MODELS[discipline.id];
+                  if (!model) return null;
+                  const dGrades = grades[discipline.id] || {};
+                  const result = model.compute(dGrades);
+                  const media = result.media;
+                  const isPass = media != null && media >= model.pass;
+                  return (
+                    <div
+                      className={`materials-avaliacao-card ${media != null ? (isPass ? 'pass' : 'fail') : ''}`}
+                      key={discipline.id}
+                      style={{ borderTopColor: discipline.color }}
+                    >
+                      <div className="materials-avaliacao-head">
+                        <span className="materials-avaliacao-icon" style={{ background: `${discipline.color}22`, color: discipline.color }}>
+                          {discipline.icon === Cpu ? <Cpu size={22} /> : discipline.icon === Brain ? <Brain size={22} /> : <Sigma size={22} />}
+                        </span>
+                        <div>
+                          <h3>{model.title}</h3>
+                          <p className="materials-avaliacao-formula">{model.formula}</p>
+                        </div>
+                      </div>
+
+                      <div className="materials-avaliacao-parts">
+                        {model.parts.map((part) => (
+                          <div className="materials-avaliacao-part" key={part.id}>
+                            <label htmlFor={`grade-${discipline.id}-${part.id}`}>{part.label}</label>
+                            <input
+                              id={`grade-${discipline.id}-${part.id}`}
+                              type="number"
+                              min="0"
+                              max="10"
+                              step="0.1"
+                              placeholder="0,0"
+                              value={dGrades[part.id] ?? ''}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setGrade(discipline.id, part.id, v === '' ? null : Math.max(0, Math.min(10, Number(v))));
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="materials-avaliacao-result">
+                        {model.mb1 != null && (
+                          <div className="materials-avaliacao-sub">
+                            <span>MB1</span>
+                            <b>{result.mb1?.toFixed(1).replace('.', ',')}</b>
+                          </div>
+                        )}
+                        {model.mb2 != null && (
+                          <div className="materials-avaliacao-sub">
+                            <span>MB2</span>
+                            <b>{result.mb2?.toFixed(1).replace('.', ',')}</b>
+                          </div>
+                        )}
+                        <div className="materials-avaliacao-media">
+                          <span>Média</span>
+                          {media != null ? (
+                            <b className={isPass ? 'ok' : 'no'}>{media.toFixed(1).replace('.', ',')}</b>
+                          ) : (
+                            <b className="dim">—</b>
+                          )}
+                          <span className={`materials-avaliacao-status ${media != null ? (isPass ? 'pass' : 'fail') : ''}`}>
+                            {media == null ? 'Preencha as notas' : isPass ? 'APROVADO' : 'REPROVADO'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {activeTab === 'dashboard' && (
@@ -1284,6 +1620,117 @@ const StudyMaterials = () => {
                   </span>
                   <span className="materials-dashboard-stat-label">{overall.correct}/{overall.attempts} acertos em exercícios</span>
                 </div>
+              </div>
+
+              <div className="materials-dashboard-charts">
+                <div className="materials-chart-card">
+                  <h3>Acertos vs Erros por Tópico</h3>
+                  <p>Desempenho nos exercícios (plataforma IFG Jataí + videoaulas)</p>
+                  {accuracyData.length === 0 ? (
+                    <div className="materials-chart-empty">
+                      <Lightbulb size={22} />
+                      <p>Pratique exercícios nos tópicos para ver seu desempenho aqui.</p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={320}>
+                      <BarChart data={accuracyData} barSize={22}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fill: '#94a3b8', fontSize: 11 }}
+                          interval={0}
+                          angle={-18}
+                          textAnchor="end"
+                          height={70}
+                        />
+                        <YAxis allowDecimals={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                        <Tooltip
+                          cursor={{ fill: 'rgba(148,163,184,0.08)' }}
+                          contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, fontSize: 12 }}
+                          labelStyle={{ color: '#e2e8f0' }}
+                          formatter={(value, name) => [value, name === 'acertos' ? 'Acertos' : 'Erros']}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="acertos" stackId="a" fill="#10b981" />
+                        <Bar dataKey="erros" stackId="a" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                <div className="materials-chart-card">
+                  <h3>Taxa de Acerto por Tópico</h3>
+                  <p>Percentual de acertos nos exercícios</p>
+                  {accuracyData.length === 0 ? (
+                    <div className="materials-chart-empty">
+                      <Lightbulb size={22} />
+                      <p>Sem dados ainda. Responda exercícios para gerar o gráfico.</p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={320}>
+                      <PieChart>
+                        <Pie
+                          data={accuracyData}
+                          dataKey="pct"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={110}
+                          label={(entry) => `${entry.pct}%`}
+                          labelLine={false}
+                          fontSize={11}
+                        >
+                          {accuracyData.map((entry, idx) => (
+                            <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, fontSize: 12 }}
+                          labelStyle={{ color: '#e2e8f0' }}
+                          formatter={(value, name, item) => [`${value}% de acerto`, item.payload.fullName]}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+
+              <div className="materials-chart-card materials-improve-card">
+                <h3 className="materials-improve-title">
+                  <TrendingDown size={18} />
+                  Conteúdo que precisa melhorar
+                </h3>
+                <p>Menos de 70% de acerto ou ainda não praticado - foque nestes tópicos</p>
+                {needsImprovement.length === 0 ? (
+                  <div className="materials-chart-empty">
+                    <Lightbulb size={22} />
+                    <p>Todos os tópicos estão com bom desempenho (70%+). Continue assim!</p>
+                  </div>
+                ) : (
+                  <ul className="materials-improve-list">
+                    {needsImprovement.map((item, idx) => (
+                      <li className="materials-improve-item" key={idx}>
+                        <span className="materials-improve-rank">{idx + 1}</span>
+                        <div className="materials-improve-info">
+                          <span className="materials-improve-name">{item.topic.name}</span>
+                          <span className="materials-improve-sub">
+                            {item.discipline} • {item.attempts} tentativas, {item.correct} acertos
+                          </span>
+                          <div className="materials-improve-bar">
+                            <div
+                              className={`materials-improve-bar-fill ${item.attempts === 0 ? 'none' : item.pct < 50 ? 'low' : 'mid'}`}
+                              style={{ width: `${item.attempts === 0 ? 4 : item.pct}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className={`materials-improve-pct ${item.attempts === 0 ? 'none' : item.pct < 50 ? 'low' : 'mid'}`}>
+                          {item.attempts === 0 ? 'Não praticado' : `${item.pct}%`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="materials-dashboard-cards">
@@ -1327,6 +1774,10 @@ const StudyMaterials = () => {
         onSelectExercise={handleSidebarSelect}
         highlightSubject={highlightSubject}
       />
+
+      {mindMapTopic && (
+        <MindMapModal topic={mindMapTopic} onClose={() => setMindMapTopic(null)} />
+      )}
     </div>
   );
 };

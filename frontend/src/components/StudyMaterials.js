@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   BookOpen, FileText, Folder, Video, GraduationCap,
   Cpu, ArrowUpRight, Brain, Library, ChevronDown, ChevronUp,
-  CalendarDays, Clock, MapPin, ClipboardList, Target, Sigma,
+  CalendarDays, Clock, MapPin, ClipboardList, Target, Sigma, Code2,
   RefreshCw, ListChecks, PlayCircle, BookOpenCheck, CheckCircle2,
   Circle, LayoutDashboard, BarChart3, Trophy, ChevronRight, X,
   AlertTriangle, TrendingDown, Lightbulb, PenLine, Calculator,
@@ -20,6 +20,7 @@ import '../styles/studyMaterials.css';
 import MindMapModal from './MindMap';
 import DailySchedule from './DailySchedule';
 import AssessmentPractice from './AssessmentPractice';
+import JudgePanel from './JudgePanel';
 import { VIDEO_EXERCISES } from '../data/videoExercises';
 import { getAvaliacaoByPart } from '../data/avaliacoesDisciplinas';
 import { SIMULADOS_CRONOGRAMA } from '../data/simuladosCronograma';
@@ -98,6 +99,21 @@ const EVALUATION_MODELS = {
   },
   al: {
     title: 'Mecanismo de Avaliação - Álgebra Linear',
+    formula: 'Média = (Avaliação 1 + Avaliação 2 + Prova Final) ÷ 3',
+    pass: 6.0,
+    parts: [
+      { id: 'a1', label: 'Avaliação 1', weight: null },
+      { id: 'a2', label: 'Avaliação 2', weight: null },
+      { id: 'prova_final', label: 'Prova final', weight: null },
+    ],
+    compute: (g) => {
+      const vals = [g.a1, g.a2, g.prova_final].filter((v) => v != null);
+      const media = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+      return { media };
+    },
+  },
+  rl: {
+    title: 'Mecanismo de Avaliação - Raciocínio Lógico',
     formula: 'Média = (Avaliação 1 + Avaliação 2 + Prova Final) ÷ 3',
     pass: 6.0,
     parts: [
@@ -753,6 +769,155 @@ const materialsData = [
         title: 'Álgebra Linear - Prof. Reginaldo Santos (UFMG)',
         note: 'Livro e material gratuitos',
         url: 'https://reginaldosantos.com.br/',
+      },
+    ],
+  },
+  {
+    id: 'rl',
+    name: 'Raciocínio Lógico',
+    professor: 'Prof. a definir (verifique no Moodle)',
+    course: 'Turma 20262 • Lógica e Argumentação',
+    color: '#f97316',
+    icon: Lightbulb,
+    schedule: [],
+    evaluation: [
+      'Avaliações parciais',
+      'Prova final',
+      'Exercícios e simulados',
+      'Aprovação conforme média do plano de ensino',
+    ],
+    structure: [
+      { name: 'Apostila.pdf', type: 'file' },
+      { name: 'Resumo.pdf', type: 'file' },
+      { name: 'Mapa_Mental.pdf', type: 'file' },
+      { name: 'Exercicios.pdf', type: 'file' },
+      { name: 'Simulados', type: 'folder' },
+      { name: 'Gabaritos.pdf', type: 'file' },
+    ],
+    topics: [
+      {
+        id: 'rl-proposicoes',
+        topicId: 'rl_1',
+        subject: 'Raciocínio Lógico',
+        name: 'Proposições e Conectivos',
+        icon: '🧠',
+        keywords: ['Proposições', 'Conectivos', 'Negação', 'Conjunção', 'Disjunção', 'Condicional', 'Bicondicional'],
+        videoaulas: [
+          { title: 'Lógica proposicional - conceitos (Curso em Vídeo)', url: yt('lógica proposicional conceitos curso em vídeo') },
+          { title: 'Conectivos lógicos e tabela verdade', url: yt('conectivos lógicos tabela verdade raciocínio lógico') },
+        ],
+        revisoes: [
+          { title: 'Resumo de proposições', note: 'O que é proposição, valores lógicos V/F' },
+          { title: 'Conectivos', note: 'e (∧), ou (∨), se...então (→), se e somente se (↔), não (¬)' },
+        ],
+        exercicios: [
+          { name: 'Lista 1 - Proposições e Conectivos', count: 8, icon: '🧠' },
+        ],
+      },
+      {
+        id: 'rl-tabela-verdade',
+        topicId: 'rl_2',
+        subject: 'Raciocínio Lógico',
+        name: 'Tabelas Verdade',
+        icon: '📋',
+        keywords: ['Tabela verdade', 'Verdade', 'Falso', 'Linhas', 'Valoração'],
+        videoaulas: [
+          { title: 'Tabela verdade passo a passo', url: yt('tabela verdade passo a passo raciocínio lógico') },
+          { title: 'Tabela verdade com mais proposições', url: yt('tabela verdade 3 proposições raciocínio lógico') },
+        ],
+        revisoes: [
+          { title: 'Construindo tabelas', note: 'Número de linhas = 2^n proposições' },
+        ],
+        exercicios: [
+          { name: 'Lista 2 - Tabelas Verdade', count: 8, icon: '📋' },
+        ],
+      },
+      {
+        id: 'rl-equivalencias',
+        topicId: 'rl_3',
+        subject: 'Raciocínio Lógico',
+        name: 'Equivalências Lógicas',
+        icon: '⚖️',
+        keywords: ['Equivalência', 'Leis de De Morgan', 'Contrapositiva', 'Dupla negação', 'Implicação'],
+        videoaulas: [
+          { title: 'Equivalências lógicas e Leis de De Morgan', url: yt('equivalências lógicas leis de de morgan raciocínio lógico') },
+          { title: 'Contrapositiva e recíproca', url: yt('contrapositiva recíproca condicional lógica') },
+        ],
+        revisoes: [
+          { title: 'De Morgan', note: '¬(A∧B) = ¬A∨¬B e ¬(A∨B) = ¬A∧¬B' },
+          { title: 'Equivalências da condicional', note: 'A→B = ¬A∨B = ¬B→¬A (contrapositiva)' },
+        ],
+        exercicios: [
+          { name: 'Lista 3 - Equivalências', count: 8, icon: '⚖️' },
+        ],
+      },
+      {
+        id: 'rl-argumentos',
+        topicId: 'rl_4',
+        subject: 'Raciocínio Lógico',
+        name: 'Argumentos e Validade',
+        icon: '🛡️',
+        keywords: ['Argumento', 'Premissas', 'Conclusão', 'Válido', 'Inválido', 'Silogismo'],
+        videoaulas: [
+          { title: 'Argumentos válidos e inválidos', url: yt('argumentos válidos inválidos raciocínio lógico') },
+          { title: 'Silogismos e regras de inferência', url: yt('silogismo regras de inferência lógica') },
+        ],
+        revisoes: [
+          { title: 'Validade de argumentos', note: 'Argumento válido: conclusão segue das premissas' },
+        ],
+        exercicios: [
+          { name: 'Lista 4 - Argumentos', count: 8, icon: '🛡️' },
+        ],
+      },
+      {
+        id: 'rl-quantificadores',
+        topicId: 'rl_5',
+        subject: 'Raciocínio Lógico',
+        name: 'Quantificadores e Conjuntos',
+        icon: '🔍',
+        keywords: ['Quantificadores', 'Todo', 'Existe', 'Conjuntos', 'Pertinência'],
+        videoaulas: [
+          { title: 'Quantificadores: todo e existe', url: yt('quantificadores todo existe lógica') },
+          { title: 'Operações com conjuntos', url: yt('operações com conjuntos união interseção diferença') },
+        ],
+        revisoes: [
+          { title: 'Negação de quantificadores', note: '¬(∀x P) = ∃x ¬P' },
+        ],
+        exercicios: [
+          { name: 'Lista 5 - Quantificadores e Conjuntos', count: 8, icon: '🔍' },
+        ],
+      },
+      {
+        id: 'rl-problemas',
+        topicId: 'rl_6',
+        subject: 'Raciocínio Lógico',
+        name: 'Raciocínio Lógico em Problemas',
+        icon: '🧩',
+        keywords: ['Problemas de lógica', 'Sequências', 'Analogias', 'Verdades e mentiras'],
+        videoaulas: [
+          { title: 'Raciocínio lógico para concursos (IFG/IF)', url: yt('raciocínio lógico concursos questões resolvidas') },
+          { title: 'Problemas de lógica: verdades e mentiras', url: yt('problemas de lógica verdades e mentiras') },
+        ],
+        revisoes: [
+          { title: 'Estratégias de resolução', note: 'Ler com atenção, testar hipóteses, eliminar alternativas' },
+        ],
+        exercicios: [
+          { name: 'Lista 6 - Problemas de Lógica', count: 8, icon: '🧩' },
+        ],
+      },
+    ],
+    books: [
+      {
+        title: 'Introdução à Lógica (Irving Copi)',
+        note: 'Clássico sobre lógica e argumentação',
+      },
+      {
+        title: 'Lógica para Computação (Sérgio C. Sampaio)',
+        note: 'Foco em lógica proposicional e de predicados',
+      },
+      {
+        title: 'Raciocínio Lógico (concursos IF)',
+        note: 'Questões de lógica para provas de institutos federais',
       },
     ],
   },
@@ -1432,10 +1597,18 @@ const StudyMaterials = () => {
             <CalendarDays size={18} />
             Cronograma Diário
           </button>
+          <button
+            onClick={() => setActiveTab('judge')}
+            className={`schedule-tab ${activeTab === 'judge' ? 'active' : ''}`}
+          >
+            <Code2 size={18} />
+            Juiz Online
+          </button>
         </div>
 
         <div className="materials-content">
           {activeTab === 'daily' && <DailySchedule />}
+          {activeTab === 'judge' && <JudgePanel />}
           {activeTab === 'topics' && (
             <div className="materials-grid">
               {materialsData.map((discipline) => {
@@ -1807,7 +1980,7 @@ const StudyMaterials = () => {
                     >
                       <div className="materials-avaliacao-head">
                         <span className="materials-avaliacao-icon" style={{ background: `${discipline.color}22`, color: discipline.color }}>
-                          {discipline.icon === Cpu ? <Cpu size={22} /> : discipline.icon === Brain ? <Brain size={22} /> : <Sigma size={22} />}
+                          {discipline.icon === Cpu ? <Cpu size={22} /> : discipline.icon === Brain ? <Brain size={22} /> : discipline.icon === Lightbulb ? <Lightbulb size={22} /> : <Sigma size={22} />}
                         </span>
                         <div>
                           <h3>{model.title}</h3>

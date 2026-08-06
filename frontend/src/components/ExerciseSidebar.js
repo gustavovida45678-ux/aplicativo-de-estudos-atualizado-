@@ -1,11 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, BookOpen, Target, CheckCircle2, Search, Filter } from 'lucide-react';
 import { EXERCISES_BY_SUBJECT, getSubjectTotals, getTotalExercises } from '../data/exercisesData';
 
-const ExerciseSidebar = ({ onSelectExercise, isOpen, onClose }) => {
+const ExerciseSidebar = ({ onSelectExercise, isOpen, onClose, highlightSubject }) => {
   const [expandedSubjects, setExpandedSubjects] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && highlightSubject) {
+      setSearchQuery('');
+      setExpandedSubjects((prev) => ({ ...prev, [highlightSubject]: !prev[highlightSubject] }));
+    }
+  }, [isOpen, highlightSubject]);
   
   const subjectTotals = getSubjectTotals();
   const totalExercises = getTotalExercises();

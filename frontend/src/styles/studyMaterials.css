@@ -340,6 +340,212 @@
   background: var(--amber);
 }
 
+.materials-topics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.materials-topic {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.materials-topic-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.materials-topic-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.materials-topic-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  font-size: 1.05rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+}
+
+.materials-topic-title-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.materials-topic-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.materials-topic-meta {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.materials-topic-body {
+  padding: 0.75rem 0.85rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.materials-topic-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.materials-topic-block-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+}
+
+.materials-topic-block-title svg {
+  color: var(--blue-light);
+  flex-shrink: 0;
+}
+
+.materials-topic-links {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.materials-topic-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.82rem;
+  text-align: left;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.materials-topic-link:hover {
+  border-color: var(--blue-primary);
+  color: var(--text-primary);
+}
+
+.materials-topic-link-btn {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.materials-topic-link-title {
+  display: block;
+  font-weight: 600;
+}
+
+.materials-topic-link-note {
+  display: block;
+  font-size: 0.73rem;
+  color: var(--text-tertiary);
+  margin-top: 0.1rem;
+}
+
+.materials-exercise-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.materials-exercise-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.85rem 0.9rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text-primary);
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+
+.materials-exercise-btn:hover {
+  border-color: var(--blue-primary);
+  transform: translateY(-1px);
+}
+
+.materials-exercise-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  background: var(--blue-soft);
+  border-radius: 9px;
+}
+
+.materials-exercise-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.materials-exercise-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.materials-exercise-meta {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.materials-exercise-action {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--blue-light);
+  background: var(--blue-soft);
+  border: 1px solid var(--border-soft);
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 @media (max-width: 860px) {
   .materials-grid {
     grid-template-columns: 1fr;
@@ -351,6 +557,12 @@
   }
 
   .materials-folder {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .materials-exercise-grid {
     grid-template-columns: 1fr;
   }
 }

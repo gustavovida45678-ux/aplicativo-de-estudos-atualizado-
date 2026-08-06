@@ -1,6 +1,9 @@
 // Cronograma Diário de Estudos (IFG Jataí)
 // Combina horários reais de aula com blocos de estudo do roadmap 16 semanas
 
+// Ajuste aqui a data de início do plano de 16 semanas (segunda-feira)
+export const WEEK_START = '2026-07-20';
+
 export const CLASSES_SCHEDULE = [
   {
     day: 'Segunda-feira',
@@ -71,8 +74,8 @@ export const CLASSES_SCHEDULE = [
 
 // Rótulos dos blocos de estudo (para legenda)
 export const BLOCK_TYPE_LABELS = {
-  class: { label: 'Aula presencial', color: '#3b82f6' },
-  study: { label: 'Estudo individual', color: '#8b5cf6' },
-  break: { label: 'Intervalo', color: '#64748b' },
-  rest: { label: 'Descanso', color: '#10b981' },
+  class: { label: 'Aula presencial', color: '#3b82f6', short: 'Aula' },
+  study: { label: 'Estudo individual', color: '#8b5cf6', short: 'Estudo' },
+  break: { label: 'Intervalo', color: '#f59e0b', short: 'Intervalo' },
+  rest: { label: 'Descanso', color: '#10b981', short: 'Descanso' },
 };

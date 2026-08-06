@@ -1947,3 +1947,274 @@
   border: 1px solid #334155;
   color: #94a3b8;
 }
+
+/* ===== Cronograma Diário ===== */
+.materials-daily-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.materials-daily-hero {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1.2rem 1.4rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1a2340 0%, #141b30 55%, #1b1033 100%);
+  border: 1px solid #2a3552;
+  position: relative;
+  overflow: hidden;
+}
+.materials-daily-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(600px 120px at 15% 0%, rgba(139, 92, 246, 0.18), transparent 70%);
+  pointer-events: none;
+}
+.materials-daily-hero-icon {
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.35);
+}
+.materials-daily-hero-text { flex: 1; min-width: 0; position: relative; }
+.materials-daily-hero-text h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #f1f5f9;
+  letter-spacing: 0.2px;
+}
+.materials-daily-hero-text p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+.materials-daily-week-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  position: relative;
+}
+.materials-daily-week-badge b { color: #ede9fe; }
+
+.materials-daily-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.7rem;
+}
+.materials-daily-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid;
+  background: #101826;
+}
+.materials-daily-stat b { font-size: 1.25rem; line-height: 1.1; }
+.materials-daily-stat span { font-size: 0.68rem; opacity: 0.85; color: #94a3b8; }
+
+.materials-daily-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.materials-daily-day {
+  background: #101826;
+  border: 1px solid #1e2a3a;
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.materials-daily-day.today {
+  border-color: rgba(139, 92, 246, 0.55);
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.25), 0 8px 28px rgba(139, 92, 246, 0.12);
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.06), #101826 42%);
+}
+.materials-daily-day-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #e2e8f0;
+  margin-bottom: 0.9rem;
+  text-transform: capitalize;
+}
+.materials-daily-today-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  animation: materialsDailyPulse 2.2s ease-in-out infinite;
+}
+@keyframes materialsDailyPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
+}
+
+.materials-daily-blocks { display: flex; flex-direction: column; }
+.materials-daily-block-row {
+  display: grid;
+  grid-template-columns: 62px 20px 1fr;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+.materials-daily-block-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-top: 0.65rem;
+  gap: 0.1rem;
+  font-variant-numeric: tabular-nums;
+}
+.materials-daily-block-time b { font-size: 0.8rem; }
+.materials-daily-block-time small { font-size: 0.68rem; opacity: 0.7; }
+.materials-daily-block-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.materials-daily-block-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-top: 0.75rem;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35);
+}
+.materials-daily-block-line { width: 2px; flex: 1; min-height: 12px; border-radius: 2px; }
+.materials-daily-block-card {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 12px;
+  background: #0d1420;
+  border: 1px solid;
+  margin-bottom: 0.6rem;
+  transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+}
+.materials-daily-block-card:hover {
+  transform: translateX(3px);
+  border-color: #334155 !important;
+}
+.materials-daily-block-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  border-radius: 10px;
+}
+.materials-daily-block-body { flex: 1; min-width: 0; }
+.materials-daily-block-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.materials-daily-block-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: #7c8aa0;
+  margin-top: 0.1rem;
+}
+.materials-daily-block-tag {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.materials-daily-now-pill {
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #fff;
+  background: #22c55e;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  animation: materialsDailyPulse 1.6s ease-in-out infinite;
+}
+.materials-daily-block-row.now .materials-daily-block-card {
+  border-color: #22c55e66 !important;
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.18);
+}
+.materials-daily-block-row.now .materials-daily-block-dot {
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  animation: materialsDailyPulse 1.6s ease-in-out infinite;
+}
+
+.materials-daily-restday {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  padding: 1.2rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.02));
+  border: 1px dashed rgba(16, 185, 129, 0.35);
+  text-align: center;
+}
+.materials-daily-restday-icon { font-size: 1.7rem; }
+.materials-daily-restday b { color: #d1fae5; font-size: 0.95rem; }
+.materials-daily-restday p { margin: 0.15rem 0 0; font-size: 0.75rem; color: #6ee7b7; }
+
+.materials-daily-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: #fcd34d;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.materials-daily-tip svg { flex-shrink: 0; margin-top: 0.1rem; }
+.materials-daily-tip b { color: #fde68a; }
+
+@media (max-width: 640px) {
+  .materials-daily-hero { flex-wrap: wrap; }
+  .materials-daily-week-badge { margin-left: auto; }
+  .materials-daily-stats { grid-template-columns: repeat(2, 1fr); }
+  .materials-daily-block-row { grid-template-columns: 52px 18px 1fr; gap: 0.4rem; }
+  .materials-daily-block-tag { display: none; }
+}

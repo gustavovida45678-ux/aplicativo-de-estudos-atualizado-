@@ -22,11 +22,44 @@ import DailySchedule from './DailySchedule';
 import AssessmentPractice from './AssessmentPractice';
 import { VIDEO_EXERCISES } from '../data/videoExercises';
 import { getAvaliacaoByPart } from '../data/avaliacoesDisciplinas';
+import { SIMULADOS_CRONOGRAMA } from '../data/simuladosCronograma';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/study`;
 
 const yt = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+
+const findSimuladoForTopic = (topic, discipline) => {
+  const norm = (s) =>
+    (s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 2);
+  const topicWords = new Set(norm(topic.name));
+  const kwWords = new Set((topic.keywords || []).flatMap(norm));
+  let best = null;
+  let bestScore = 0;
+  for (const week of SIMULADOS_CRONOGRAMA) {
+    for (const sim of week.simulados) {
+      if (sim.discipline !== discipline.name) continue;
+      const simWords = new Set([...norm(sim.title), ...norm(sim.discipline)]);
+      let score = 0;
+      topicWords.forEach((w) => {
+        if (simWords.has(w)) score += 2;
+      });
+      kwWords.forEach((w) => {
+        if (simWords.has(w)) score += 3;
+      });
+      if (score > bestScore) {
+        bestScore = score;
+        best = { week: week.week, simulado: sim };
+      }
+    }
+  }
+  return bestScore >= 3 ? best : null;
+};
 
 const EVALUATION_MODELS = {
   ed: {
@@ -1069,6 +1102,31 @@ const StudyMaterials = () => {
     }
     setGeneratingTopic(topic.id);
     try {
+      const matched = findSimuladoForTopic(topic, discipline);
+      if (matched) {
+        const localExercises = matched.simulado.questions.map((ex) => ({
+          question: ex.question,
+          options: ex.options,
+          correct_answer: ex.correct_answer,
+          explanation: ex.explanation,
+          generated: true,
+          source: `Simulado da Semana ${matched.week} do cronograma`,
+        }));
+        const key = `generated_${topic.id}`;
+        const merged = [...(JSON.parse(localStorage.getItem(key) || '[]')), ...localExercises];
+        localStorage.setItem(key, JSON.stringify(merged));
+        toast.success(`Simulado da Semana ${matched.week} carregado (${localExercises.length} questões prontas)!`);
+        setPracticing({
+          topicId: null,
+          topicKey: topic.id,
+          name: `${topic.name} (Simulado Semana ${matched.week})`,
+          subject: topic.subject,
+          localExercises: merged,
+        });
+        setActiveTab('exercises');
+        return;
+      }
+
       const books = (discipline.books || [])
         .map((b) => b.title)
         .slice(0, 5)

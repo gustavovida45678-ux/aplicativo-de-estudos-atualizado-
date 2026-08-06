@@ -60,9 +60,29 @@ function App() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showImageGenModal, setShowImageGenModal] = useState(false);
   const [imageGenPrompt, setImageGenPrompt] = useState("");
+  const [chatProviders, setChatProviders] = useState([]);
+  const [selectedChatProvider, setSelectedChatProvider] = useState("auto");
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Load available AI providers for the chat selector
+  useEffect(() => {
+    const loadProviders = async () => {
+      try {
+        const response = await axios.get(`${API}/providers`);
+        const list = response.data?.providers || [];
+        setChatProviders(list);
+        const saved = localStorage.getItem("chat_provider");
+        if (saved && (saved === "auto" || list.some(p => p.type === saved))) {
+          setSelectedChatProvider(saved);
+        }
+      } catch (error) {
+        console.error("Error loading providers:", error);
+      }
+    };
+    loadProviders();
+  }, []);
 
   // Check authentication on mount
   useEffect(() => {
@@ -266,6 +286,9 @@ function App() {
         // Use only the first image for now (backend expects single image)
         formData.append("image", selectedImages[0]);
         formData.append("message", userMessage);
+        formData.append("provider", selectedChatProvider);
+        const customKey = getCustomApiKey(selectedChatProvider);
+        if (customKey) formData.append("custom_api_key", customKey);
 
         const response = await axios.post(`${API}/chat/images`, formData, {
           headers: {
@@ -282,9 +305,14 @@ function App() {
         toast.success("Imagem analisada com sucesso!");
       } else {
         // Send text only
-        const response = await axios.post(`${API}/chat`, {
+        const payload = {
           message: userMessage,
-        });
+          provider: selectedChatProvider,
+        };
+        const customKey = getCustomApiKey(selectedChatProvider);
+        if (customKey) payload.custom_api_key = customKey;
+
+        const response = await axios.post(`${API}/chat`, payload);
 
         setMessages((prev) => [
           ...prev,
@@ -604,6 +632,32 @@ function App() {
           multiple
           style={{ display: "none" }}
         />
+
+        <div className="chat-provider-bar">
+          <select
+            value={selectedChatProvider}
+            onChange={(e) => {
+              setSelectedChatProvider(e.target.value);
+              localStorage.setItem("chat_provider", e.target.value);
+            }}
+            className="chat-provider-select"
+            data-testid="chat-provider-select"
+            title="Provedor de IA (auto escolhe o primeiro configurado)"
+          >
+            <option value="auto">🤖 Auto (Claude/Gemini/Groq)</option>
+            {chatProviders.map((provider) => (
+              <option key={provider.type} value={provider.type}>
+                {provider.has_key ? "✓ " : "🔑 "}
+                {provider.name}
+              </option>
+            ))}
+          </select>
+          <span className="chat-provider-hint">
+            {selectedChatProvider === "auto"
+              ? "Auto detecta o primeiro provedor com chave"
+              : chatProviders.find(p => p.type === selectedChatProvider)?.free_tier || ""}
+          </span>
+        </div>
 
         {imagePreviews.length > 0 && (
           <div className="images-preview-container">

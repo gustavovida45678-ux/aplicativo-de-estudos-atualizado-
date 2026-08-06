@@ -388,6 +388,42 @@ code, pre {
   box-shadow: 0 0 0 3px var(--blue-soft), var(--shadow-lg);
 }
 
+/* Chat provider selector bar */
+.chat-provider-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+  padding: 0.25rem 0.35rem 0.15rem;
+  border-bottom: 1px solid var(--border-medium);
+  margin-bottom: 0.15rem;
+}
+
+.chat-provider-select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  padding: 0.25rem 0.5rem;
+  outline: none;
+  cursor: pointer;
+  max-width: 15rem;
+}
+
+.chat-provider-select option {
+  background: #111827;
+  color: #e5e7eb;
+}
+
+.chat-provider-hint {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .input-command-bar input[type="text"] {
   flex: 1;
   background: transparent;

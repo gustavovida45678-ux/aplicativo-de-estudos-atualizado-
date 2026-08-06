@@ -71,6 +71,23 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
   const [expandedPhase, setExpandedPhase] = useState(phases[0]?.id);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [exerciseModalOpen, setExerciseModalOpen] = useState(false);
+  const [viewingSolution, setViewingSolution] = useState(null);
+  const [savedExercises, setSavedExercises] = useState([]);
+
+  // Load saved exercises from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('saved_exercises_v1');
+      if (saved) setSavedExercises(JSON.parse(saved));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Save to localStorage
+  useEffect(() => {
+    localStorage.setItem('saved_exercises_v1', JSON.stringify(savedExercises));
+  }, [savedExercises]);
 
   // Get professor name from roadmap info (for single-professor roadmaps like 110-day)
   const mainProfessorName = roadmapInfo.professor || '';
@@ -138,6 +155,42 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
   const closeExerciseModal = () => {
     setExerciseModalOpen(false);
     setSelectedExercise(null);
+    setViewingSolution(null);
+  };
+
+  const handleSolveNow = (exercise) => {
+    // Store the exercise to solve in localStorage for the chat to pick up
+    localStorage.setItem('exercise_to_solve', JSON.stringify({
+      ...exercise,
+      subject: selectedExercise?.subject,
+      professor: selectedExercise?.professor,
+    }));
+    // Close modal and switch to chat tab
+    closeExerciseModal();
+    // Dispatch custom event to notify App to switch to chat tab
+    window.dispatchEvent(new CustomEvent('open-chat-for-exercise', { detail: exercise }));
+  };
+
+  const handleViewSolution = (exercise) => {
+    setViewingSolution(exercise);
+  };
+
+  const handleSaveForLater = (exercise) => {
+    const isSaved = savedExercises.some(se => se.id === exercise.id);
+    if (isSaved) {
+      setSavedExercises(prev => prev.filter(se => se.id !== exercise.id));
+    } else {
+      setSavedExercises(prev => [...prev, {
+        ...exercise,
+        subject: selectedExercise?.subject,
+        professor: selectedExercise?.professor,
+        savedAt: new Date().toISOString(),
+      }]);
+    }
+  };
+
+  const closeSolutionModal = () => {
+    setViewingSolution(null);
   };
 
   // Calculate totals
@@ -527,17 +580,17 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                         ))}
                       </div>
                       <div className="exercise-actions">
-                        <button className="exercise-btn exercise-btn-primary">
+                        <button className="exercise-btn exercise-btn-primary" onClick={() => handleSolveNow(ex)}>
                           <Play size={16} />
                           Resolver Agora
                         </button>
-                        <button className="exercise-btn exercise-btn-secondary">
+                        <button className="exercise-btn exercise-btn-secondary" onClick={() => handleViewSolution(ex)}>
                           <Code size={16} />
                           Ver Solução
                         </button>
-                        <button className="exercise-btn exercise-btn-secondary">
+                        <button className="exercise-btn exercise-btn-secondary" onClick={() => handleSaveForLater(ex)}>
                           <BookMarked size={16} />
-                          Salvar para Depois
+                          {savedExercises.some(se => se.id === ex.id) ? 'Salvo' : 'Salvar para Depois'}
                         </button>
                       </div>
                     </div>
@@ -547,6 +600,72 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
             </div>
             <div className="exercise-modal-footer">
               <button className="exercise-btn exercise-btn-secondary" onClick={closeExerciseModal}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Solution Modal */}
+      {viewingSolution && (
+        <div className="exercise-modal-overlay" onClick={closeSolutionModal}>
+          <div className="exercise-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="exercise-modal-header">
+              <div className="exercise-modal-title">
+                <Code size={24} />
+                <div>
+                  <h3>Solução: {viewingSolution.title}</h3>
+                  <p>{viewingSolution.difficulty} — {viewingSolution.topics.join(', ')}</p>
+                </div>
+              </div>
+              <button className="exercise-modal-close" onClick={closeSolutionModal}>
+                <X size={24} />
+              </button>
+            </div>
+            <div className="exercise-modal-body">
+              <div className="exercise-modal-date">
+                <BookOpen size={16} />
+                <span>Enunciado: {viewingSolution.description}</span>
+              </div>
+              <div className="solution-content">
+                <h4>Resolução Passo a Passo</h4>
+                <div className="solution-steps">
+                  <p><strong>1. ENTENDIMENTO:</strong> Identificar o que o problema pede e quais são os dados de entrada e saída esperados.</p>
+                  <p><strong>2. CONCEITOS:</strong> {viewingSolution.topics.map(t => t).join(', ')} — revisar definições e propriedades.</p>
+                  <p><strong>3. PASSO A PASSO:</strong></p>
+                  <ol>
+                    <li>Definir estruturas de dados necessárias</li>
+                    <li>Implementar algoritmo base</li>
+                    <li>Testar casos de borda</li>
+                    <li>Otimizar se necessário</li>
+                  </ol>
+                  <p><strong>4. VERIFICAÇÃO:</strong> Testar com exemplos conhecidos e validar complexidade.</p>
+                  <p><strong>5. RESPOSTA FINAL:</strong> Código completo com comentários explicativos.</p>
+                </div>
+                <div className="solution-code">
+                  <pre><code>{`// Exemplo de implementação para: ${viewingSolution.title}
+// Tópicos: ${viewingSolution.topics.join(', ')}
+// Dificuldade: ${viewingSolution.difficulty}
+
+// TODO: Implementar solução completa baseada no enunciado:
+// ${viewingSolution.description}
+
+// Exemplo de estrutura:
+function resolver() {
+  // 1. Ler entrada
+  // 2. Processar
+  // 3. Imprimir resultado
+}`}</code></pre>
+                </div>
+              </div>
+            </div>
+            <div className="exercise-modal-footer">
+              <button className="exercise-btn exercise-btn-primary" onClick={() => handleSolveNow(viewingSolution)}>
+                <Play size={16} />
+                Resolver no Chat
+              </button>
+              <button className="exercise-btn exercise-btn-secondary" onClick={closeSolutionModal}>
                 Fechar
               </button>
             </div>

@@ -218,6 +218,12 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
                 context_window=200000,
                 supports_vision=True
             ),
+            "claude-3-7-sonnet": ModelConfig(
+                model_id="openrouter/anthropic/claude-3.7-sonnet",
+                display_name="Claude 3.7 Sonnet (via OpenRouter)",
+                context_window=200000,
+                supports_vision=True
+            ),
             "qwen-2.5-72b-instruct": ModelConfig(
                 model_id="openrouter/qwen/qwen-2.5-72b-instruct",
                 display_name="Qwen 2.5 72B (Free)",
@@ -232,24 +238,6 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
                 model_id="openrouter/deepseek/deepseek-chat",
                 display_name="DeepSeek V3 via OpenRouter",
                 context_window=64000
-            ),
-            "claude-3-7-sonnet": ModelConfig(
-                model_id="openrouter/anthropic/claude-3.7-sonnet",
-                display_name="Claude 3.7 Sonnet (via OpenRouter)",
-                context_window=200000,
-                supports_vision=True
-            ),
-            "claude-3-5-sonnet": ModelConfig(
-                model_id="openrouter/anthropic/claude-3.5-sonnet",
-                display_name="Claude 3.5 Sonnet (via OpenRouter)",
-                context_window=200000,
-                supports_vision=True
-            ),
-            "claude-3-5-haiku": ModelConfig(
-                model_id="openrouter/anthropic/claude-3.5-haiku",
-                display_name="Claude 3.5 Haiku (via OpenRouter)",
-                context_window=200000,
-                supports_vision=True
             ),
         },
         env_var="OPENROUTER_API_KEY",

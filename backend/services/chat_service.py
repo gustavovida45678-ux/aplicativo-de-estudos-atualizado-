@@ -9,7 +9,7 @@ from datetime import datetime
 import json
 
 import litellm
-from litellm import acompletion, astreaming_completion
+from litellm import acompletion
 
 from backend.services.providers import (
     get_provider_config,
@@ -148,7 +148,8 @@ class ChatService:
         model_id: str,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream response from provider"""
-        stream = await astreaming_completion(**params)
+        params["stream"] = True
+        stream = await acompletion(**params)
         
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:

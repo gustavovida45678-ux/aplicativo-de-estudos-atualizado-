@@ -206,10 +206,17 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
         name="OpenRouter",
         category="Agregador",
         models={
-            "nemotron-3-ultra": ModelConfig(
-                model_id="openrouter/nvidia/nemotron-3-ultra",
-                display_name="Nemotron 3 Ultra (Free)",
-                context_window=4096
+            "claude-3-5-sonnet": ModelConfig(
+                model_id="openrouter/anthropic/claude-3.5-sonnet",
+                display_name="Claude 3.5 Sonnet (via OpenRouter)",
+                context_window=200000,
+                supports_vision=True
+            ),
+            "claude-3-5-haiku": ModelConfig(
+                model_id="openrouter/anthropic/claude-3.5-haiku",
+                display_name="Claude 3.5 Haiku (via OpenRouter)",
+                context_window=200000,
+                supports_vision=True
             ),
             "qwen-2.5-72b-instruct": ModelConfig(
                 model_id="openrouter/qwen/qwen-2.5-72b-instruct",
@@ -436,7 +443,7 @@ DEFAULT_MODELS = {
     ProviderType.PERPLEXITY: "llama-3.1-sonar-small-128k-online",
     ProviderType.DEEPSEEK: "deepseek-chat",
     ProviderType.GROQ: "llama-3.3-70b-versatile",
-    ProviderType.OPENROUTER: "nemotron-3-ultra",
+    ProviderType.OPENROUTER: "claude-3-5-sonnet",
     ProviderType.FREE_AI: "qwen-2.5-72b",
     ProviderType.OLLAMA: "gemma4-12b",
 }

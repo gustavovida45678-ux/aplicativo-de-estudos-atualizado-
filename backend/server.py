@@ -31,6 +31,8 @@ from routes.math import router as math_router
 from routes.auth import router as auth_router
 from routes.exercise_generator import router as exercise_generator_router
 from routes.feedback import router as feedback_router
+from routes.moodle import router as moodle_router
+from routes.judge import router as judge_router
 
 load_dotenv(ROOT_DIR / '.env')
 
@@ -119,6 +121,8 @@ api_router.include_router(exercise_generator_router, prefix="/exercises", tags=[
 api_router.include_router(commands_router, prefix="/commands", tags=["commands"])
 api_router.include_router(math_router, prefix="/math", tags=["math"])
 api_router.include_router(feedback_router, prefix="/feedback", tags=["feedback"])
+api_router.include_router(moodle_router, tags=["moodle"])
+api_router.include_router(judge_router, tags=["judge"])
 app.include_router(api_router)
 
 # Include schedule router with /api/schedule prefix

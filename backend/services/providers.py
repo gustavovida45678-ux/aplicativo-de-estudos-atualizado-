@@ -226,6 +226,24 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
                 display_name="DeepSeek V3 via OpenRouter",
                 context_window=64000
             ),
+            "claude-3-7-sonnet": ModelConfig(
+                model_id="openrouter/anthropic/claude-3.7-sonnet",
+                display_name="Claude 3.7 Sonnet (via OpenRouter)",
+                context_window=200000,
+                supports_vision=True
+            ),
+            "claude-3-5-sonnet": ModelConfig(
+                model_id="openrouter/anthropic/claude-3.5-sonnet",
+                display_name="Claude 3.5 Sonnet (via OpenRouter)",
+                context_window=200000,
+                supports_vision=True
+            ),
+            "claude-3-5-haiku": ModelConfig(
+                model_id="openrouter/anthropic/claude-3.5-haiku",
+                display_name="Claude 3.5 Haiku (via OpenRouter)",
+                context_window=200000,
+                supports_vision=True
+            ),
         },
         env_var="OPENROUTER_API_KEY",
         free_tier_description="Créditos diários grátis",

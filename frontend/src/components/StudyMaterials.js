@@ -6,9 +6,12 @@ import {
   RefreshCw, ListChecks, PlayCircle, BookOpenCheck, CheckCircle2,
   Circle, LayoutDashboard, BarChart3, Trophy, ChevronRight, X,
   AlertTriangle, TrendingDown, Lightbulb, PenLine, Calculator,
+  Sparkles, MessageCircleQuestion, Loader2, Download,
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import ReactMarkdown from 'react-markdown';
+import html2canvas from 'html2canvas';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   CartesianGrid, Cell, PieChart, Pie, Legend,
@@ -927,6 +930,142 @@ const ExercisePractice = ({ topicInfo, onBack, onAnswer, localExercises }) => {
   );
 };
 
+const DoubtBotModal = ({ topic, onClose }) => {
+  const [screenshot, setScreenshot] = useState(null);
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const captureScreen = async () => {
+    try {
+      setError(null);
+      setAnswer('');
+      toast.info('Capturando a tela do tópico...');
+      const canvas = await html2canvas(document.body, {
+        scale: 1,
+        useCORS: true,
+        backgroundColor: '#0B1220',
+        logging: false,
+        onclone: (doc) => {
+          doc.querySelectorAll('.materials-doubt-bot, .materials-doubt-fab').forEach((el) => el.remove());
+        },
+      });
+      const dataUrl = canvas.toDataURL('image/png');
+      setScreenshot(dataUrl);
+      toast.success('Tela capturada! Agora escreva sua dúvida.');
+    } catch (e) {
+      console.error('Error capturing screen:', e);
+      setError('Não foi possível capturar a tela: ' + e.message);
+    }
+  };
+
+  const askDoubt = async () => {
+    if (!question.trim()) {
+      toast.warning('Escreva sua dúvida primeiro.');
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setAnswer('');
+    try {
+      const formData = new FormData();
+      const system_prompt = `Você é um professor de ${topic?.subject || 'programação'} no IFG Jataí.
+O aluno está estudando o tópico "${topic?.name || ''}" e enviou um PRINT da tela.
+Analise o print, identifique onde o aluno está errando ou com dúvida, e:
+1. Explique o erro/confusão de forma clara e didática
+2. Mostre o passo a passo correto
+3. Dê um exemplo prático
+4. Responda de forma amigável e encorajadora
+Contexto do tópico: ${topic?.keywords?.join(', ') || ''}`;
+      formData.append('system_prompt', system_prompt);
+      formData.append('message', `Minha dúvida sobre "${topic?.name}": ${question}`);
+      formData.append('provider', 'auto');
+
+      if (screenshot) {
+        const byteString = atob(screenshot.split(',')[1]);
+        const mimeString = screenshot.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        const blob = new Blob([ab], { type: mimeString });
+        formData.append('image', blob, 'print-duvida.png');
+      }
+
+      const res = await axios.post(`${BACKEND_URL}/api/chat/images`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setAnswer(
+        res.data?.assistant_message?.content ||
+          res.data?.response ||
+          'Não consegui processar sua dúvida. Tente novamente.'
+      );
+    } catch (e) {
+      console.error('Error asking doubt:', e);
+      const detail =
+        typeof e.response?.data?.detail === 'string'
+          ? e.response.data.detail
+          : (e.response?.data?.detail && e.response.data.detail.message) || null;
+      setError(
+        detail ||
+          'O robô de dúvidas não conseguiu responder agora. Verifique se há uma chave de IA configurada (Configurar API Keys).'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="materials-doubt-overlay" onClick={onClose}>
+      <div className="materials-doubt-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="materials-doubt-header">
+          <div className="materials-doubt-title-block">
+            <MessageCircleQuestion size={20} />
+            <h3>Robô de Dúvidas - {topic?.name}</h3>
+          </div>
+          <button className="materials-doubt-close" onClick={onClose} title="Fechar">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="materials-doubt-body">
+          <div className="materials-doubt-actions">
+            <button className="materials-doubt-btn" onClick={captureScreen} disabled={isLoading}>
+              <Download size={16} />
+              {screenshot ? 'Recapturar tela' : '📸 Capturar print da videoaula'}
+            </button>
+            {screenshot && (
+              <img src={screenshot} alt="Print capturado" className="materials-doubt-screenshot" />
+            )}
+          </div>
+
+          <textarea
+            className="materials-doubt-input"
+            placeholder="Ex: não entendi por que nesta parte o ponteiro é passado por referência e em outra não..."
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            rows={3}
+            disabled={isLoading}
+          />
+
+          <button className="materials-doubt-btn primary" onClick={askDoubt} disabled={isLoading || !question.trim()}>
+            {isLoading ? <Loader2 size={16} className="materials-spin" /> : <Sparkles size={16} />}
+            {isLoading ? 'Analisando...' : 'Tirar dúvida'}
+          </button>
+
+          {error && <div className="materials-doubt-error">{error}</div>}
+
+          {answer && (
+            <div className="materials-doubt-answer">
+              <ReactMarkdown>{answer}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const StudyMaterials = () => {
   const [activeTab, setActiveTab] = useState('topics');
   const [openDiscipline, setOpenDiscipline] = useState(null);
@@ -938,6 +1077,82 @@ const StudyMaterials = () => {
   const [backendTopics, setBackendTopics] = useState(null);
   const [grades, setGrades] = useState(loadGrades);
   const [mindMapTopic, setMindMapTopic] = useState(null);
+  const [doubtTopic, setDoubtTopic] = useState(null);
+  const [generatingTopic, setGeneratingTopic] = useState(null);
+
+  const generateExercises = async (topic, discipline) => {
+    if (!BACKEND_URL) {
+      toast.error('Backend não configurado.');
+      return;
+    }
+    setGeneratingTopic(topic.id);
+    try {
+      const books = (discipline.books || [])
+        .map((b) => b.title)
+        .slice(0, 5)
+        .join(', ');
+      const reference_text = [
+        `Tópico: ${topic.name}`,
+        `Disciplina: ${discipline.name}`,
+        topic.keywords && topic.keywords.length > 0 ? `Conceitos-chave: ${topic.keywords.join(', ')}` : null,
+        `Referências: ${books}`,
+        `Gere questões de múltipla escolha (4 alternativas) no estilo das provas do IFG Jataí.`,
+      ]
+        .filter(Boolean)
+        .join('. ');
+
+      const formData = new FormData();
+      formData.append('reference_text', reference_text);
+      formData.append('number_of_exercises', '5');
+      formData.append('mode', 'create');
+
+      const res = await axios.post(`${BACKEND_URL}/api/exercises/generate`, formData);
+      const generated = res.data?.exercises || [];
+      if (!generated.length) {
+        toast.warning('A IA não retornou exercícios. Tente novamente.');
+        return;
+      }
+
+      const letterToIndex = { A: 0, B: 1, C: 2, D: 3 };
+      const localExercises = generated.map((ex) => ({
+        question: ex.question || '',
+        options: ex.options || ['', '', '', ''],
+        correct_answer:
+          typeof ex.correct_answer === 'number'
+            ? ex.correct_answer
+            : letterToIndex[(ex.correct_answer || 'A').toUpperCase()] ?? 0,
+        explanation:
+          ex.solution?.final_answer ||
+          (ex.solution?.steps || []).map((s) => `${s.title}: ${s.content}`).join('\n\n') ||
+          'Resolução detalhada fornecida pela IA.',
+        generated: true,
+      }));
+
+      const key = `generated_${topic.id}`;
+      const merged = [...(JSON.parse(localStorage.getItem(key) || '[]')), ...localExercises];
+      localStorage.setItem(key, JSON.stringify(merged));
+
+      toast.success(`${localExercises.length} exercícios gerados!`);
+      setPracticing({
+        topicId: null,
+        topicKey: topic.id,
+        name: `${topic.name} (IA gerada)`,
+        subject: topic.subject,
+        localExercises: merged,
+      });
+      setActiveTab('exercises');
+    } catch (e) {
+      console.error('Error generating exercises:', e);
+      const detail = e.response?.data?.detail;
+      toast.error(
+        typeof detail === 'string'
+          ? detail
+          : 'Não foi possível gerar exercícios. Verifique se há créditos/chave de IA configurada.'
+      );
+    } finally {
+      setGeneratingTopic(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -1276,6 +1491,13 @@ const StudyMaterials = () => {
                                     >
                                       <Brain size={17} />
                                     </span>
+                                    <span
+                                      className="materials-topic-mindmap doubt"
+                                      onClick={(e) => { e.stopPropagation(); setDoubtTopic(topic); }}
+                                      title="Robô de dúvidas - tire dúvida com print da videoaula"
+                                    >
+                                      <MessageCircleQuestion size={17} />
+                                    </span>
                                     {isTopicOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                                   </button>
 
@@ -1380,6 +1602,23 @@ const StudyMaterials = () => {
                                                 <span className="materials-exercise-action">Praticar</span>
                                               </button>
                                             ))}
+                                            <button
+                                              className="materials-generate-btn"
+                                              onClick={() => generateExercises(topic, discipline)}
+                                              disabled={generatingTopic === topic.id}
+                                            >
+                                              {generatingTopic === topic.id ? (
+                                                <>
+                                                  <Loader2 size={15} className="materials-spin" />
+                                                  Gerando com IA...
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <Sparkles size={15} />
+                                                  Gerar Exercícios Automaticamente
+                                                </>
+                                              )}
+                                            </button>
                                           </div>
                                         </div>
                                       )}
@@ -1777,6 +2016,10 @@ const StudyMaterials = () => {
 
       {mindMapTopic && (
         <MindMapModal topic={mindMapTopic} onClose={() => setMindMapTopic(null)} />
+      )}
+
+      {doubtTopic && (
+        <DoubtBotModal topic={doubtTopic} onClose={() => setDoubtTopic(null)} />
       )}
     </div>
   );

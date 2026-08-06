@@ -72,9 +72,11 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [exerciseModalOpen, setExerciseModalOpen] = useState(false);
 
-  // Get professor name from roadmap info
-  const professorName = roadmapInfo.professor || '';
-  const exercisesData = EXERCISES_BY_PROFESSOR[professorName] || { exercises: { fundamentos: [], avancado: [] } };
+  // Get professor name from roadmap info (for single-professor roadmaps like 110-day)
+  const mainProfessorName = roadmapInfo.professor || '';
+  const mainExercisesData = EXERCISES_BY_PROFESSOR[mainProfessorName] || { exercises: { fundamentos: [], avancado: [] } };
+  // For multi-discipline roadmaps (like 16-week), professors per discipline
+  const professorsByDiscipline = roadmapInfo.professors || {};
 
   // Load saved progress
   useEffect(() => {
@@ -95,9 +97,16 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
     setCompleted(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleDayClick = (e, day) => {
-    e.stopPropagation();
-    // Always show exercises modal for any topic type
+  // Get exercises for a specific day based on its discipline
+  const getExercisesForDay = (day) => {
+    // Determine professor: check discipline first (for multi-discipline roadmaps), then fall back to main professor
+    const discipline = day.discipline;
+    let professorName = mainProfessorName;
+    if (discipline && professorsByDiscipline[discipline]) {
+      professorName = professorsByDiscipline[discipline];
+    }
+    const exercisesData = EXERCISES_BY_PROFESSOR[professorName] || { exercises: { fundamentos: [], avancado: [] } };
+    
     const topic = day.topic.toLowerCase();
     let exercises = [];
     
@@ -108,12 +117,20 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
       exercises = [...(exercisesData.exercises?.fundamentos || []), ...(exercisesData.exercises?.avancado || [])];
     }
     
+    return { exercises, professorName, subject: exercisesData.subject };
+  };
+
+  const handleDayClick = (e, day) => {
+    e.stopPropagation();
+    // Always show exercises modal for any topic type
+    const { exercises, professorName, subject } = getExercisesForDay(day);
+    
     setSelectedExercise({
       topic: day.topic,
       date: day.date,
       exercises: exercises,
       professor: professorName,
-      subject: exercisesData.subject
+      subject: subject
     });
     setExerciseModalOpen(true);
   };

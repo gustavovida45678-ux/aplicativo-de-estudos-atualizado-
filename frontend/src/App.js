@@ -12,7 +12,6 @@ import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
 import ApiKeySettings, { getCustomApiKey } from "./components/ApiKeySettings";
-import StudySchedule from "./components/StudySchedule";
 import StudyMaterials from "./components/StudyMaterials";
 import LoginPage from "./components/LoginPage";
 import UserDashboard from "./components/UserDashboard";
@@ -429,14 +428,6 @@ function App() {
               <span className="nav-tab-text">Exercícios</span>
             </button>
             <button
-              onClick={() => setActiveTab("schedule")}
-              className={`nav-tab schedule ${activeTab === "schedule" ? "active" : ""}`}
-              data-testid="tab-schedule"
-            >
-              <Calendar size={18} />
-              <span className="nav-tab-text">Cronograma</span>
-            </button>
-            <button
               onClick={() => setActiveTab("materials")}
               className={`nav-tab materials ${activeTab === "materials" ? "active" : ""}`}
               data-testid="tab-materials"
@@ -454,19 +445,17 @@ function App() {
             </button>
           </div>
 
-          {activeTab === "dashboard" ? (
+{activeTab === "dashboard" ? (
             <UserDashboard currentUser={currentUser} onLogout={handleLogout} />
           ) : activeTab === "feedback" ? (
             <FeedbackForm currentUser={currentUser} />
           ) : activeTab === "materials" ? (
             <StudyMaterials />
-          ) : activeTab === "schedule" ? (
-        <StudySchedule />
-      ) : activeTab === "exercises" ? (
-        <ExerciseSystem />
-      ) : activeTab === "math" ? (
-        <MathExplainer />
-      ) : (
+          ) : activeTab === "exercises" ? (
+            <ExerciseSystem />
+          ) : activeTab === "math" ? (
+            <MathExplainer />
+          ) : (
         <>
           {/* Drag and drop overlay */}
           {isDragging && (

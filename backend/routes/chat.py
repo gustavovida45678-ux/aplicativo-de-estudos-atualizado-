@@ -20,7 +20,7 @@ router = APIRouter()
 # Request/Response Models
 class ChatMessage(BaseModel):
     message: str
-    provider: str = Field(default="groq", description="Provider type (groq, gemini, claude, etc.)")
+    provider: str = Field(default="ollama", description="Provider type (ollama, groq, gemini, claude, etc.)")
     model: Optional[str] = Field(default=None, description="Specific model key")
     custom_api_key: Optional[str] = Field(default=None, description="Custom API key override")
     system_prompt: Optional[str] = Field(default=None, description="Custom system prompt")

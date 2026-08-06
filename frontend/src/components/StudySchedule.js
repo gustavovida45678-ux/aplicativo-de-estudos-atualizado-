@@ -8,6 +8,7 @@ import ProgressDashboard from './ProgressDashboard';
 import StudyLog from './StudyLog';
 import ReviewSchedule from './ReviewSchedule';
 import RoadmapPlan from './RoadmapPlan';
+import ExerciseSidebar from './ExerciseSidebar';
 import { roadmapInfo as info110, phases as phases110, typeConfig as typeConfig110 } from '../data/roadmap110Days';
 import { roadmapInfo as info16, phases as phases16, typeConfig as typeConfig16, disciplineConfig } from '../data/roadmap16Weeks';
 import axios from 'axios';
@@ -29,6 +30,8 @@ const StudySchedule = () => {
   const [studySessions, setStudySessions] = useState([]);
   const [attendedClasses, setAttendedClasses] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [exerciseSidebarOpen, setExerciseSidebarOpen] = useState(false);
+  const [selectedExercise, setSelectedExercise] = useState(null);
 
   // Load from backend and localStorage
   useEffect(() => {
@@ -161,6 +164,17 @@ const StudySchedule = () => {
         return [...prev, classKey];
       }
     });
+  };
+
+  const handleSelectExercise = (exercise) => {
+    setSelectedExercise(exercise);
+    // TODO: abrir modal de exercícios ou navegar para tela de prática
+    toast.success(`${exercise.topicName} - ${exercise.count} exercícios`);
+    console.log('Exercício selecionado:', exercise);
+  };
+
+  const handleCloseSidebar = (open) => {
+    setExerciseSidebarOpen(open);
   };
 
   if (isLoading) {
@@ -318,6 +332,13 @@ const StudySchedule = () => {
           />
         )}
       </div>
+
+      {/* Exercise Sidebar */}
+      <ExerciseSidebar
+        isOpen={exerciseSidebarOpen}
+        onClose={handleCloseSidebar}
+        onSelectExercise={handleSelectExercise}
+      />
     </div>
   );
 };

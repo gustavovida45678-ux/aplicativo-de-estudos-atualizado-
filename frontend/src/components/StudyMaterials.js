@@ -525,7 +525,7 @@ const materialsData = [
       },
       {
         id: 'sd-microprocessadores',
-        topicId: null,
+        topicId: 'sd_microprocessadores',
         subject: 'Sistemas Digitais',
         name: 'Microprocessadores e Microcontroladores',
         icon: '🖥️',
@@ -537,6 +537,7 @@ const materialsData = [
         revisoes: [
           { title: 'Resumo de microprocessadores', note: 'CPU, registradores, ciclo de instrução' },
           { title: 'Diferença micro vs microcontrolador', note: 'Arquitetura von Neumann x Harvard' },
+          { title: 'Revisão Semana 6 - Microprocessadores', note: 'Semana 6: arquitetura, barramentos, microcontroladores', week: 6 },
         ],
         exercicios: [
           { name: 'Lista 13 - Microprocessadores', count: 6, icon: '🖥️' },
@@ -545,7 +546,7 @@ const materialsData = [
       },
       {
         id: 'sd-projeto-digital',
-        topicId: null,
+        topicId: 'sd_projeto_digital',
         subject: 'Sistemas Digitais',
         name: 'Projeto de Circuitos Digitais (PRO)',
         icon: '🔧',
@@ -557,6 +558,7 @@ const materialsData = [
         revisoes: [
           { title: 'Roteiro do projeto (PRO)', note: 'Voltímetro, relógio, cronômetro, temporizador - vale nota em MB2' },
           { title: 'Do esquema à prática', note: 'Tabela-verdade → expressão → circuito → protótipo' },
+          { title: 'Revisão Semana 12 - Projeto Digital (PRO)', note: 'Semana 12: voltímetro, relógio, cronômetro, documentação', week: 12 },
         ],
         exercicios: [
           { name: 'Projeto: voltímetro digital', count: 5, icon: '🔧' },

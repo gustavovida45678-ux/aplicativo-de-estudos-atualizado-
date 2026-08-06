@@ -150,4 +150,4 @@ const ExerciseSidebar = ({ onSelectExercise, isOpen, onClose }) => {
   );
 };
 
-export default ExerciseSidebar;
+export default ExerciseSidebar;// force rebuild

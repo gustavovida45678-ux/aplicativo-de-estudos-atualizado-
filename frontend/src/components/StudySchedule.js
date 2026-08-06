@@ -8,6 +8,8 @@ import ProgressDashboard from './ProgressDashboard';
 import StudyLog from './StudyLog';
 import ReviewSchedule from './ReviewSchedule';
 import RoadmapPlan from './RoadmapPlan';
+import { roadmapInfo as info110, phases as phases110, typeConfig as typeConfig110 } from '../data/roadmap110Days';
+import { roadmapInfo as info16, phases as phases16, typeConfig as typeConfig16, disciplineConfig } from '../data/roadmap16Weeks';
 import axios from 'axios';
 import { Toaster, toast } from 'sonner';
 
@@ -21,7 +23,7 @@ const scheduleApi = axios.create({
 
 const StudySchedule = () => {
   const [activeView, setActiveView] = useState('roadmap');
-  const [roadmapVariant, setRoadmapVariant] = useState('calcnum');
+  const [roadmapChoice, setRoadmapChoice] = useState('weeks16');
   const [subjectsData, setSubjectsData] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [studySessions, setStudySessions] = useState([]);
@@ -186,7 +188,7 @@ const StudySchedule = () => {
           <BookOpen className="schedule-icon" size={32} />
           <div>
             <h1 className="schedule-title">Cronograma de Estudos</h1>
-            <p className="schedule-subtitle">Cálculo Numérico (Thiago Vedovato) • Estrutura de Dados (Roney Lopes Lima) • Sistemas Digitais (Jose Antonio Lambert) — IFG/Jataí-GO</p>
+<p className="schedule-subtitle">IFG/Jataí-GO • Estrutura de Dados & Sistemas Digitais • Cálculo Numérico</p>
           </div>
         </div>
       </div>
@@ -276,31 +278,37 @@ const StudySchedule = () => {
           />
         )}
         {activeView === 'roadmap' && (
-          <div className="space-y-4">
-            <div className="flex gap-2 justify-center">
+          <div className="roadmap-selector">
+            <div className="roadmap-selector-tabs">
               <button
-                onClick={() => setRoadmapVariant('calcnum')}
-                className={`schedule-tab ${roadmapVariant === 'calcnum' ? 'active' : ''}`}
+                onClick={() => setRoadmapChoice('weeks16')}
+                className={`roadmap-selector-tab ${roadmapChoice === 'weeks16' ? 'active' : ''}`}
               >
-                <GraduationCap size={18} />
-                Cálculo Numérico
+                Cronograma 16 Semanas
               </button>
               <button
-                onClick={() => setRoadmapVariant('estruturadados')}
-                className={`schedule-tab ${roadmapVariant === 'estruturadados' ? 'active' : ''}`}
+                onClick={() => setRoadmapChoice('weeks110')}
+                className={`roadmap-selector-tab ${roadmapChoice === 'weeks110' ? 'active' : ''}`}
               >
-                <GraduationCap size={18} />
-                Estrutura de Dados
-              </button>
-              <button
-                onClick={() => setRoadmapVariant('sistemasdigitais')}
-                className={`schedule-tab ${roadmapVariant === 'sistemasdigitais' ? 'active' : ''}`}
-              >
-                <GraduationCap size={18} />
-                Sistemas Digitais
+                Roteiro 110 Dias
               </button>
             </div>
-            <RoadmapPlan variant={roadmapVariant} />
+            {roadmapChoice === 'weeks16' ? (
+              <RoadmapPlan
+                info={info16}
+                phases={phases16}
+                typeConfig={typeConfig16}
+                disciplineConfig={disciplineConfig}
+                storageKey="roadmap16weeks_completed_v1"
+              />
+            ) : (
+              <RoadmapPlan
+                info={info110}
+                phases={phases110}
+                typeConfig={typeConfig110}
+                storageKey="roadmap110_completed_v1"
+              />
+            )}
           </div>
         )}
         {activeView === 'reviews' && (

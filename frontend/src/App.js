@@ -7,12 +7,13 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
 import ApiKeySettings, { getCustomApiKey } from "./components/ApiKeySettings";
 import StudySchedule from "./components/StudySchedule";
+import StudyMaterials from "./components/StudyMaterials";
 import LoginPage from "./components/LoginPage";
 import UserDashboard from "./components/UserDashboard";
 import FeedbackForm from "./components/FeedbackForm";
@@ -436,6 +437,14 @@ function App() {
               <span className="nav-tab-text">Cronograma</span>
             </button>
             <button
+              onClick={() => setActiveTab("materials")}
+              className={`nav-tab materials ${activeTab === "materials" ? "active" : ""}`}
+              data-testid="tab-materials"
+            >
+              <Library size={18} />
+              <span className="nav-tab-text">Materiais</span>
+            </button>
+            <button
               onClick={() => setActiveTab("feedback")}
               className={`nav-tab feedback ${activeTab === "feedback" ? "active" : ""}`}
               data-testid="tab-feedback"
@@ -449,6 +458,8 @@ function App() {
             <UserDashboard currentUser={currentUser} onLogout={handleLogout} />
           ) : activeTab === "feedback" ? (
             <FeedbackForm currentUser={currentUser} />
+          ) : activeTab === "materials" ? (
+            <StudyMaterials />
           ) : activeTab === "schedule" ? (
         <StudySchedule />
       ) : activeTab === "exercises" ? (

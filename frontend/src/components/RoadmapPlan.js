@@ -4,51 +4,32 @@ import {
   Target, Clock, Award, TrendingUp, User, MapPin, ChevronDown, ChevronRight,
   PenTool, Repeat, Package, Trophy,
 } from 'lucide-react';
-import { roadmapInfo as roadmap110Info, phases as roadmap110Phases, typeConfig } from '../data/roadmap110Days';
-import { roadmapEDInfo, roadmapEDPhases } from '../data/roadmapED';
-import { roadmapSDInfo, roadmapSDPhases } from '../data/roadmapSD';
+import { roadmapInfo as defaultInfo, phases as defaultPhases, typeConfig as defaultTypeConfig } from '../data/roadmap110Days';
 import '../styles/roadmap110.css';
 
-const ROADMAPS = {
-  calcnum: {
-    info: roadmap110Info,
-    phases: roadmap110Phases,
-    storageKey: 'roadmap110_completed_v1',
-  },
-  estruturadados: {
-    info: roadmapEDInfo,
-    phases: roadmapEDPhases,
-    storageKey: 'roadmap_ed_completed_v1',
-  },
-  sistemasdigitais: {
-    info: roadmapSDInfo,
-    phases: roadmapSDPhases,
-    storageKey: 'roadmap_sd_completed_v1',
-  },
-};
+const DEFAULT_STORAGE_KEY = 'roadmap110_completed_v1';
 
-const RoadmapPlan = ({ variant = 'calcnum' }) => {
-  const roadmap = ROADMAPS[variant] || ROADMAPS.calcnum;
-  const roadmapInfo = roadmap.info;
-  const phases = roadmap.phases;
-  const STORAGE_KEY = roadmap.storageKey;
+const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfigProp, disciplineConfig, storageKey = DEFAULT_STORAGE_KEY }) => {
+  const roadmapInfo = infoProp || defaultInfo;
+  const phases = phasesProp || defaultPhases;
+  const typeConfig = typeConfigProp || defaultTypeConfig;
 
   const [completed, setCompleted] = useState({});
-  const [expandedPhase, setExpandedPhase] = useState('phase1');
+  const [expandedPhase, setExpandedPhase] = useState(phases[0]?.id);
 
   // Load saved progress
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(storageKey);
       if (saved) setCompleted(JSON.parse(saved));
     } catch (e) {
       console.error(e);
     }
-  }, [STORAGE_KEY]);
+  }, [storageKey]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(completed));
-  }, [completed]);
+    localStorage.setItem(storageKey, JSON.stringify(completed));
+  }, [completed, storageKey]);
 
   const toggleDay = (phaseId, weekNum, dayRange) => {
     const key = `${phaseId}-w${weekNum}-d${dayRange}`;
@@ -103,6 +84,28 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
     }
   };
 
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+      .replace(/^./, c => c.toUpperCase());
+  };
+
+  const totalWeeks = roadmapInfo.totalWeeks || phases.reduce((acc, p) => acc + p.weeksData.length, 0);
+  const startLabel = formatDate(roadmapInfo.startDate) || `Semana 1`;
+  const endLabel = formatDate(roadmapInfo.endDate) || `Semana ${totalWeeks}`;
+  const durationLabel = roadmapInfo.totalDays
+    ? `${roadmapInfo.totalDays} dias • ${totalWeeks} sem`
+    : `${totalWeeks} semanas`;
+
+  const breakdown = roadmapInfo.breakdown || {
+    content: countByType('study'),
+    exercises: countByType('exercise'),
+    reviews: countByType('review'),
+    finalization: countByType('delivery'),
+  };
+
   return (
     <div className="roadmap110-container">
       {/* Hero Header */}
@@ -113,7 +116,7 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
           </div>
           <div className="roadmap110-hero-text">
             <div className="roadmap110-hero-badge">Plano de Estudos Detalhado</div>
-            <h1 className="roadmap110-hero-title">{roadmapInfo.title}</h1>
+            <h1 className="roadmap110-hero-title">{roadmapInfo.title || 'Roteiro 110 Dias'}</h1>
             <p className="roadmap110-hero-subtitle">{roadmapInfo.subject}</p>
             <div className="roadmap110-hero-meta">
               <div className="hero-meta-item">
@@ -139,21 +142,21 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
           <Calendar size={22} />
           <div>
             <div className="info-card-label">Início</div>
-            <div className="info-card-value">{roadmapInfo.startLabel}</div>
+            <div className="info-card-value">{startLabel}</div>
           </div>
         </div>
         <div className="info-card info-date">
           <Target size={22} />
           <div>
-            <div className="info-card-label">Entrega</div>
-            <div className="info-card-value">{roadmapInfo.endLabel}</div>
+            <div className="info-card-label">Término</div>
+            <div className="info-card-value">{endLabel}</div>
           </div>
         </div>
         <div className="info-card info-date">
           <Clock size={22} />
           <div>
             <div className="info-card-label">Duração</div>
-            <div className="info-card-value">{roadmapInfo.totalDays} dias • {roadmapInfo.totalWeeks} sem</div>
+            <div className="info-card-value">{durationLabel}</div>
           </div>
         </div>
         <div className="info-card info-progress">
@@ -187,7 +190,7 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
             <div className="breakdown-data">
               <div className="breakdown-number">{completedByType('study')}/{countByType('study')}</div>
               <div className="breakdown-label">Estudo de Conteúdo</div>
-              <div className="breakdown-sub">{countByType('study')} dias planejados</div>
+              <div className="breakdown-sub">~{breakdown.content} dias planejados</div>
             </div>
           </div>
           <div className="breakdown-card breakdown-exercise">
@@ -195,7 +198,7 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
             <div className="breakdown-data">
               <div className="breakdown-number">{completedByType('exercise')}/{countByType('exercise')}</div>
               <div className="breakdown-label">Exercícios & Atividades</div>
-              <div className="breakdown-sub">{countByType('exercise')} dias planejados</div>
+              <div className="breakdown-sub">~{breakdown.exercises} dias planejados</div>
             </div>
           </div>
           <div className="breakdown-card breakdown-review">
@@ -203,7 +206,7 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
             <div className="breakdown-data">
               <div className="breakdown-number">{completedByType('review')}/{countByType('review')}</div>
               <div className="breakdown-label">Revisões Programadas</div>
-              <div className="breakdown-sub">{countByType('review')} dias planejados</div>
+              <div className="breakdown-sub">~{breakdown.reviews} dias planejados</div>
             </div>
           </div>
           <div className="breakdown-card breakdown-delivery">
@@ -211,7 +214,7 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
             <div className="breakdown-data">
               <div className="breakdown-number">{completedByType('delivery')}/{countByType('delivery')}</div>
               <div className="breakdown-label">Finalização & Entrega</div>
-              <div className="breakdown-sub">{countByType('delivery')} dias planejados</div>
+              <div className="breakdown-sub">~{breakdown.finalization} dias planejados</div>
             </div>
           </div>
         </div>
@@ -220,6 +223,12 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
       {/* Legend */}
       <div className="roadmap110-legend">
         {Object.entries(typeConfig).map(([key, cfg]) => (
+          <div className="legend-pill" key={key}>
+            <span className="legend-dot" style={{ background: cfg.color }} />
+            <span>{cfg.label}</span>
+          </div>
+        ))}
+        {disciplineConfig && Object.entries(disciplineConfig).map(([key, cfg]) => (
           <div className="legend-pill" key={key}>
             <span className="legend-dot" style={{ background: cfg.color }} />
             <span>{cfg.label}</span>
@@ -286,6 +295,7 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
                           const key = `${phase.id}-w${week.number}-d${day.range}`;
                           const isDone = !!completed[key];
                           const cfg = typeConfig[day.type];
+                          const disc = day.discipline && disciplineConfig ? disciplineConfig[day.discipline] : null;
 
                           return (
                             <div
@@ -308,6 +318,18 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
                                 <div className="day-top-row">
                                   <span className="day-range">Dia{day.range.includes('-') ? 's' : ''} {day.range}</span>
                                   <span className="day-date">{day.date}</span>
+                                  {disc && (
+                                    <span
+                                      className="day-type-badge"
+                                      style={{
+                                        color: disc.color,
+                                        borderColor: disc.borderColor,
+                                        background: 'rgba(0,0,0,0.25)',
+                                      }}
+                                    >
+                                      {disc.short}
+                                    </span>
+                                  )}
                                   <span
                                     className="day-type-badge"
                                     style={{
@@ -344,7 +366,7 @@ const RoadmapPlan = ({ variant = 'calcnum' }) => {
         </div>
         <div className="footer-text">
           <h3>Consistência é a chave do sucesso</h3>
-          <p>Siga o cronograma, marque o progresso diário e alcance a entrega final em {roadmapInfo.endLabel}.</p>
+          <p>Siga o cronograma, marque o progresso diário e conclua até {endLabel}.</p>
         </div>
       </div>
     </div>

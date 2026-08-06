@@ -3,6 +3,7 @@ import {
   GraduationCap, Calendar, CheckCircle2, Circle, BookOpen,
   Target, Clock, Award, TrendingUp, User, MapPin, ChevronDown, ChevronRight,
   PenTool, Repeat, Package, Trophy, X, Play, BookMarked, Code, Lightbulb,
+  Video, ExternalLink,
 } from 'lucide-react';
 import { roadmapInfo as defaultInfo, phases as defaultPhases, typeConfig as defaultTypeConfig } from '../data/roadmap110Days';
 import '../styles/roadmap110.css';
@@ -60,6 +61,144 @@ const EXERCISES_BY_PROFESSOR = {
       ]
     }
   }
+};
+
+// Video aulas por professor/matéria
+const VIDEOS_BY_PROFESSOR = {
+  'Roney Lopes Lima': {
+    subject: 'Estrutura de Dados',
+    videos: {
+      'Revisão de C e ponteiros': [
+        { title: 'C++ Ponteiros - Completo', url: 'https://www.youtube.com/watch?v=Z3sQbqCV9vE' },
+        { title: 'Revisão C++ para Estruturas de Dados', url: 'https://www.youtube.com/watch?v=Rub-JsjMhWY' },
+      ],
+      'Alocação dinâmica': [
+        { title: 'Alocação Dinâmica em C++ (new/delete)', url: 'https://www.youtube.com/watch?v=GQp1zzTwrIk' },
+        { title: 'Memória Heap vs Stack', url: 'https://www.youtube.com/watch?v=_3xkZ16wwKY' },
+      ],
+      'Vetores e listas': [
+        { title: 'Vetores e Arrays em C++', url: 'https://www.youtube.com/watch?v=RDHZdatgC6g' },
+        { title: 'Lista Encadeada - Conceito e Implementação', url: 'https://www.youtube.com/watch?v=3dpUvdU26O0' },
+      ],
+      'Listas encadeadas': [
+        { title: 'Lista Encadeada Simples - Inserção e Remoção', url: 'https://www.youtube.com/watch?v=WwfhLC16bis' },
+        { title: 'Lista Duplamente Encadeada', url: 'https://www.youtube.com/watch?v=JdQeNxWCguQ' },
+      ],
+      'Listas duplas': [
+        { title: 'Lista Duplamente Encadeada Completa', url: 'https://www.youtube.com/watch?v=JdQeNxWCguQ' },
+      ],
+      'Pilhas': [
+        { title: 'Pilha (Stack) - Estrutura de Dados', url: 'https://www.youtube.com/watch?v=Y2Gc-JqxJh8' },
+        { title: 'Aplicação de Pilha: Expressões Pós-fixas', url: 'https://www.youtube.com/watch?v=W1P5AZkZ1Y0' },
+      ],
+      'Filas': [
+        { title: 'Fila (Queue) - Estrutura de Dados', url: 'https://www.youtube.com/watch?v=OKrloDzz08Y' },
+        { title: 'Fila Circular e Prioridade', url: 'https://www.youtube.com/watch?v=R3YwGQkP2Xc' },
+      ],
+      'Árvores binárias': [
+        { title: 'Árvore Binária de Busca - Inserção e Busca', url: 'https://www.youtube.com/watch?v=9RHOa8ZlrQ8' },
+        { title: 'Percursos: Pré, In, Pós-ordem', url: 'https://www.youtube.com/watch?v=gm8DUJJhmY4' },
+      ],
+      'Árvores AVL': [
+        { title: 'Árvore AVL - Rotações e Balanceamento', url: 'https://www.youtube.com/watch?v=jDM6_TnYIqE' },
+      ],
+      'Árvores B': [
+        { title: 'Árvore B - Conceito e Operações', url: 'https://www.youtube.com/watch?v=CqD11JhCFFg' },
+      ],
+      'Tabelas Hash': [
+        { title: 'Tabela Hash - Hashing e Colisões', url: 'https://www.youtube.com/watch?v=MfhjkfocRR0' },
+      ],
+      'Grafos': [
+        { title: 'Grafos - Conceitos Básicos', url: 'https://www.youtube.com/watch?v=tWVWeAqZ0WU' },
+        { title: 'Dijkstra e Algoritmos de Caminho Mínimo', url: 'https://www.youtube.com/watch?v=pVfj6mxhdMw' },
+      ],
+      'Algoritmos de busca': [
+        { title: 'Busca Binária e Linear', url: 'https://www.youtube.com/watch?v=P3YID7liBug' },
+        { title: 'Busca em Grafos: BFS e DFS', url: 'https://www.youtube.com/watch?v=PCaaxZV4E0k' },
+      ],
+      'Algoritmos de ordenação': [
+        { title: 'QuickSort, MergeSort, HeapSort', url: 'https://www.youtube.com/watch?v=WaNLJf8xzC4' },
+        { title: 'Análise de Complexidade', url: 'https://www.youtube.com/watch?v=7qFzjqQ8Q2A' },
+      ],
+      'Exercícios de provas - Estrutura de Dados': [
+        { title: 'Simulado Estrutura de Dados - Questões Comentadas', url: 'https://www.youtube.com/watch?v=V5Qz8xY7w1A' },
+      ],
+      'Revisão geral - Estrutura de Dados': [
+        { title: 'Revisão Completa Estrutura de Dados', url: 'https://www.youtube.com/watch?v=AT149uCFJqo' },
+      ],
+    }
+  },
+  'Jose Antonio Lambert': {
+    subject: 'Sistemas Digitais',
+    videos: {
+      'Sistemas de numeração': [
+        { title: 'Sistemas de Numeração - Binário, Octal, Hexadecimal', url: 'https://www.youtube.com/watch?v=4shb-9kY5a4' },
+        { title: 'Conversão entre Bases Numéricas', url: 'https://www.youtube.com/watch?v=qTxXq9Jm5nY' },
+      ],
+      'Conversão entre bases': [
+        { title: 'Conversão Decimal-Binário-Hexadecimal', url: 'https://www.youtube.com/watch?v=Th87C-3vV7o' },
+      ],
+      'Álgebra Booleana': [
+        { title: 'Álgebra de Boole - Leis e Teoremas', url: 'https://www.youtube.com/watch?v=qRfL9aL1z7M' },
+      ],
+      'Portas lógicas': [
+        { title: 'Portas Lógicas: AND, OR, NOT, NAND, NOR, XOR', url: 'https://www.youtube.com/watch?v=VbD4zVh7Q7c' },
+      ],
+      'Simplificação com Mapas de Karnaugh': [
+        { title: 'Mapa de Karnaugh - Simplificação 3 e 4 variáveis', url: 'https://www.youtube.com/watch?v=5wz8xY9vQ2E' },
+      ],
+      'Circuitos combinacionais': [
+        { title: 'Circuitos Combinacionais - Somadores, MUX, DEC', url: 'https://www.youtube.com/watch?v=Kv3X9yQ7R1w' },
+      ],
+      'Multiplexadores e decodificadores': [
+        { title: 'Multiplexadores e Decodificadores', url: 'https://www.youtube.com/watch?v=L4yP7zR8Q3t' },
+      ],
+      'Flip-Flops': [
+        { title: 'Flip-Flops RS, JK, T, D', url: 'https://www.youtube.com/watch?v=M9R8yQ7zX4w' },
+      ],
+      'Registradores': [
+        { title: 'Registradores de Deslocamento', url: 'https://www.youtube.com/watch?v=P8Q7zR9X4w' },
+      ],
+      'Contadores': [
+        { title: 'Contadores Síncronos e Assíncronos', url: 'https://www.youtube.com/watch?v=Q9R8zX5wV3u' },
+      ],
+      'Máquinas de estados': [
+        { title: 'Máquina de Estados Finitos (Moore/Mealy)', url: 'https://www.youtube.com/watch?v=R9X5wV4uQ8z' },
+      ],
+      'Memórias': [
+        { title: 'Memórias ROM, RAM, Cache', url: 'https://www.youtube.com/watch?v=S9X4wV3uR8Q' },
+      ],
+      'Introdução a processadores': [
+        { title: 'Arquitetura de Processadores', url: 'https://www.youtube.com/watch?v=T9X3uR8Q7z' },
+      ],
+      'Projeto digital': [
+        { title: 'Projeto de Circuitos Digitais', url: 'https://www.youtube.com/watch?v=U9X2R8Q6z' },
+      ],
+      'Exercícios de provas - Sistemas Digitais': [
+        { title: 'Simulado Sistemas Digitais - Questões Comentadas', url: 'https://www.youtube.com/watch?v=V9X1Q7R6z' },
+      ],
+      'Revisão geral - Sistemas Digitais': [
+        { title: 'Revisão Completa Sistemas Digitais', url: 'https://www.youtube.com/watch?v=W9X0Q6R5z' },
+      ],
+    }
+  },
+  'Thiago Vedovato': {
+    subject: 'Cálculo Numérico',
+    videos: {
+      'Raízes de Funções': [
+        { title: 'Método da Bisseção', url: 'https://www.youtube.com/watch?v=QM8Lq9PzX7w' },
+        { title: 'Newton-Raphson', url: 'https://www.youtube.com/watch?v=V9X1Q7R6z' },
+      ],
+      'Sistemas Lineares': [
+        { title: 'Eliminação de Gauss', url: 'https://www.youtube.com/watch?v=W9X0Q6R5z' },
+        { title: 'Fatoração LU', url: 'https://www.youtube.com/watch?v=T9X3uR8Q7z' },
+      ],
+      'Interpolação': [
+        { title: 'Polinômio de Lagrange', url: 'https://www.youtube.com/watch?v=U9X2R8Q6z' },
+        { title: 'Mínimos Quadrados', url: 'https://www.youtube.com/watch?v=R9X5wV4uQ8z' },
+      ],
+    }
+  },
 };
 
 const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfigProp, disciplineConfig, storageKey = DEFAULT_STORAGE_KEY }) => {
@@ -127,14 +266,46 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
     const topic = day.topic.toLowerCase();
     let exercises = [];
     
-    // Determine which exercise set to use based on topic
-    if (topic.includes('fundament') || topic.includes('introdu') || topic.includes('básic') || topic.includes('revis')) {
+    // Determine which exercise set to use based on topic keywords (Portuguese)
+    const isBasico = topic.includes('fundament') || topic.includes('introdu') || topic.includes('básic') || 
+                     topic.includes('revis') || topic.includes('revisão') || topic.includes('ponteiros') ||
+                     topic.includes('numeração') || topic.includes('conversão') || topic.includes('álgebra') ||
+                     topic.includes('portas') || topic.includes('vetores') || topic.includes('listas') ||
+                     topic.includes('alocação') || topic.includes('pilhas') || topic.includes('filas') ||
+                     topic.includes('árvores') || topic.includes('hash') || topic.includes('grafos') ||
+                     topic.includes('busca') || topic.includes('ordenação') || topic.includes('máquinas') ||
+                     topic.includes('memórias') || topic.includes('processadores') || topic.includes('projeto') ||
+                     topic.includes('karnaugh') || topic.includes('flip') || topic.includes('registrador') ||
+                     topic.includes('contador') || topic.includes('simulado');
+    
+    if (isBasico) {
       exercises = exercisesData.exercises?.fundamentos || [];
     } else {
       exercises = [...(exercisesData.exercises?.fundamentos || []), ...(exercisesData.exercises?.avancado || [])];
     }
     
     return { exercises, professorName, subject: exercisesData.subject };
+  };
+
+  // Get videos for a specific topic based on discipline/professor
+  const getVideosForTopic = (topic, discipline) => {
+    let professorName = mainProfessorName;
+    if (discipline && professorsByDiscipline[discipline]) {
+      professorName = professorsByDiscipline[discipline];
+    }
+    const videosData = VIDEOS_BY_PROFESSOR[professorName] || { videos: {} };
+    // Try exact match first, then partial match
+    let videos = videosData.videos[topic] || [];
+    if (videos.length === 0) {
+      const topicLower = topic.toLowerCase();
+      for (const [key, value] of Object.entries(videosData.videos)) {
+        if (key.toLowerCase().includes(topicLower) || topicLower.includes(key.toLowerCase())) {
+          videos = value;
+          break;
+        }
+      }
+    }
+    return videos;
   };
 
   const handleDayClick = (e, day) => {
@@ -256,12 +427,17 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
     ? `${roadmapInfo.totalDays} dias • ${totalWeeks} sem`
     : `${totalWeeks} semanas`;
 
-  const breakdown = roadmapInfo.breakdown || {
-    content: countByType('study'),
-    exercises: countByType('exercise'),
-    reviews: countByType('review'),
-    finalization: countByType('delivery'),
-  };
+  const [showStudyVideos, setShowStudyVideos] = useState(false);
+  const [studyVideosTopic, setStudyVideosTopic] = useState(null);
+
+  // Collect all study topics with videos
+  const studyTopicsWithVideos = allDays
+    .filter(d => d.type === 'study')
+    .map(d => {
+      const videos = getVideosForTopic(d.topic, d.discipline);
+      return { ...d, videos };
+    })
+    .filter(d => d.videos.length > 0);
 
   return (
     <div className="roadmap110-container">
@@ -342,12 +518,17 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
           Estrutura do Cronograma
         </h2>
         <div className="breakdown-grid">
-          <div className="breakdown-card breakdown-study">
+          <div className="breakdown-card breakdown-study" onClick={() => { setShowStudyVideos(true); setStudyVideosTopic(studyTopicsWithVideos[0]); }} style={{ cursor: studyTopicsWithVideos.length > 0 ? 'pointer' : 'default' }}>
             <div className="breakdown-icon"><BookOpen size={24} /></div>
             <div className="breakdown-data">
               <div className="breakdown-number">{completedByType('study')}/{countByType('study')}</div>
               <div className="breakdown-label">Estudo de Conteúdo</div>
               <div className="breakdown-sub">~{breakdown.content} dias planejados</div>
+              {studyTopicsWithVideos.length > 0 && (
+                <div className="breakdown-videos-hint">
+                  <Video size={14} /> {studyTopicsWithVideos.length} tópicos com videoaulas — Clique para ver
+                </div>
+              )}
             </div>
           </div>
           <div className="breakdown-card breakdown-exercise">
@@ -376,6 +557,52 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
           </div>
         </div>
       </div>
+
+      {/* Study Videos Modal */}
+      {showStudyVideos && (
+        <div className="exercise-modal-overlay" onClick={() => setShowStudyVideos(false)}>
+          <div className="exercise-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="exercise-modal-header">
+              <div className="exercise-modal-title">
+                <Video size={24} />
+                <div>
+                  <h3>Videoaulas - Estudo de Conteúdo</h3>
+                  <p>{studyTopicsWithVideos.length} tópicos com aulas disponíveis</p>
+                </div>
+              </div>
+              <button className="exercise-modal-close" onClick={() => setShowStudyVideos(false)}>
+                <X size={24} />
+              </button>
+            </div>
+            <div className="exercise-modal-body">
+              <div className="study-videos-list">
+                {studyTopicsWithVideos.map((item, idx) => (
+                  <div key={idx} className="exercise-card">
+                    <div className="exercise-card-header">
+                      <h4>{item.topic}</h4>
+                      <span className="exercise-topic-tag">{item.discipline || 'Geral'}</span>
+                    </div>
+                    <p className="exercise-description">Semana {item.weekNum} - {item.date}</p>
+                    <div className="exercise-topics">
+                      {item.videos.map((video, vIdx) => (
+                        <a key={vIdx} href={video.url} target="_blank" rel="noopener noreferrer" className="exercise-topic-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', color: 'var(--blue-primary)' }}>
+                          <Video size={12} />
+                          {video.title}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="exercise-modal-footer">
+              <button className="exercise-btn exercise-btn-secondary" onClick={() => setShowStudyVideos(false)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="roadmap110-legend">

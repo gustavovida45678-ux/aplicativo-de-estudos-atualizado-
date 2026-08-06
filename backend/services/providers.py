@@ -19,6 +19,12 @@ class ProviderType(str, Enum):
     FREE_AI = "free_ai"
     GROQ = "groq"
     OPENROUTER = "openrouter"
+    OLLAMA = "ollama"
+    XAI = "xai"
+    COHERE = "cohere"
+    TOGETHER = "together"
+    FIREWORKS = "fireworks"
+    HUGGINGFACE = "huggingface"
 
 @dataclass
 class ModelConfig:
@@ -231,6 +237,166 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
         website="https://free.ai",
         icon="gift"
     ),
+ProviderType.OLLAMA: ProviderConfig(
+        type=ProviderType.OLLAMA,
+        name="Ollama (Local)",
+        category="Local - Sem Chave",
+        models={
+            "gemma4-12b": ModelConfig(
+                model_id="ollama/gemma4:12b",
+                display_name="Gemma 4 12B",
+                context_window=262144,
+                supports_vision=True
+            ),
+            "qwen-hermes": ModelConfig(
+                model_id="ollama/qwen-hermes:latest",
+                display_name="Qwen Hermes 3B",
+                context_window=32768
+            ),
+            "qwen2.5-3b": ModelConfig(
+                model_id="ollama/qwen2.5:3b",
+                display_name="Qwen 2.5 3B",
+                context_window=32768
+            ),
+            "qwen2.5-3b-instruct": ModelConfig(
+                model_id="ollama/qwen2.5:3b-instruct",
+                display_name="Qwen 2.5 3B Instruct",
+                context_window=32768
+            ),
+        },
+        env_var="OLLAMA_API_KEY",
+        base_url="http://localhost:11434/v1",
+        requires_api_key=False,
+        free_tier_description="Totalmente grátis - roda localmente",
+        website="https://ollama.com",
+        icon="cpu"
+    ),
+    ProviderType.XAI: ProviderConfig(
+        type=ProviderType.XAI,
+        name="xAI (Grok)",
+        category="Raciocínio",
+        models={
+            "grok-2": ModelConfig(
+                model_id="xai/grok-2",
+                display_name="Grok 2",
+                context_window=131072
+            ),
+            "grok-2-mini": ModelConfig(
+                model_id="xai/grok-2-mini",
+                display_name="Grok 2 Mini",
+                context_window=131072
+            ),
+        },
+        env_var="XAI_API_KEY",
+        base_url="https://api.x.ai/v1",
+        free_tier_description="Gratuito com limites generosos",
+        website="https://console.x.ai/",
+        icon="brain"
+    ),
+    ProviderType.COHERE: ProviderConfig(
+        type=ProviderType.COHERE,
+        name="Cohere",
+        category="Raciocínio/Embeddings",
+        models={
+            "command-r-plus": ModelConfig(
+                model_id="cohere/command-r-plus",
+                display_name="Command R+",
+                context_window=128000
+            ),
+            "command-r": ModelConfig(
+                model_id="cohere/command-r",
+                display_name="Command R",
+                context_window=128000
+            ),
+        },
+        env_var="COHERE_API_KEY",
+        free_tier_description="Free tier com 100M tokens/mês",
+        website="https://dashboard.cohere.com/api-keys",
+        icon="zap"
+    ),
+    ProviderType.TOGETHER: ProviderConfig(
+        type=ProviderType.TOGETHER,
+        name="Together AI",
+        category="Open Source Models",
+        models={
+            "llama-3.3-70b": ModelConfig(
+                model_id="together/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                display_name="Llama 3.3 70B Turbo",
+                context_window=128000
+            ),
+            "deepseek-v3": ModelConfig(
+                model_id="together/deepseek-ai/DeepSeek-V3",
+                display_name="DeepSeek V3",
+                context_window=128000
+            ),
+            "qwen-2.5-72b": ModelConfig(
+                model_id="together/Qwen/Qwen2.5-72B-Instruct-Turbo",
+                display_name="Qwen 2.5 72B Turbo",
+                context_window=128000
+            ),
+            "mixtral-8x7b": ModelConfig(
+                model_id="together/mistralai/Mixtral-8x7B-Instruct-v0.1",
+                display_name="Mixtral 8x7B",
+                context_window=32768
+            ),
+        },
+        env_var="TOGETHER_API_KEY",
+        free_tier_description="$1 crédito grátis (≈ 5M tokens)",
+        website="https://api.together.xyz/settings/api-keys",
+        icon="users"
+    ),
+    ProviderType.FIREWORKS: ProviderConfig(
+        type=ProviderType.FIREWORKS,
+        name="Fireworks AI",
+        category="Open Source Models",
+        models={
+            "llama-3.3-70b": ModelConfig(
+                model_id="fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct",
+                display_name="Llama 3.3 70B",
+                context_window=128000
+            ),
+            "deepseek-v3": ModelConfig(
+                model_id="fireworks/accounts/fireworks/models/deepseek-v3",
+                display_name="DeepSeek V3",
+                context_window=128000
+            ),
+            "nemotron-3-ultra": ModelConfig(
+                model_id="fireworks/accounts/fireworks/models/nemotron-3-ultra",
+                display_name="Nemotron 3 Ultra",
+                context_window=4096
+            ),
+        },
+        env_var="FIREWORKS_API_KEY",
+        free_tier_description="Créditos grátis iniciais",
+        website="https://fireworks.ai/account/api-keys",
+        icon="flame"
+    ),
+    ProviderType.HUGGINGFACE: ProviderConfig(
+        type=ProviderType.HUGGINGFACE,
+        name="Hugging Face Inference",
+        category="Open Source (1000+ modelos)",
+        models={
+            "llama-3.1-70b": ModelConfig(
+                model_id="huggingface/meta-llama/Meta-Llama-3.1-70B-Instruct",
+                display_name="Llama 3.1 70B",
+                context_window=128000
+            ),
+            "mistral-7b": ModelConfig(
+                model_id="huggingface/mistralai/Mistral-7B-Instruct-v0.3",
+                display_name="Mistral 7B Instruct",
+                context_window=32768
+            ),
+            "zephyr-7b": ModelConfig(
+                model_id="huggingface/HuggingFaceH4/zephyr-7b-beta",
+                display_name="Zephyr 7B",
+                context_window=32768
+            ),
+        },
+        env_var="HUGGINGFACE_API_KEY",
+        free_tier_description="30k req/mês grátis (rate limited)",
+        website="https://huggingface.co/settings/tokens",
+        icon="huggingface"
+    ),
 }
 
 # Default model per provider (first one listed)
@@ -242,6 +408,7 @@ DEFAULT_MODELS = {
     ProviderType.GROQ: "llama-3.3-70b-versatile",
     ProviderType.OPENROUTER: "nemotron-3-ultra",
     ProviderType.FREE_AI: "qwen-2.5-72b",
+    ProviderType.OLLAMA: "gemma4-12b",
 }
 
 def get_provider_config(provider_type: ProviderType) -> Optional[ProviderConfig]:

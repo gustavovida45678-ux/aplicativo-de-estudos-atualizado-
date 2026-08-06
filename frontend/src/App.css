@@ -1171,6 +1171,40 @@ code, pre {
   margin-bottom: 2.5rem;
 }
 
+.subjects-section {
+  margin-bottom: 2.5rem;
+}
+
+.subjects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+.subject-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.subject-chip svg {
+  color: var(--blue-light);
+  flex-shrink: 0;
+}
+
+.subject-chip:hover {
+  border-color: var(--blue-primary);
+  transform: translateY(-1px);
+}
+
 .section-title {
   font-size: 1.25rem;
   font-weight: 600;
@@ -1357,7 +1391,257 @@ code, pre {
   color: var(--text-tertiary);
 }
 
+/* =============================================
+   AI Providers Section (Dashboard)
+   ============================================= */
+.ai-providers-section {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.ai-providers-section .section-header {
+  margin-bottom: 1.5rem;
+}
+
+.ai-providers-section .section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+
+.ai-providers-section .section-title svg {
+  color: var(--blue-primary);
+}
+
+.ai-providers-section .section-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.ai-providers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.ai-provider-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s ease;
+  height: 100%;
+}
+
+.ai-provider-card:hover {
+  border-color: var(--border-medium);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  background: var(--bg-elevated);
+}
+
+.provider-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+
+.provider-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, currentColor, currentColor);
+}
+
+.provider-icon.from-blue-500.to-cyan-500 {
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+}
+
+.provider-icon.from-orange-500.to-red-500 {
+  background: linear-gradient(135deg, #f97316, #ef4444);
+}
+
+.provider-icon.from-purple-500.to-pink-500 {
+  background: linear-gradient(135deg, #a855f7, #ec4899);
+}
+
+.provider-icon.from-green-500.to-teal-500 {
+  background: linear-gradient(135deg, #22c55e, #14b8a6);
+}
+
+.provider-icon.from-blue-600.to-indigo-600 {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+}
+
+.provider-icon.from-yellow-500.to-orange-500 {
+  background: linear-gradient(135deg, #eab308, #f97316);
+}
+
+.provider-icon.from-blue-500.to-blue-700 {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+}
+
+.provider-icon.from-purple-600.to-pink-600 {
+  background: linear-gradient(135deg, #9333ea, #db2777);
+}
+
+.provider-icon.from-green-400.to-emerald-600 {
+  background: linear-gradient(135deg, #4ade80, #059669);
+}
+
+.provider-icon.from-teal-500.to-cyan-500 {
+  background: linear-gradient(135deg, #14b8a6, #06b6d4);
+}
+
+.provider-icon svg {
+  color: white;
+}
+
+.provider-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.2rem 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-category {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.provider-models,
+.provider-features {
+  margin-bottom: 0.75rem;
+}
+
+.provider-models strong,
+.provider-features strong {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
+}
+
+.provider-models ul,
+.provider-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.provider-models li,
+.provider-features li {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.provider-models li:last-child,
+.provider-features li:last-child {
+  border-bottom: none;
+}
+
+.provider-models li::before,
+.provider-features li::before {
+  content: "• ";
+  color: var(--blue-primary);
+  font-weight: bold;
+  margin-right: 0.35rem;
+}
+
+.provider-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.free-tier-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-soft);
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.visit-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--blue-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.visit-btn:hover {
+  background: var(--blue-soft);
+  color: var(--blue-light);
+}
+
+.visit-btn svg {
+  transition: transform 0.15s ease;
+}
+
+.visit-btn:hover svg {
+  transform: translateX(2px);
+}
+
 /* Responsive */
+@media (max-width: 768px) {
+  .ai-providers-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .ai-provider-card {
+    padding: 1rem;
+  }
+}
+
+/* =============================================
+   Responsive (existing)
+   ============================================= */
 @media (max-width: 768px) {
   .empty-state h1 { font-size: 1.85rem; }
   .chat-container { padding: 1rem 0.75rem; padding-bottom: 180px; }

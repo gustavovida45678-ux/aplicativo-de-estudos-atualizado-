@@ -1,10 +1,10 @@
 // Cronograma de Estudos - 16 Semanas
-// Estrutura de Dados (Prof. Roney Lima) | Sistemas Digitais (Prof. José Lambert)
+// Estrutura de Dados (Prof. Roney Lopes Lima) | Sistemas Digitais (Prof. Jose Antonio Lambert)
 // IFG - Câmpus Jataí/GO
 
 export const roadmapInfo = {
   title: 'Cronograma 16 Semanas',
-  professor: 'Roney Lima & José Lambert',
+  professor: 'Roney Lopes Lima & Jose Antonio Lambert',
   institution: 'IFG - Câmpus Jataí/GO',
   course: '2º Período',
   subject: 'Estrutura de Dados & Sistemas Digitais',
@@ -15,6 +15,11 @@ export const roadmapInfo = {
     exercises: 2,
     reviews: 2,
     finalization: 0,
+  },
+  // Individual professors per discipline for exercise mapping
+  professors: {
+    ED: 'Roney Lopes Lima',
+    SD: 'Jose Antonio Lambert',
   },
 };
 

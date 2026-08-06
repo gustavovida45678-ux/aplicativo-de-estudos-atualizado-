@@ -86,6 +86,12 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
         name="Claude (Anthropic)",
         category="Raciocínio",
         models={
+            "claude-sonnet-4-20250514": ModelConfig(
+                model_id="anthropic/claude-sonnet-4-20250514",
+                display_name="Claude Sonnet 4",
+                supports_vision=True,
+                context_window=200000
+            ),
             "claude-3-5-sonnet-20241022": ModelConfig(
                 model_id="anthropic/claude-3-5-sonnet-20241022",
                 display_name="Claude 3.5 Sonnet",
@@ -94,7 +100,13 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
             ),
             "claude-3-5-haiku-20241022": ModelConfig(
                 model_id="anthropic/claude-3-5-haiku-20241022",
-                display_name="Claude 3.5 Haiku",
+                display_name="Claude 3.5 Haiku (mais barato)",
+                supports_vision=True,
+                context_window=200000
+            ),
+            "claude-3-haiku-20240307": ModelConfig(
+                model_id="anthropic/claude-3-haiku-20240307",
+                display_name="Claude 3 Haiku (rápido/barato)",
                 supports_vision=True,
                 context_window=200000
             ),
@@ -106,7 +118,7 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
             ),
         },
         env_var="ANTHROPIC_API_KEY",
-        free_tier_description="Limites variáveis por hora",
+        free_tier_description="Limites variáveis por hora; Haiku e Sonnet com boa relação custo",
         website="https://console.anthropic.com/",
         icon="brain-circuit"
     ),

@@ -47,12 +47,12 @@ class ChatService:
     
     def _load_api_keys(self):
         """Load API keys from environment variables"""
-        for provider_type, config in get_all_providers_info():
-            ptype = ProviderType(provider_type["type"])
-            api_key = os.environ.get(config["env_var"])
+        for provider_info in get_all_providers_info():
+            ptype = ProviderType(provider_info["type"])
+            api_key = os.environ.get(provider_info["env_var"])
             if api_key:
                 self.provider_keys[ptype] = api_key
-                logger.info(f"Loaded API key for {config['name']}")
+                logger.info(f"Loaded API key for {provider_info['name']}")
     
     def get_available_providers(self) -> List[Dict[str, Any]]:
         """Get providers that have API keys configured"""

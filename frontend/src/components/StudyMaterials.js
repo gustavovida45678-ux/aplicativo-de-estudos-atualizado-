@@ -2,8 +2,10 @@ import { useState } from 'react';
 import {
   BookOpen, FileText, Folder, Video, ListChecks, GraduationCap,
   Cpu, ArrowUpRight, Brain, Library, ChevronDown, ChevronUp,
+  ListChecks as ListChecksIcon, LayoutDashboard
 } from 'lucide-react';
 import '../styles/studyMaterials.css';
+import ExerciseSidebar from './ExerciseSidebar';
 
 const materialsData = [
   {
@@ -116,19 +118,38 @@ const materialsData = [
   },
 ];
 
-const ExerciseList = ({ items }) => (
+const ExerciseList = ({ items, onSelect }) => (
   <div className="materials-tags">
     {items.map((item) => (
-      <span className="materials-tag" key={item}>{item}</span>
+      <span 
+        className="materials-tag" 
+        key={item}
+        onClick={() => onSelect(item)}
+        style={{ cursor: 'pointer' }}
+      >
+        {item}
+      </span>
     ))}
   </div>
 );
 
 const StudyMaterials = () => {
   const [openDiscipline, setOpenDiscipline] = useState(null);
+  const [exerciseSidebarOpen, setExerciseSidebarOpen] = useState(false);
+  const [selectedExercise, setSelectedExercise] = useState(null);
+
+  const handleSelectExercise = (exercise) => {
+    setSelectedExercise(exercise);
+    setExerciseSidebarOpen(true);
+  };
+
+  const handleCloseSidebar = (open) => {
+    setExerciseSidebarOpen(open);
+  };
 
   return (
-    <div className="materials-page">
+    <div className="materials-page-wrapper">
+      <div className="materials-page">
       <div className="materials-header">
         <div className="materials-header-icon">
           <Library size={40} />
@@ -244,14 +265,21 @@ const StudyMaterials = () => {
                       <ListChecks size={18} />
                       Listas de Exercícios
                     </h3>
-                    <ExerciseList items={discipline.exercises} />
+                    <ExerciseList items={discipline.exercises} onSelect={handleSelectExercise} />
                   </section>
                 </div>
-              )}
+)}
             </div>
-          );
-        })}
+          </div>
+        </div>
       </div>
+
+      {/* Exercise Sidebar */}
+      <ExerciseSidebar
+        isOpen={exerciseSidebarOpen}
+        onClose={handleCloseSidebar}
+        onSelectExercise={handleSelectExercise}
+      />
     </div>
   );
 };

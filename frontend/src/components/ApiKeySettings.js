@@ -337,9 +337,15 @@ export const getCustomApiKey = (provider?: string) => {
   const useCustom = localStorage.getItem('use_custom_keys') === 'true';
   if (!useCustom) return null;
   
+  // Normalize provider names (chat uses "claude", settings uses "anthropic")
+  const normalized = provider === 'claude' ? 'anthropic' : provider;
+  
   // Priority: specific provider key > emergent > openai
   if (provider && localStorage.getItem(`custom_${provider}_key`)) {
     return localStorage.getItem(`custom_${provider}_key`);
+  }
+  if (normalized && normalized !== provider && localStorage.getItem(`custom_${normalized}_key`)) {
+    return localStorage.getItem(`custom_${normalized}_key`);
   }
   
   const emergentKey = localStorage.getItem('custom_emergent_key');

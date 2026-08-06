@@ -74,6 +74,11 @@ const StudySchedule = () => {
     localStorage.setItem('tasksData', JSON.stringify(tasks));
   }, [tasks]);
 
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, []);
+
   const checkBackendHealth = async () => {
     if (!BACKEND_URL) {
       setBackendStatus('unconfigured');

@@ -1,3 +1,9 @@
+.materials-page-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 .materials-page {
   max-width: 1100px;
   margin: 0 auto;
@@ -115,6 +121,14 @@
   font-size: 0.82rem;
   color: var(--text-tertiary);
   margin-top: 0.15rem;
+}
+
+.materials-card-course {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--text-tertiary);
+  margin-top: 0.1rem;
+  opacity: 0.8;
 }
 
 .materials-card-body {
@@ -235,6 +249,95 @@
   border: 1px solid var(--border-soft);
   padding: 0.3rem 0.6rem;
   border-radius: 999px;
+}
+
+.materials-tag-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.materials-tag-clickable:hover {
+  border-color: var(--blue-primary);
+  color: var(--text-primary);
+  background: var(--blue-soft);
+}
+
+.materials-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.materials-schedule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.materials-schedule-row span {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.materials-schedule-row svg {
+  color: var(--blue-light);
+  flex-shrink: 0;
+}
+
+.materials-schedule-day {
+  font-weight: 600;
+}
+
+.materials-schedule-room {
+  color: var(--text-tertiary);
+}
+
+.materials-units {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+
+.materials-units li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.materials-units li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue-primary);
+}
+
+.materials-evaluation li {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.materials-evaluation li::before {
+  background: var(--amber);
 }
 
 @media (max-width: 860px) {

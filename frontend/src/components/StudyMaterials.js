@@ -17,7 +17,6 @@ import {
   CartesianGrid, Cell, PieChart, Pie, Legend,
 } from 'recharts';
 import '../styles/studyMaterials.css';
-import ExerciseSidebar from './ExerciseSidebar';
 import MindMapModal from './MindMap';
 import { VIDEO_EXERCISES } from '../data/videoExercises';
 
@@ -25,25 +24,6 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/study`;
 
 const yt = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
-
-const SIDEBAR_TOPIC_MAP = {
-  'programacao-estruturada': 'ed_1',
-  'analise-algoritmos': 'ed_2',
-  'vetores-strings': 'ed_3',
-  'matrizes-multidimensionais': 'ed_4',
-  'estruturas-estaticas-dinamicas': 'ed_5',
-  'pilhas-filas': 'ed_6',
-  'listas-encadeadas': 'ed_7',
-  'arvores': 'ed_8',
-  'simulado-ed': 'ed_simulado',
-  'sistemas-numeracao': 'sd_1',
-  'portas-funcoes-logicas': 'sd_2',
-  'algebra-boole': 'sd_3',
-  'circuitos-combinacionais': 'sd_4',
-  'flipflops-contadores': 'sd_5',
-  'conversores-memorias': 'sd_6',
-  'simulado-sd': 'sd_simulado',
-};
 
 const EVALUATION_MODELS = {
   ed: {
@@ -1072,8 +1052,6 @@ const StudyMaterials = () => {
   const [openTopic, setOpenTopic] = useState(null);
   const [progress, setProgress] = useState(loadProgress);
   const [practicing, setPracticing] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [highlightSubject, setHighlightSubject] = useState(null);
   const [backendTopics, setBackendTopics] = useState(null);
   const [grades, setGrades] = useState(loadGrades);
   const [mindMapTopic, setMindMapTopic] = useState(null);
@@ -1239,20 +1217,6 @@ const StudyMaterials = () => {
     setActiveTab('exercises');
   };
 
-  const handleSidebarSelect = (ex) => {
-    const topicId = SIDEBAR_TOPIC_MAP[ex.topicId];
-    if (!topicId) {
-      toast.info('Exercícios deste tópico estarão disponíveis em breve.');
-      return;
-    }
-    setHighlightSubject(ex.subject);
-    setPracticing({ topicId, topicKey: TOPIC_ID_TO_KEY[topicId] || topicId, name: ex.topicName, subject: ex.subject });
-    setActiveTab('exercises');
-    setSidebarOpen(false);
-  };
-
-  const handleCloseSidebar = (open) => setSidebarOpen(open);
-
   const getTopicStats = (topic) => {
     const p = progress[topic.id] || {};
     return {
@@ -1398,14 +1362,6 @@ const StudyMaterials = () => {
           >
             <LayoutDashboard size={18} />
             Dashboard
-          </button>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="schedule-tab"
-            title="Abrir exercícios por matéria"
-          >
-            <BarChart3 size={18} />
-            Atalhos
           </button>
         </div>
 
@@ -2006,13 +1962,6 @@ const StudyMaterials = () => {
           )}
         </div>
       </div>
-
-      <ExerciseSidebar
-        isOpen={sidebarOpen}
-        onClose={handleCloseSidebar}
-        onSelectExercise={handleSidebarSelect}
-        highlightSubject={highlightSubject}
-      />
 
       {mindMapTopic && (
         <MindMapModal topic={mindMapTopic} onClose={() => setMindMapTopic(null)} />

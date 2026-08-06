@@ -2,12 +2,65 @@ import { useState, useEffect } from 'react';
 import {
   GraduationCap, Calendar, CheckCircle2, Circle, BookOpen,
   Target, Clock, Award, TrendingUp, User, MapPin, ChevronDown, ChevronRight,
-  PenTool, Repeat, Package, Trophy,
+  PenTool, Repeat, Package, Trophy, X, Play, BookMarked, Code, Lightbulb,
 } from 'lucide-react';
 import { roadmapInfo as defaultInfo, phases as defaultPhases, typeConfig as defaultTypeConfig } from '../data/roadmap110Days';
 import '../styles/roadmap110.css';
 
 const DEFAULT_STORAGE_KEY = 'roadmap110_completed_v1';
+
+// Exercícios simulados baseados nos professores do IFG Jataí
+const EXERCISES_BY_PROFESSOR = {
+  'Thiago Vedovato': {
+    subject: 'Cálculo Numérico',
+    exercises: {
+      'fundamentos': [
+        { id: 1, title: 'Raízes de Equações - Método da Bisseção', description: 'Implemente o método da bisseção para encontrar a raiz de f(x) = x³ - 2x - 5 no intervalo [2, 3] com precisão 10⁻⁴.', difficulty: 'Fácil', topics: ['Método da Bisseção', 'Convergência'] },
+        { id: 2, title: 'Método de Newton-Raphson', description: 'Aplique Newton-Raphson para resolver f(x) = eˣ - 3x² = 0 com x₀ = 1. Calcule 4 iterações.', difficulty: 'Médio', topics: ['Newton-Raphson', 'Derivadas'] },
+        { id: 3, title: 'Sistemas Lineares - Eliminação de Gauss', description: 'Resolva o sistema: 2x + y - z = 8; -3x - y + 2z = -11; -2x + y + 2z = -3', difficulty: 'Médio', topics: ['Eliminação de Gauss', 'Sistemas Lineares'] },
+        { id: 4, title: 'Interpolação Polinomial - Lagrange', description: 'Dados os pontos (1, 2), (2, 3), (4, 5), construa o polinômio interpolador de Lagrange e estime f(3).', difficulty: 'Médio', topics: ['Lagrange', 'Interpolação'] },
+        { id: 5, title: 'Integração Numérica - Simpson 1/3', description: 'Aproxime ∫₀¹ eˣ dx usando a regra de Simpson 1/3 com n=4 subintervalos. Compare com o valor exato.', difficulty: 'Difícil', topics: ['Simpson', 'Integração Numérica', 'Erro'] },
+      ],
+      'avancado': [
+        { id: 6, title: 'Método dos Mínimos Quadrados', description: 'Ajuste uma reta y = ax + b aos dados: (1, 2.1), (2, 3.9), (3, 6.1), (4, 7.8), (5, 10.2). Calcule a, b e o coeficiente de determinação R².', difficulty: 'Difícil', topics: ['Mínimos Quadrados', 'Regressão Linear'] },
+        { id: 7, title: 'EDOs - Método de Euler e Runge-Kutta', description: 'Resolva y\' = x + y, y(0) = 1 no intervalo [0, 1] com h=0.1 usando Euler e Runge-Kutta de 4ª ordem. Compare.', difficulty: 'Difícil', topics: ['Euler', 'Runge-Kutta', 'EDOs'] },
+      ]
+    }
+  },
+  'Roney Lopes Lima': {
+    subject: 'Estrutura de Dados',
+    exercises: {
+      'fundamentos': [
+        { id: 1, title: 'Lista Encadeada Simples - Inserção e Remoção', description: 'Implemente em C++: inserção no início, fim e posição k; remoção por valor e posição; busca e impressão.', difficulty: 'Fácil', topics: ['Lista Encadeada', 'Ponteiros', 'Alocação Dinâmica'] },
+        { id: 2, title: 'Pilha (Stack) - Avaliação de Expressões', description: 'Implemente uma pilha para converter expressão infixa para pós-fixa e avaliar: "3 + 4 * 2 / (1 - 5) ^ 2 ^ 3"', difficulty: 'Médio', topics: ['Pilha', 'Notação Polonesa', 'Precedência'] },
+        { id: 3, title: 'Fila (Queue) - Simulação de Atendimento', description: 'Simule uma fila de banco com prioridade (idosos, gestantes, normal). Implemane enqueue, dequeue, peek e size.', difficulty: 'Médio', topics: ['Fila', 'Prioridade', 'Estrutura Circular'] },
+        { id: 4, title: 'Árvore Binária de Busca - Operações Básicas', description: 'Implemente inserção, busca, remoção (3 casos), percurso in/pre/post-order, altura e contagem de nós.', difficulty: 'Médio', topics: ['ABB', 'Recursão', 'Percursos'] },
+        { id: 5, title: 'Heap (Max-Heap) - Heapsort Completo', description: 'Implemente max-heap com insert, extractMax, heapify. Use para ordenar um vetor de 1000 elementos aleatórios.', difficulty: 'Difícil', topics: ['Heap', 'Heapsort', 'Complexidade O(n log n)'] },
+      ],
+      'avancado': [
+        { id: 6, title: 'Árvore AVL - Balanceamento Automático', description: 'Implemente rotações simples e duplas (LL, RR, LR, RL). Teste com inserções sequenciais 1,2,3,4,5,6,7.', difficulty: 'Difícil', topics: ['AVL', 'Rotações', 'Fator de Balanceamento'] },
+        { id: 7, title: 'Grafos - Dijkstra e Floyd-Warshall', description: 'Implemente Dijkstra para menor caminho de fonte única e Floyd-Warshall para todos os pares. Grafo com 10 vértices.', difficulty: 'Difícil', topics: ['Grafos', 'Dijkstra', 'Floyd-Warshall', 'Matriz de Adjacência'] },
+        { id: 8, title: 'Trie (Árvore de Prefixos) - Autocomplete', description: 'Implemente Trie para dicionário de 1000 palavras. Funções: insert, search, startsWith, autocomplete(prefix).', difficulty: 'Difícil', topics: ['Trie', 'Prefixos', 'Autocomplete', 'Complexidade O(m)'] },
+      ]
+    }
+  },
+  'Jose Antonio Lambert': {
+    subject: 'Sistemas Digitais',
+    exercises: {
+      'fundamentos': [
+        { id: 1, title: 'Álgebra Booleana - Simplificação', description: 'Simplifique usando teoremas de De Morgan e propriedades: F(A,B,C,D) = Σm(0,1,2,5,8,9,10) + Σd(4,11,14,15). Implemente em portas NAND.', difficulty: 'Fácil', topics: ['Álgebra Booleana', 'De Morgan', 'Minterms', 'Don\'t Cares'] },
+        { id: 2, title: 'Mapa de Karnaugh - 4 Variáveis', description: 'Minimize F(A,B,C,D) = ΠM(1,3,4,6,9,11,12,14) usando K-map. Implemente com portas NOR apenas.', difficulty: 'Médio', topics: ['K-map', 'Maxterms', 'NOR', 'Forma Produto de Somas'] },
+        { id: 3, title: 'Circuitos Combinacionais - Somador Completo', description: 'Projete um somador completo de 4 bits usando ripple carry. Calcule delay de propagação. Estenda para carry-lookahead.', difficulty: 'Médio', topics: ['Somador', 'Ripple Carry', 'Carry Lookahead', 'Delay'] },
+        { id: 4, title: 'Multiplexadores e Decodificadores', description: 'Implemente F(A,B,C) = Σm(1,3,5,6) usando: (a) MUX 8:1; (b) MUX 4:1 + porta; (c) Decodificador 3:8 + porta OR.', difficulty: 'Médio', topics: ['MUX', 'Decodificador', 'Implementação Múltipla'] },
+        { id: 5, title: 'Flip-Flops - Máquina de Estados', description: 'Projete uma sequência 101 detector (Mealy e Moore). Tabela de estados, diagramas, equações, circuito com JK-FF.', difficulty: 'Difícil', topics: ['FSM', 'Mealy', 'Moore', 'JK-FF', 'Detector de Sequência'] },
+      ],
+      'avancado': [
+        { id: 6, title: 'Memória RAM - Organização e Timing', description: 'Calcule organização de memória 16M x 8: nº pinos endereço/dados, chips 1M x 4 necessários. Diagrama de timing leitura/escrita.', difficulty: 'Difícil', topics: ['RAM', 'Organização', 'Timing', 'Chips de Memória'] },
+        { id: 7, title: 'Verilog - Módulo Contador e FSM', description: 'Escreva em Verilog: (a) Contador síncrono 8 bits com enable/reset; (b) FSM detector 101; (c) Testbench para ambos.', difficulty: 'Difícil', topics: ['Verilog', 'HDL', 'Testbench', 'Síntese'] },
+      ]
+    }
+  }
+};
 
 const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfigProp, disciplineConfig, storageKey = DEFAULT_STORAGE_KEY }) => {
   const roadmapInfo = infoProp || defaultInfo;
@@ -16,6 +69,12 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
 
   const [completed, setCompleted] = useState({});
   const [expandedPhase, setExpandedPhase] = useState(phases[0]?.id);
+  const [selectedExercise, setSelectedExercise] = useState(null);
+  const [exerciseModalOpen, setExerciseModalOpen] = useState(false);
+
+  // Get professor name from roadmap info
+  const professorName = roadmapInfo.professor || '';
+  const exercisesData = EXERCISES_BY_PROFESSOR[professorName] || { exercises: { fundamentos: [], avancado: [] } };
 
   // Load saved progress
   useEffect(() => {
@@ -34,6 +93,35 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
   const toggleDay = (phaseId, weekNum, dayRange) => {
     const key = `${phaseId}-w${weekNum}-d${dayRange}`;
     setCompleted(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleExerciseClick = (e, day) => {
+    e.stopPropagation();
+    if (day.type === 'exercise') {
+      const topic = day.topic.toLowerCase();
+      let exercises = [];
+      
+      // Determine which exercise set to use based on topic
+      if (topic.includes('fundament') || topic.includes('introdu') || topic.includes('básic')) {
+        exercises = exercisesData.exercises?.fundamentos || [];
+      } else {
+        exercises = [...(exercisesData.exercises?.fundamentos || []), ...(exercisesData.exercises?.avancado || [])];
+      }
+      
+      setSelectedExercise({
+        topic: day.topic,
+        date: day.date,
+        exercises: exercises,
+        professor: professorName,
+        subject: exercisesData.subject
+      });
+      setExerciseModalOpen(true);
+    }
+  };
+
+  const closeExerciseModal = () => {
+    setExerciseModalOpen(false);
+    setSelectedExercise(null);
   };
 
   // Calculate totals
@@ -296,16 +384,26 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                           const isDone = !!completed[key];
                           const cfg = typeConfig[day.type];
                           const disc = day.discipline && disciplineConfig ? disciplineConfig[day.discipline] : null;
+                          const isExercise = day.type === 'exercise';
+
+                          const handleDayClick = (e) => {
+                            if (isExercise) {
+                              handleExerciseClick(e, day);
+                            } else {
+                              toggleDay(phase.id, week.number, day.range);
+                            }
+                          };
 
                           return (
                             <div
                               key={idx}
-                              className={`day-item ${isDone ? 'done' : ''}`}
+                              className={`day-item ${isDone ? 'done' : ''} ${isExercise ? 'exercise-clickable' : ''}`}
                               style={{
                                 background: isDone ? 'rgba(16, 185, 129, 0.1)' : cfg.bgColor,
                                 borderColor: isDone ? 'rgba(16, 185, 129, 0.4)' : cfg.borderColor,
+                                cursor: isExercise ? 'pointer' : 'default',
                               }}
-                              onClick={() => toggleDay(phase.id, week.number, day.range)}
+                              onClick={handleDayClick}
                             >
                               <div className="day-check">
                                 {isDone ? (
@@ -331,7 +429,7 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                                     </span>
                                   )}
                                   <span
-                                    className="day-type-badge"
+                                    className={`day-type-badge ${isExercise ? 'exercise-badge' : ''}`}
                                     style={{
                                       color: cfg.color,
                                       borderColor: cfg.borderColor,
@@ -340,6 +438,7 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
                                   >
                                     {getTypeIcon(day.type)}
                                     {cfg.label}
+                                    {isExercise && <Play size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />}
                                   </span>
                                 </div>
                                 <div className={`day-topic ${isDone ? 'strikethrough' : ''}`}>
@@ -369,6 +468,75 @@ const RoadmapPlan = ({ info: infoProp, phases: phasesProp, typeConfig: typeConfi
           <p>Siga o cronograma, marque o progresso diário e conclua até {endLabel}.</p>
         </div>
       </div>
+
+      {/* Exercise Modal */}
+      {exerciseModalOpen && selectedExercise && (
+        <div className="exercise-modal-overlay" onClick={closeExerciseModal}>
+          <div className="exercise-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="exercise-modal-header">
+              <div className="exercise-modal-title">
+                <BookMarked size={24} />
+                <div>
+                  <h3>{selectedExercise.topic}</h3>
+                  <p>{selectedExercise.professor} — {selectedExercise.subject}</p>
+                </div>
+              </div>
+              <button className="exercise-modal-close" onClick={closeExerciseModal}>
+                <X size={24} />
+              </button>
+            </div>
+            <div className="exercise-modal-body">
+              <div className="exercise-modal-date">
+                <Calendar size={16} />
+                <span>Data: {selectedExercise.date}</span>
+              </div>
+              {selectedExercise.exercises.length === 0 ? (
+                <div className="exercise-empty">
+                  <Lightbulb size={48} />
+                  <p>Nenhum exercício cadastrado para este tópico ainda.</p>
+                  <p className="exercise-empty-hint">Os exercícios serão adicionados conforme o cronograma avança.</p>
+                </div>
+              ) : (
+                <div className="exercise-list">
+                  {selectedExercise.exercises.map((ex) => (
+                    <div key={ex.id} className="exercise-card">
+                      <div className="exercise-card-header">
+                        <h4>{ex.title}</h4>
+                        <span className={`exercise-difficulty ${ex.difficulty.toLowerCase()}`}>{ex.difficulty}</span>
+                      </div>
+                      <p className="exercise-description">{ex.description}</p>
+                      <div className="exercise-topics">
+                        {ex.topics.map((topic, idx) => (
+                          <span key={idx} className="exercise-topic-tag">{topic}</span>
+                        ))}
+                      </div>
+                      <div className="exercise-actions">
+                        <button className="exercise-btn exercise-btn-primary">
+                          <Play size={16} />
+                          Resolver Agora
+                        </button>
+                        <button className="exercise-btn exercise-btn-secondary">
+                          <Code size={16} />
+                          Ver Solução
+                        </button>
+                        <button className="exercise-btn exercise-btn-secondary">
+                          <BookMarked size={16} />
+                          Salvar para Depois
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="exercise-modal-footer">
+              <button className="exercise-btn exercise-btn-secondary" onClick={closeExerciseModal}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -95,7 +95,7 @@ def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
                     {"role": "user", "content": user_prompt},
                 ],
                 "temperature": 0.3,
-                "max_tokens": 2000,
+                "max_tokens": 3000,
             },
             timeout=30,
         )
@@ -120,33 +120,40 @@ def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
 def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> Optional[dict]:
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
 
-    system_prompt = """Voce e um professor de programacao expert. Analise o codigo do aluno, identifique TODOS os erros e explique passo a passo como corrigir.
+    system_prompt = f"""Voce e um professor de programacao {lang_name} expert e detalhista. Analise o codigo do aluno, identifique TODOS os erros e explique passo a passo de forma MUITO detalhada e didatica.
 
 REGRAS OBRIGATORIAS:
 - Responda APENAS com JSON valido (sem markdown, sem ```)
-- Seja MUITO especifico: aponte linhas exatas, variaveis, operadores errados
+- Seja EXTREMAMENTE especifico: aponte linhas exatas, variaveis, operadores errados
 - Mostre o codigo CORRETO como hint em cada passo
 - Inclua o codigo corrigido completo no campo corrected_code
-- Em cada passo, explique O QUE o aluno precisa aprender para nao errar de novo
-- Use portugues simples e didatico
+- Em CADA passo, explique detalhadamente:
+  * O QUE esta errado e POR QUE esta errado
+  * QUEM usa esse recurso e POR QUE ele existe na linguagem
+  * QUAL e a diferenca entre o que o aluno fez e o correto
+  * COMO o compilador/interpretador entende esse codigo
+- Use portugues simples, didatico, como se fosse aula particular
+- Se o codigo usa if, for, while, variaveis, funcoes, arrays, etc., explique O QUE cada um serve e POR QUE e necessario naquele contexto
+- NUNCA assuma que o aluno sabe o basico - explique tudo como se fosse a primeira aula sobre aquele conceito
 
 ESTRUTURA DO JSON:
-{
+{{
   "error_type": "tipo do erro resumido",
-  "analysis": "analise detalhada do que esta errado",
+  "analysis": "analise detalhada e completa do que esta errado, explicando o contexto geral",
   "step_by_step": [
-    {
+    {{
       "step": 1,
-      "title": "Titulo claro do passo",
-      "detail": "explicacao completa e didatica",
-      "code_hint": "exemplo de codigo correto ou null",
-      "concept": "conceito que o aluno precisa aprender"
-    }
+      "title": "Titulo claro e descritivo do passo",
+      "detail": "explicacao MUITO completa e detalhada. Inclua: o que aconteceu, por que aconteceu, como a linguagem funciona nesse aspecto, e como o aluno deve pensar para nao errar de novo. Minimo 3-4 frases explicativas.",
+      "code_hint": "exemplo de codigo correto e completo ou null",
+      "concept": "conceito fundamental que o aluno precisa aprender",
+      "youtube_search": "termo de busca especifico para video aula sobre ESSE conceito especifico"
+    }}
   ],
-  "suggestion": "dica final de como corrigir",
-  "corrected_code": "codigo completo corrigido ou null",
-  "youtube_search": "termo de busca para video aula no youtube"
-}"""
+  "suggestion": "dica final detalhada de como corrigir e evitar o erro no futuro",
+  "corrected_code": "codigo completo corrigido e funcional ou null",
+  "youtube_search": "termo de busca geral para video aula sobre o tema"
+}}"""
 
     if compile_error:
         context = f"""CODIGO {lang_name} DO ALUNO COM ERRO DE COMPILACAO:
@@ -158,7 +165,13 @@ ESTRUTURA DO JSON:
 ERRO DE COMPILACAO:
 {stderr[:2000]}
 
-Analise CADA erro, aponte a LINHA EXATA e explique como corrigir. Mostre o codigo correto."""
+IMPORTANTE: Analise CADA erro detalhadamente. Para cada erro:
+1. Aponte a LINHA EXATA onde esta o erro
+2. Explique O QUE o compilador esta tentando dizer com essa mensagem de erro
+3. Explique POR QUE esse erro aconteceu (o que o compilador espera vs o que o aluno escreveu)
+4. Mostre como seria o codigo CORRETO
+5. Explique o conceito por tras do erro (ex: se e erro de tipo, explique tipos de dados; se e erro de sintaxe, explique a sintaxe correta)
+6. Adicione um campo "youtube_search" com termos para encontrar video sobre esse erro especifico"""
     elif stdout and expected:
         context = f"""CODIGO {lang_name} DO ALUNO - SAIDA INCORRETA:
 
@@ -172,7 +185,13 @@ SAIDA DO ALUNO:
 SAIDA ESPERADA:
 {expected[:500]}
 
-Explique POR QUE a saida esta errada e como corrigir a logica."""
+IMPORTANTE: Explique detalhadamente:
+1. O QUE o codigo esta fazendo (passo a passo da logica do aluno)
+2. POR QUE a saida esta errada (onde a logica falhou)
+3. COMO o compilador/interpretador executa cada linha
+4. COMO corrigir a logica para obter a saida correta
+5. Explique conceitos como if/else, loops, variaveis que podem ter causado o problema
+6. Adicione um campo "youtube_search" com termos para encontrar video sobre a logica envolvida"""
     else:
         context = f"""CODIGO {lang_name} DO ALUNO FALHOU NA EXECUCAO:
 
@@ -183,7 +202,12 @@ Explique POR QUE a saida esta errada e como corrigir a logica."""
 ERRO:
 {stderr[:2000]}
 
-Analise o erro e explique como corrigir."""
+IMPORTANTE: Analise o erro detalhadamente:
+1. O QUE causou o erro de execucao
+2. POR QUE esse erro so aparece na execucao e nao na compilacao
+3. COMO prevenir esse tipo de erro no futuro
+4. Explique o conceito envolvido
+5. Adicione um campo "youtube_search" com termos para encontrar video sobre esse erro"""
 
     raw = _call_ai(system_prompt, context)
     if not raw:
@@ -427,6 +451,7 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
                     "detail": "\n".join(detail_parts),
                     "code_hint": err.get("hint"),
                     "concept": err.get("concept"),
+                    "youtube_search": f"{lang_name} {err.get('concept', 'erro compilacao')} tutorial passo a passo",
                 })
         else:
             all_errs = re.findall(r"(\d+):\d+:\s*(?:error|warning):\s*(.+)", stderr or "")
@@ -440,6 +465,7 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
                         "detail": f"Mensagem: {msg}\nCodigo: {code_line}",
                         "code_hint": None,
                         "concept": "Interpretacao de erros do compilador",
+                        "youtube_search": f"{lang_name} erro compilador tutorial",
                     })
             else:
                 first_err = (stderr or "").split("\n")[0][:200] if stderr else "Erro desconhecido"
@@ -449,6 +475,7 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
                     "detail": f"Mensagem do compilador:\n{first_err}",
                     "code_hint": None,
                     "concept": "Interpretacao de erros do compilador GCC",
+                    "youtube_search": f"{lang_name} erros compilador tutorial",
                 })
 
         step_by_step.append({
@@ -457,6 +484,7 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
             "detail": "Apos corrigir todos os erros acima, clique em 'Enviar para o juiz' novamente. Leia cada mensagem de erro cuidadosamente.",
             "code_hint": None,
             "concept": None,
+            "youtube_search": f"{lang_name} compilacao tutorial",
         })
 
         err_summary = "; ".join([e["error"][:80] for e in errors_found[:3]]) if errors_found else (stderr.split("\n")[0][:100] if stderr else "Erro")
@@ -474,10 +502,10 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
             "error_type": "Saida incorreta",
             "analysis": f"O codigo {lang_name} compilou e executou, mas a saida esta diferente do esperado.",
             "step_by_step": [
-                {"step": 1, "title": "Sua saida", "detail": f"Saida gerada pelo seu codigo:\n{stdout[:300]}", "code_hint": None, "concept": None},
-                {"step": 2, "title": "Saida esperada", "detail": f"Saida que o exercicio espera:\n{expected[:300]}", "code_hint": None, "concept": None},
-                {"step": 3, "title": "Compare e identifique a diferenca", "detail": "Compare linha por linha. Verifique: espacos extras, quebras de linha, formatacao de numeros, maiusculas/minusculas.", "code_hint": None, "concept": "Formatacao de saida em C - printf()"},
-                {"step": 4, "title": "Corrija a logica", "detail": "Se a saida e numericamente diferente, revise os calculos. Se e de formatacao, ajuste o printf().", "code_hint": None, "concept": None},
+                {"step": 1, "title": "Sua saida", "detail": f"Saida gerada pelo seu codigo:\n{stdout[:300]}", "code_hint": None, "concept": None, "youtube_search": f"{lang_name} saida debug tutorial"},
+                {"step": 2, "title": "Saida esperada", "detail": f"Saida que o exercicio espera:\n{expected[:300]}", "code_hint": None, "concept": None, "youtube_search": f"{lang_name} saida esperada tutorial"},
+                {"step": 3, "title": "Compare e identifique a diferenca", "detail": "Compare linha por linha. Verifique: espacos extras, quebras de linha, formatacao de numeros, maiusculas/minusculas.", "code_hint": None, "concept": "Formatacao de saida - printf()", "youtube_search": f"{lang_name} printf formatacao saida tutorial"},
+                {"step": 4, "title": "Corrija a logica", "detail": "Se a saida e numericamente diferente, revise os calculos. Se e de formatacao, ajuste o printf().", "code_hint": None, "concept": None, "youtube_search": f"{lang_name} logica programacao debug tutorial"},
             ],
             "suggestion": "Use printf() para debugar e ver intermediarios. Compare sua saida com a esperada caractere por caractere.",
             "corrected_code": None,
@@ -488,8 +516,8 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
             "error_type": "Erro na execucao",
             "analysis": stderr[:300] if stderr else "Erro desconhecido",
             "step_by_step": [
-                {"step": 1, "title": "Erro detectado", "detail": stderr[:300] if stderr else "Sem detalhes do erro", "code_hint": None, "concept": None},
-                {"step": 2, "title": "Revise o codigo", "detail": "Verifique logica, variaveis e operacoes.", "code_hint": None, "concept": None},
+                {"step": 1, "title": "Erro detectado", "detail": stderr[:300] if stderr else "Sem detalhes do erro", "code_hint": None, "concept": None, "youtube_search": f"{lang_name} erro execucao tutorial"},
+                {"step": 2, "title": "Revise o codigo", "detail": "Verifique logica, variaveis e operacoes.", "code_hint": None, "concept": None, "youtube_search": f"{lang_name} programacao debug tutorial"},
             ],
             "suggestion": "Adicione printf() para debugar o fluxo de execucao.",
             "corrected_code": None,
@@ -699,4 +727,107 @@ def get_topics():
             {"id": "estruturas_dados", "name": "Estruturas de Dados"},
             {"id": "recursao", "name": "Recursao"},
         ]
+    }
+
+
+class SimilarExerciseRequest(BaseModel):
+    topic: str
+    difficulty: int = 1
+    language: str = "python"
+    original_title: str = ""
+
+
+@router.post("/generate-similar")
+def generate_similar_exercise(req: SimilarExerciseRequest):
+    import random
+    similar_db = {
+        "variaveis": [
+            {"title": "Multiplicacao de Inteiros", "statement": "Leia dois inteiros A e B e imprima o produto A * B.",
+             "inputFormat": "Dois inteiros A B", "outputFormat": "Um inteiro (A*B)",
+             "test_cases": [{"input": "3 4", "expected": "12"}, {"input": "7 1", "expected": "7"}, {"input": "0 5", "expected": "0"}]},
+            {"title": "Diferenca Absoluta", "statement": "Leia dois inteiros A e B e imprima a diferenca absoluta |A - B|.",
+             "inputFormat": "Dois inteiros A B", "outputFormat": "Um inteiro (modulo da diferenca)",
+             "test_cases": [{"input": "10 3", "expected": "7"}, {"input": "3 10", "expected": "7"}, {"input": "5 5", "expected": "0"}]},
+            {"title": "Media de Notas", "statement": "Leia 3 notas (float) e imprima a media aritmetica.",
+             "inputFormat": "Tres numeros reais", "outputFormat": "A media com 1 casa decimal",
+             "test_cases": [{"input": "7.0 8.0 9.0", "expected": "8.0"}, {"input": "5.5 6.5 7.5", "expected": "6.5"}]},
+            {"title": "Resto da Divisao", "statement": "Leia dois inteiros A e B e imprima o resto da divisao A / B.",
+             "inputFormat": "Dois inteiros A B", "outputFormat": "Um inteiro (resto)",
+             "test_cases": [{"input": "10 3", "expected": "1"}, {"input": "7 2", "expected": "1"}, {"input": "8 4", "expected": "0"}]},
+        ],
+        "condicionais": [
+            {"title": "Positivo Negativo ou Zero", "statement": "Leia um inteiro e diga se e POSITIVO, NEGATIVO ou ZERO.",
+             "inputFormat": "Um inteiro N", "outputFormat": "POSITIVO, NEGATIVO ou ZERO",
+             "test_cases": [{"input": "5", "expected": "POSITIVO"}, {"input": "-3", "expected": "NEGATIVO"}, {"input": "0", "expected": "ZERO"}]},
+            {"title": "Maior de Dois", "statement": "Leia dois inteiros e mostre o maior.",
+             "inputFormat": "Dois inteiros A B", "outputFormat": "O maior valor",
+             "test_cases": [{"input": "3 7", "expected": "7"}, {"input": "10 5", "expected": "10"}, {"input": "4 4", "expected": "4"}]},
+            {"title": "Classificacao de Idade", "statement": "Leia uma idade e classifique: crianca (<12), adolescente (12-17), adulto (>=18).",
+             "inputFormat": "Um inteiro idade", "outputFormat": "Classificacao",
+             "test_cases": [{"input": "10", "expected": "crianca"}, {"input": "15", "expected": "adolescente"}, {"input": "25", "expected": "adulto"}]},
+        ],
+        "loops": [
+            {"title": "Tabuada", "statement": "Leia um inteiro N e imprima a tabuada de 1 a 10.",
+             "inputFormat": "Um inteiro N", "outputFormat": "10 linhas: N x i = resultado",
+             "test_cases": [{"input": "3", "expected": "3 x 1 = 3\n3 x 2 = 6\n3 x 3 = 9\n3 x 4 = 12\n3 x 5 = 15\n3 x 6 = 18\n3 x 7 = 21\n3 x 8 = 24\n3 x 9 = 27\n3 x 10 = 30"}]},
+            {"title": "Soma de 1 a N", "statement": "Leia N e calcule a soma de 1 + 2 + ... + N.",
+             "inputFormat": "Um inteiro N", "outputFormat": "A soma total",
+             "test_cases": [{"input": "5", "expected": "15"}, {"input": "10", "expected": "55"}, {"input": "1", "expected": "1"}]},
+        ],
+        "strings": [
+            {"title": "Contar Vogais", "statement": "Leia uma string e conte quantas vogais tem.",
+             "inputFormat": "Uma string S", "outputFormat": "Numero de vogais",
+             "test_cases": [{"input": "hello", "expected": "2"}, {"input": "aeiou", "expected": "5"}, {"input": "xyz", "expected": "0"}]},
+            {"title": "Maiusculas e Minusculas", "statement": "Leia uma string e imprima em maiusculas e depois em minusculas.",
+             "inputFormat": "Uma string S", "outputFormat": "Duas linhas: MAIUSCULA e minuscula",
+             "test_cases": [{"input": "Hello", "expected": "HELLO\nhello"}]},
+        ],
+        "arrays": [
+            {"title": "Maior e Menor", "statement": "Leia N numeros e encontre o maior e o menor.",
+             "inputFormat": "N seguido de N numeros", "outputFormat": "Maior e menor",
+             "test_cases": [{"input": "5\n3 7 1 9 4", "expected": "9 1"}]},
+            {"title": "Inverter Array", "statement": "Leia N numeros e imprima na ordem inversa.",
+             "inputFormat": "N seguido de N numeros", "outputFormat": "Numeros na ordem inversa",
+             "test_cases": [{"input": "3\n1 2 3", "expected": "3 2 1"}]},
+        ],
+        "estruturas_dados": [
+            {"title": "Pilha Simples", "statement": "Implemente uma pilha com push, pop e peek.",
+             "inputFormat": "Operacoes: push X, pop, peek", "outputFormat": "Resultado de cada operacao",
+             "test_cases": [{"input": "push 1\npush 2\npeek\npop\npeek", "expected": "1\n2\n2"}]},
+        ],
+        "recursao": [
+            {"title": "Fibonacci Recursivo", "statement": "Calcule o N-esimo numero de Fibonacci usando recursao.",
+             "inputFormat": "Um inteiro N", "outputFormat": "O N-esimo Fibonacci",
+             "test_cases": [{"input": "5", "expected": "5"}, {"input": "0", "expected": "0"}, {"input": "1", "expected": "1"}]},
+            {"title": "Soma Recursiva", "statement": "Calcule a soma dos elementos de uma lista usando recursao.",
+             "inputFormat": "Lista de inteiros", "outputFormat": "A soma",
+             "test_cases": [{"input": "1 2 3 4", "expected": "10"}, {"input": "5", "expected": "5"}]},
+        ],
+    }
+
+    topic_lower = req.topic.lower().replace(" ", "_").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+    possible = similar_db.get(topic_lower, similar_db["variaveis"])
+
+    same_topic = [e for e in possible if e["title"] != req.original_title]
+    if not same_topic:
+        same_topic = possible
+
+    ex = random.choice(same_topic)
+
+    starter_codes = {
+        "python": f"# {ex['title']}\n# {ex['statement']}\n\n# seu codigo aqui\n",
+        "c": f"/* {ex['title']} */\n#include <stdio.h>\n\nint main() {{\n    // seu codigo aqui\n    return 0;\n}}\n",
+        "cpp": f"// {ex['title']}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    // seu codigo aqui\n    return 0;\n}}\n",
+    }
+
+    return {
+        "id": f"similar_{topic_lower}_{random.randint(1000,9999)}",
+        "title": ex["title"],
+        "statement": ex["statement"],
+        "topic": req.topic,
+        "difficulty": req.difficulty,
+        "inputFormat": ex["inputFormat"],
+        "outputFormat": ex["outputFormat"],
+        "test_cases": ex["test_cases"],
+        "starter_code": starter_codes.get(req.language, starter_codes["python"]),
     }

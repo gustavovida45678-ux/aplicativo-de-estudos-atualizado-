@@ -4,7 +4,7 @@ import {
   Code2, Star, CheckCircle2, XCircle, Loader2, ArrowLeft,
   FileCode2, Play, Send, Trophy, ListOrdered, Sparkles, Youtube,
   Lightbulb, ChevronDown, ChevronUp, Wand2, BookOpen, AlertTriangle,
-  Brain, ExternalLink,
+  Brain, ExternalLink, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
@@ -42,6 +42,7 @@ const JudgePanel = () => {
 
   const [showExplanation, setShowExplanation] = useState(false);
   const [expandedStep, setExpandedStep] = useState(0);
+  const [generatingSimilar, setGeneratingSimilar] = useState(false);
 
   const saveCode = (id, lang, c) => { localStorage.setItem(`judge_code_${id}_${lang}`, c); };
 
@@ -106,6 +107,26 @@ const JudgePanel = () => {
       console.error(e);
       toast.error('Erro ao gerar exercicio.');
     } finally { setCreatingExercise(false); }
+  };
+
+  const generateSimilar = async () => {
+    setGeneratingSimilar(true);
+    try {
+      const topic = (selected || newExercise)?.topic || createTopic;
+      const diff = (selected || newExercise)?.difficulty || createDifficulty;
+      const title = (selected || newExercise)?.title || '';
+      const res = await axios.post(`${API}/generate-similar`, { topic, difficulty: diff, language, original_title: title });
+      setSelected(null);
+      setNewExercise(res.data);
+      setCode(res.data.starter_code || STARTERS[language]);
+      setResult(null);
+      setShowExplanation(false);
+      setExpandedStep(0);
+      toast.success('Exercicio parecido gerado!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao gerar exercicio parecido.');
+    } finally { setGeneratingSimilar(false); }
   };
 
   const solvedCount = Object.values(progress).filter((p) => p?.solved).length;
@@ -311,16 +332,78 @@ const JudgePanel = () => {
                     </div>
                   )}
 
-                  {/* YouTube Videos */}
-                  {explanation.youtube_videos?.length > 0 && (
-                    <div style={{ marginTop: 16 }}>
+                  {/* Criar Exercicio Parecido */}
+                  <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={generateSimilar}
+                      disabled={generatingSimilar}
+                      style={{
+                        flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none',
+                        background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+                        color: '#fff', fontWeight: 700, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        fontSize: 13, transition: 'opacity 0.2s',
+                      }}
+                    >
+                      {generatingSimilar ? <Loader2 size={14} className="materials-spin" /> : <RefreshCw size={14} />}
+                      Criar Exercicio Parecido
+                    </button>
+                  </div>
+
+                  {/* YouTube Videos por Passo */}
+                  {explanation.step_by_step?.some(step => step.youtube_search) && (
+                    <div style={{ marginTop: 14 }}>
                       <div style={{
                         background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
                         borderRadius: 8, padding: '10px 14px', marginBottom: 10,
                         display: 'flex', alignItems: 'center', gap: 8,
                       }}>
                         <Youtube size={18} color="#fff" />
-                        <b style={{ color: '#fff', fontSize: 14 }}>Videoaulas para Aprender</b>
+                        <b style={{ color: '#fff', fontSize: 14 }}>Videoaulas por Conceito</b>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {explanation.step_by_step.filter(step => step.youtube_search).map((step, i) => (
+                          <a
+                            key={i}
+                            href={`https://www.youtube.com/results?search_query=${encodeURIComponent(step.youtube_search)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                              background: '#1a1a1a', borderRadius: 8, textDecoration: 'none',
+                              color: '#fff', border: '1px solid #333',
+                              transition: 'all 0.2s',
+                            }}
+                            onMouseOver={(e) => { e.currentTarget.style.background = '#2a2a2a'; e.currentTarget.style.borderColor = '#dc2626'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.borderColor = '#333'; }}
+                          >
+                            <div style={{
+                              width: 28, height: 28, borderRadius: '50%',
+                              background: '#dc2626', color: '#fff',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 11, fontWeight: 'bold', flexShrink: 0,
+                            }}>{step.step}</div>
+                            <div style={{ flex: 1 }}>
+                              <span style={{ fontSize: 12, fontWeight: 500, color: '#e5e5e5' }}>{step.title}</span>
+                              <div style={{ fontSize: 10, color: '#a3a3a3', marginTop: 2 }}>{step.youtube_search}</div>
+                            </div>
+                            <Youtube size={14} color="#dc2626" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* YouTube Videos Gerais */}
+                  {explanation.youtube_videos?.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{
+                        background: 'linear-gradient(135deg, #7f1d1d, #991b1b)',
+                        borderRadius: 8, padding: '10px 14px', marginBottom: 10,
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
+                        <Youtube size={18} color="#fff" />
+                        <b style={{ color: '#fff', fontSize: 14 }}>Mais Videoaulas</b>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {explanation.youtube_videos.map((vid, i) => (
@@ -446,6 +529,28 @@ const JudgePanel = () => {
       <div className="materials-judge-hint">
         <Sparkles size={15} />
         <span>Dica: use <b>Executar</b> para testar o primeiro caso antes de enviar.</span>
+      </div>
+
+      <div style={{
+        background: '#111', borderRadius: 16, padding: 16, marginTop: 12,
+        border: '1px solid #333', display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <RefreshCw size={18} color="#a78bfa" />
+        <span style={{ flex: 1, fontSize: 13, color: '#a3a3a3' }}>
+          Resolveu um exercicio e quer praticar mais? Crie um parecido!
+        </span>
+        <button
+          onClick={generateSimilar}
+          disabled={generatingSimilar}
+          style={{
+            padding: '8px 14px', borderRadius: 8, border: 'none',
+            background: '#7c3aed', color: '#fff', fontWeight: 700,
+            cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          {generatingSimilar ? <Loader2 size={12} className="materials-spin" /> : <RefreshCw size={12} />}
+          Gerar Parecido
+        </button>
       </div>
     </div>
   );

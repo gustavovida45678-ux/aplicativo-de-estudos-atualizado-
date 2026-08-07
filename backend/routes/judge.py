@@ -23,6 +23,8 @@ LANG_NAMES = {
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 class TestCase(BaseModel):
@@ -436,48 +438,88 @@ def _run(lang: str, code: str, stdin: str) -> dict:
 
 
 def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
-    api_key = OPENROUTER_API_KEY
-    if not api_key:
-        logger.warning("OPENROUTER_API_KEY not set")
-        return None
-
-    try:
-        logger.info(f"Calling OpenRouter API with model {OPENROUTER_MODEL}")
-        resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
-                "X-Title": "StudyApp Judge",
-            },
-            json={
-                "model": OPENROUTER_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.3,
-                "max_tokens": 3000,
-            },
-            timeout=30,
-        )
-
-        if resp.status_code == 200:
-            data = resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            if content:
-                logger.info(f"OpenRouter responded OK ({len(content)} chars)")
-                return content
-            else:
-                logger.error("OpenRouter returned empty content")
+    def _call_openai_compat(url: str, api_key: str, model: str) -> Optional[str]:
+        try:
+            resp = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 3000,
+                },
+                timeout=45,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if content:
+                    logger.info(f"IA OK via {model} ({len(content)} chars)")
+                    return content
+                logger.error(f"IA retornou conteudo vazio em {model}")
                 return None
-        else:
-            logger.error(f"OpenRouter API error {resp.status_code}: {resp.text[:500]}")
+            logger.error(f"IA erro {resp.status_code} em {model}: {resp.text[:300]}")
             return None
-    except Exception as e:
-        logger.error(f"OpenRouter API failed: {e}")
-        return None
+        except Exception as e:
+            logger.error(f"IA falha em {model}: {e}")
+            return None
+
+    # Mesmo provedor do chat: Groq primeiro (llama-3.3-70b-versatile)
+    if GROQ_API_KEY:
+        content = _call_openai_compat(
+            "https://api.groq.com/openai/v1/chat/completions",
+            GROQ_API_KEY,
+            GROQ_MODEL,
+        )
+        if content:
+            return content
+
+    # Fallback: OpenRouter (Claude Haiku 4.5)
+    if OPENROUTER_API_KEY:
+        try:
+            logger.info(f"Calling OpenRouter API with model {OPENROUTER_MODEL}")
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
+                    "X-Title": "StudyApp Judge",
+                },
+                json={
+                    "model": OPENROUTER_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 3000,
+                },
+                timeout=30,
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if content:
+                    logger.info(f"OpenRouter responded OK ({len(content)} chars)")
+                    return content
+                else:
+                    logger.error("OpenRouter returned empty content")
+                    return None
+            else:
+                logger.error(f"OpenRouter API error {resp.status_code}: {resp.text[:500]}")
+                return None
+        except Exception as e:
+            logger.error(f"OpenRouter API failed: {e}")
+            return None
+
+    logger.warning("Nenhuma chave de IA configurada (GROQ_API_KEY / OPENROUTER_API_KEY)")
+    return None
 
 
 def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> Optional[dict]:
@@ -555,6 +597,24 @@ IMPORTANTE: Explique detalhadamente:
 4. COMO corrigir a logica para obter a saida correta
 5. Explique conceitos como if/else, loops, variaveis que podem ter causado o problema
 6. Adicione um campo "youtube_search" com termos para encontrar video sobre a logica envolvida"""
+    elif not stdout and expected:
+        context = f"""CODIGO {lang_name} DO ALUNO QUE NAO IMPRIMIU NADA:
+
+```{language}
+{code}
+```
+
+O programa compilou e executou sem erros, mas a SAIDA FICOU VAZIA (nenhum caractere impresso).
+A saida esperada era:
+{expected[:500]}
+
+IMPORTANTE: Explique detalhadamente:
+1. Que o codigo compilou e rodou, mas nao tem nenhum comando de impressao em execucao (printf/cout/print)
+2. Que o template "// seu codigo aqui" com apenas "return 0;" gera saida vazia
+3. Que o programa precisa de 3 partes: ler a entrada, calcular, e IMPRIMIR o resultado
+4. Mostre no corrected_code o codigo completo corrigido
+5. Aponte a linha exata onde falta a impressao (se houver print, verifique se esta dentro de bloco que nunca executa)
+6. Adicione "youtube_search" com termos para video sobre como imprimir em {lang_name}"""
     else:
         context = f"""CODIGO {lang_name} DO ALUNO FALHOU NA EXECUCAO:
 
@@ -873,6 +933,20 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
             "suggestion": "Use printf() para debugar e ver intermediarios. Compare sua saida com a esperada caractere por caractere.",
             "corrected_code": None,
             "youtube_search": f"{lang_name} saida incorreta debug tutorial",
+        }
+    elif not stdout and expected:
+        return {
+            "error_type": "Sem saida",
+            "analysis": f"O codigo {lang_name} compilou e terminou sem erro, mas NAO imprimiu nada na saida.",
+            "step_by_step": [
+                {"step": 1, "title": "Seu codigo nao imprimiu nada", "detail": f"O programa rodou e encerrou, mas a saida ficou vazia (esperado: {expected[:200]}). Isso acontece quando o codigo nao tem nenhum comando de impressao, ou a impressao esta dentro de um bloco que nunca executa.", "code_hint": None, "concept": "Comandos de saida: printf(), cout, print()", "youtube_search": f"{lang_name} printf cout print como imprimir tutorial"},
+                {"step": 2, "title": "Verifique o comando de impressao", "detail": "Confira se o codigo tem a linha que imprime a resposta: C usa printf(), C++ usa cout <<, Python usa print(). O template '// seu codigo aqui' precisa ser SUBSTITUIDO pela solucao completa.", "code_hint": {"c": "printf(\"%d\\n\", A + B);", "cpp": "cout << A + B << endl;", "python": "print(A + B)"}.get(lang_name and language.lower(), "print(...)"), "concept": "Estrutura do programa: ler -> calcular -> imprimir", "youtube_search": f"{lang_name} primeiro programa hello world tutorial"},
+                {"step": 3, "title": "Estrutura completa", "detail": f"Para este exercicio o programa precisa: 1) ler os dados com {'scanf' if language == 'c' else 'cin' if language == 'cpp' else 'input()'}, 2) calcular, 3) imprimir o resultado. Se faltou qualquer um desses passos, a saida sai vazia ou errada.", "code_hint": None, "concept": "Entrada -> Processamento -> Saida", "youtube_search": f"{lang_name} ler entrada imprimir saida tutorial"},
+                {"step": 4, "title": "Envie novamente", "detail": "Substitua TODO o codigo no editor pela solucao completa (com leitura, calculo e impressao) e clique em 'Enviar para o juiz'.", "code_hint": None, "concept": None, "youtube_search": f"{lang_name} soma de dois numeros tutorial"},
+            ],
+            "suggestion": "O juiz nao le codigo 'a parte': tudo que o programa imprimir na tela e a resposta. Escreva a solucao inteira dentro do main().",
+            "corrected_code": None,
+            "youtube_search": f"{lang_name} imprimir saida console tutorial",
         }
     else:
         return {

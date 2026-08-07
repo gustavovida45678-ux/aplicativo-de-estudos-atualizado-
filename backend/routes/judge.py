@@ -49,6 +49,24 @@ class WalkthroughRequest(BaseModel):
     code: str
     test_cases: List[TestCase] = []
     input: str = ""
+    statement: str = ""
+    expected: str = ""
+
+
+def _is_template(code: str, language: str) -> bool:
+    low = code.lower()
+    markers = ["seu codigo aqui", "seu código aqui", "seu codigo", "seu código", "your code here", "// seu"]
+    for m in markers:
+        if m in low:
+            return True
+    lines = [l.strip() for l in code.split("\n") if l.strip()]
+    if language == "python" and lines and all(l.startswith("#") or l.startswith("'") or l.startswith('"') for l in lines):
+        return True
+    if language in ("c", "cpp") and len(lines) <= 4:
+        body = [l for l in lines if l not in ("{", "}") and "return 0" not in l and "#include" not in l and "using" not in l and "main" not in l and not l.startswith("int main") and not l.startswith("//") and not l.startswith("/*")]
+        if not body:
+            return True
+    return False
 
 
 def _normalize(out: str) -> str:
@@ -275,41 +293,65 @@ def _local_walkthrough(code: str, language: str, stdin: str) -> list:
     return steps
 
 
-def _walkthrough_ai(code: str, language: str, stdin: str):
+def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False):
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
-    system_prompt = f"""Voce e um professor de {lang_name} que explica como o codigo executa passo a passo, linha por linha, como se o aluno nunca tivesse programado.
+    if is_template:
+        system_prompt = f"""Voce e um professor de {lang_name} muito didatico. O aluno enviou um CODIGO VAZIO (apenas o esqueleto com '// seu codigo aqui').
 
-Dado o CODIGO e a ENTRADA, simule a execucao e gere um passo para CADA linha executada (declarar variaveis, ler da entrada, calcular, imprimir, fechar chaves quando encerrar). Pule linhas vazias e comentarios.
+Sua tarefa: PREENCHER AUTOMATICAMENTE a solucao completa do problema abaixo e simular a execucao dela passo a passo, linha por linha, com os valores concretos da ENTRADA do teste.
+
+Responda APENAS com JSON (sem markdown, sem ```), com esta estrutura exata:
+{{
+  "template": true,
+  "corrected_code": "codigo completo corrigido em {lang_name} que resolve o problema",
+  "steps": [
+    {{"line": 1, "code": "texto exato da linha do corrected_code", "explanation": "explicacao didatica em portugues do que esta linha faz, com valores concretos", "variables": {{"A": 2}}, "output": "saida acumulada ate aqui"}}
+  ]
+}}
+
+REGRAS:
+- Primeiro passo: explique que o codigo enviado estava vazio e que a solucao foi preenchida automaticamente
+- Depois, simule CADA linha da solucao preenchida usando os valores reais da entrada
+- `line` deve corresponder a linha correspondente dentro do corrected_code (1-based)
+- Seja MUITO didatico, como aula particular
+- No maximo 40 passos"""
+    else:
+        system_prompt = f"""Voce e um professor de {lang_name} que explica como o codigo executa passo a passo, linha por linha, como se o aluno nunca tivesse programado.
+
+Dado o CODIGO e a ENTRADA, simule a execucao e gere um passo para CADA linha executada (declarar variaveis, ler da entrada, calcular, imprimir, fechar chaves quando encerrar). Pule linhas vazias e comentarios. NUNCA invente linhas que nao existem no codigo.
 
 Responda APENAS com JSON (sem markdown, sem ```), um array de objetos:
 [{{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "output": "saida acumulada ate este passo"}}]
 
 REGRAS:
 - Use os valores REAIS da execucao (ex: A=2, B=3, soma=5)
+- Cada passo deve referenciar uma linha que REALMENTE existe no codigo fornecido
 - Quando a linha imprimir, mostre em output a saida acumulada usando \\n
 - Seja MUITO didatico, como aula particular
 - No maximo 40 passos"""
 
-    context = f"""LINGUAGEM: {lang_name}
-ENTRADA DO TESTE:
-{stdin or '(vazia)'}
-
-CODIGO:
-```{language}
-{code}
-```"""
+    context_parts = [f"LINGUAGEM: {lang_name}"]
+    if statement:
+        context_parts.append(f"ENUNCIADO DO PROBLEMA:\n{statement}")
+    if expected:
+        context_parts.append(f"SAIDA ESPERADA DO TESTE:\n{expected}")
+    context_parts.append(f"ENTRADA DO TESTE:\n{stdin or '(vazia)'}")
+    context_parts.append(f"CODIGO:\n```{language}\n{code}\n```")
+    context = "\n\n".join(context_parts)
 
     raw = _call_ai(system_prompt, context)
     if not raw:
-        return None
+        return None, None
     try:
         cleaned = re.sub(r"^```\w*\n?", "", raw.strip())
         cleaned = re.sub(r"\n?```$", "", cleaned)
         data = json.loads(cleaned)
+        corrected_code = None
         if isinstance(data, dict):
+            corrected_code = data.get("corrected_code") or data.get("template_code")
             data = data.get("steps") or data.get("step_by_step") or []
         if not isinstance(data, list) or not data:
-            return None
+            return None, corrected_code
         steps = []
         for i, s in enumerate(data):
             if not isinstance(s, dict):
@@ -321,10 +363,10 @@ CODIGO:
                 "variables": s.get("variables") or {},
                 "output": s.get("output") or "",
             })
-        return steps if steps else None
+        return (steps if steps else None), corrected_code
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         logger.error(f"Falha ao parsear walkthrough da IA: {e}: {raw[:300]}")
-        return None
+        return None, None
 
 
 def _run_wandbox(conf: dict, code: str, stdin: str):
@@ -1080,10 +1122,28 @@ def judge_walkthrough(req: WalkthroughRequest):
     if not req.code.strip():
         raise HTTPException(status_code=400, detail="Codigo vazio.")
     stdin = req.input or (req.test_cases[0].input if req.test_cases else "")
-    steps = _walkthrough_ai(req.code, req.language, stdin)
+    expected = req.expected or (req.test_cases[0].expected if req.test_cases else "")
+    is_template = _is_template(req.code, req.language)
+    steps, corrected_code = _walkthrough_ai(req.code, req.language, stdin, req.statement, expected, is_template)
     if not steps:
-        steps = _local_walkthrough(req.code, req.language, stdin)
-    return {"steps": steps, "total": len(steps), "language": req.language, "stdin": stdin}
+        if is_template:
+            steps = [{
+                "line": 1,
+                "code": req.code.split("\n")[0] if req.code.strip() else "",
+                "explanation": "Seu codigo esta vazio (so o esqueleto do template). Preencha o codigo com a solucao completa (ler a entrada, calcular e imprimir) e clique em 'Passo a Passo' de novo para ver a execucao.",
+                "variables": {},
+                "output": "",
+            }]
+        else:
+            steps = _local_walkthrough(req.code, req.language, stdin)
+    return {
+        "steps": steps,
+        "total": len(steps),
+        "language": req.language,
+        "stdin": stdin,
+        "template": is_template,
+        "corrected_code": corrected_code,
+    }
 
 
 def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:

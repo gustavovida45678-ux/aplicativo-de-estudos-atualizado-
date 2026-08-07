@@ -2507,6 +2507,44 @@
 }
 .materials-judge-submit:hover { filter: brightness(1.12); }
 .materials-judge-submit:disabled, .materials-judge-run:disabled, .materials-judge-steps:disabled { opacity: 0.6; cursor: not-allowed; }
+.materials-judge-similar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(132, 82, 255, 0.5);
+  background: rgba(132, 82, 255, 0.14);
+  color: #c4b5fd;
+  transition: all 0.2s;
+}
+.materials-judge-similar:hover { background: rgba(132, 82, 255, 0.28); }
+.materials-judge-similar:disabled { opacity: 0.6; cursor: not-allowed; }
+.materials-judge-question {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(100, 202, 214, 0.5);
+  background: rgba(100, 212, 214, 0.1);
+  color: #67e8f9;
+  transition: all 0.2s;
+}
+.materials-judge-question:hover { background: rgba(100, 212, 214, 0.22); }
+.materials-judge-question-tab {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid #06b6d4;
+  background: #0a0a0a;
+  margin-top: 1rem;
+}
 .materials-judge-result {
   border-radius: 14px;
   border: 1px solid #333;

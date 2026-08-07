@@ -1372,3 +1372,124 @@ def generate_similar_exercise(req: SimilarExerciseRequest):
         "test_cases": ex["test_cases"],
         "starter_code": starter_codes.get(req.language, starter_codes["python"]),
     }
+
+
+class QuestionRequest(BaseModel):
+    language: str = "python"
+    code: str = ""
+    statement: str = ""
+    topic: str = ""
+    question: str = ""
+
+
+@router.post("/question")
+def ask_question(req: QuestionRequest):
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Pergunta vazia.")
+
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(req.language, "Python")
+
+    system_prompt = f"""Voce e um professor de programacao {lang_name} expert e paciente. 
+O aluno esta resolvendo um exercicio do juiz online e tem uma duvida.
+Responda de forma clara, didatica e em portugues. Seja objetivo mas completo.
+Se for relevante, referenciom codigos ou conceitos do exercicio."""
+
+    code_section = f"\n\nCODIGO DO ALUNO ({lang_name}):\n```{req.language}\n{req.code}\n```" if req.code.strip() else ""
+    ctx_parts = []
+    if req.statement:
+        ctx_parts.append(f"ENUNCIADO DO EXERCICIO:\n{req.statement}")
+    if req.topic:
+        ctx_parts.append(f"TÓPICO: {req.topic}")
+    if code_section:
+        ctx_parts.append(code_section.strip())
+
+    context = "\n\n".join(ctx_parts)
+
+    user_prompt = f"""DUVIDA DO ALUNO:
+{req.question}
+
+CONTEXTO DO EXERCICIO:
+{context}"""
+
+    raw = _call_ai(system_prompt, user_prompt)
+    if raw:
+        return {"answer": raw, "ok": True}
+
+    return {
+        "answer": "Desculpe, nao consegui processar sua duvida agora. Tente reformular a pergunta ou verifique se a API de IA esta configurada.",
+        "ok": False,
+    }
+
+
+SPIACED_REPETITION_INTERVALS = [1, 3, 7, 14, 30, 60]
+
+class ReviewCalendarRequest(BaseModel):
+    topic: str = ""
+    topic_name: str = ""
+    difficulty: int = 1
+    failed: bool = True
+
+class ReviewItem(BaseModel):
+    id: str
+    topic: str
+    topic_name: str
+    difficulty: int
+    title: str
+    description: str
+    date: str
+    day_offset: int
+    completed: bool = False
+
+class ReviewCalendarResponse(BaseModel):
+    reviews: List[ReviewItem]
+    spaced_intervals: List[int]
+
+@router.post("/review-calendar")
+def generate_review_calendar(req: ReviewCalendarRequest):
+    from datetime import datetime, timedelta
+    import uuid
+
+    today = datetime.now()
+    intervals = SPIACED_REPETITION_INTERVALS
+    reviews = []
+
+    topic_display = req.topic_name or req.topic or "Progremacao"
+
+    review_descriptions = [
+        (f"Revisao 1: Revise o conceito de {topic_display}", "Revisar conceitos fundamentais do topico"),
+        (f"Revisao 2: Faca 3 exercicios semelhantes sobre {topic_display}", "Praticar com exercicios"),
+        (f"Revisao 3: Reescreva a solucao do zero sem olhar", "Recodificar a solucao da memoria"),
+        (f"Revisao 4: Identifique onde errou e explique o erro", "Refletir sobre os erros cometidos"),
+        (f"Revisao 5: Ensine o conceito a alguem ou explique em voz alta", "Ensinar solidifica o conhecimento"),
+        (f"Revisao 6: Resolva um exercicio mais avancado sobre {topic_display}", "Aplicar em nivel avancado"),
+    ]
+
+    for i, (days, (title, desc)) in enumerate(zip(intervals, review_descriptions)):
+        review_date = today + timedelta(days=days)
+        reviews.append({
+            "id": f"review_{uuid.uuid4().hex[:8]}",
+            "topic": req.topic,
+            "topic_name": topic_display,
+            "difficulty": req.difficulty,
+            "title": title,
+            "description": desc,
+            "date": review_date.strftime("%Y-%m-%d"),
+            "day_offset": days,
+            "completed": False,
+        })
+
+    return {
+        "reviews": reviews,
+        "spaced_intervals": intervals,
+    }
+
+
+class ReviewCompleteRequest(BaseModel):
+    id: str
+
+@router.post("/review-complete")
+def complete_review(req: ReviewCompleteRequest):
+    review_id = req.id
+    if not review_id:
+        raise HTTPException(status_code=400, detail="ID da revisao nao informado.")
+    return {"success": True, "id": review_id, "message": "Revisao marcada como concluida."}

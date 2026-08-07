@@ -12,11 +12,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/judge", tags=["judge"])
 
 PISTON_URL = "https://emkc.org/api/v2/piston/execute"
+SANDBOX_URL = "https://api.sandboxapi.dev/v1/execute"
 
 LANG_NAMES = {
-    "c": {"piston": "c", "file": "main.c", "run_timeout": 5000},
-    "cpp": {"piston": "c++", "file": "main.cpp", "run_timeout": 5000},
-    "python": {"piston": "python", "file": "main.py", "run_timeout": 5000},
+    "c": {"piston": "c", "sandbox": "c", "file": "main.c", "run_timeout": 5000},
+    "cpp": {"piston": "c++", "sandbox": "cpp", "file": "main.cpp", "run_timeout": 5000},
+    "python": {"piston": "python", "sandbox": "python", "file": "main.py", "run_timeout": 5000},
 }
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
@@ -51,6 +52,30 @@ def _run(lang: str, code: str, stdin: str) -> dict:
     conf = LANG_NAMES.get(lang)
     if not conf:
         raise HTTPException(status_code=400, detail="Linguagem nao suportada.")
+
+    # Try SandboxAPI first
+    try:
+        sandbox_payload = {
+            "language": conf["sandbox"],
+            "stdin": stdin or "",
+            "files": [{"name": conf["file"], "content": code}],
+        }
+        r = requests.post(SANDBOX_URL, json=sandbox_payload, timeout=30)
+        if r.status_code == 200:
+            data = r.json()
+            run_result = data.get("run", {})
+            compile_result = data.get("compile", {})
+            stdout_val = run_result.get("stdout", "") or ""
+            stderr_val = (run_result.get("stderr", "") or "") + (compile_result.get("stderr", "") or "")
+            exit_code = run_result.get("code", compile_result.get("code", 0))
+            return {
+                "compile": {"code": compile_result.get("code", 0), "stderr": compile_result.get("stderr", "")},
+                "run": {"stdout": stdout_val, "stderr": stderr_val, "code": exit_code},
+            }
+    except Exception as e:
+        logger.warning(f"SandboxAPI failed: {e}, trying Piston...")
+
+    # Fallback to Piston
     payload = {
         "language": conf["piston"],
         "version": "*",

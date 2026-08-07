@@ -19,8 +19,8 @@ LANG_NAMES = {
     "python": {"piston": "python", "file": "main.py", "run_timeout": 5000},
 }
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL = "llama-3.3-70b-versatile"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = "anthropic/claude-3.5-haiku"
 
 
 class TestCase(BaseModel):
@@ -73,21 +73,23 @@ def _run(lang: str, code: str, stdin: str) -> dict:
 
 
 def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
-    api_key = GROQ_API_KEY
+    api_key = OPENROUTER_API_KEY
     if not api_key:
-        logger.warning("GROQ_API_KEY not set")
+        logger.warning("OPENROUTER_API_KEY not set")
         return None
 
     try:
-        logger.info(f"Calling Groq API with model {GROQ_MODEL}")
+        logger.info(f"Calling OpenRouter API with model {OPENROUTER_MODEL}")
         resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
+            "https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
+                "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
+                "X-Title": "StudyApp Judge",
             },
             json={
-                "model": GROQ_MODEL,
+                "model": OPENROUTER_MODEL,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -102,16 +104,16 @@ def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
             data = resp.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             if content:
-                logger.info(f"Groq responded OK ({len(content)} chars)")
+                logger.info(f"OpenRouter responded OK ({len(content)} chars)")
                 return content
             else:
-                logger.error("Groq returned empty content")
+                logger.error("OpenRouter returned empty content")
                 return None
         else:
-            logger.error(f"Groq API error {resp.status_code}: {resp.text[:500]}")
+            logger.error(f"OpenRouter API error {resp.status_code}: {resp.text[:500]}")
             return None
     except Exception as e:
-        logger.error(f"Groq API failed: {e}")
+        logger.error(f"OpenRouter API failed: {e}")
         return None
 
 

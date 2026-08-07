@@ -22,7 +22,7 @@ LANG_NAMES = {
 }
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = "anthropic/claude-3.5-haiku"
+OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
 
 
 class TestCase(BaseModel):
@@ -42,11 +42,287 @@ class ExerciseRequest(BaseModel):
     language: str = "python"
 
 
+class WalkthroughRequest(BaseModel):
+    language: str
+    code: str
+    test_cases: List[TestCase] = []
+    input: str = ""
+
+
 def _normalize(out: str) -> str:
     lines = (out or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
     while lines and lines[-1].strip() == "":
         lines.pop()
     return "\n".join(l.rstrip() for l in lines)
+
+
+def _safe_eval(expr: str, variables: dict):
+    import ast
+    allowed = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Constant, ast.Name,
+               ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.USub,
+               ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+               ast.BoolOp, ast.And, ast.Or, ast.Not, ast.Load, ast.Store, ast.Del)
+    try:
+        tree = ast.parse(expr, mode="eval")
+        for node in ast.walk(tree):
+            if not isinstance(node, allowed):
+                return None
+        return eval(compile(tree, "<expr>", "eval"), {"__builtins__": {}}, dict(variables))
+    except Exception:
+        return None
+
+
+def _local_walkthrough(code: str, language: str, stdin: str) -> list:
+    lines = code.split("\n")
+    steps = []
+    variables = {}
+    output = ""
+    tokens = (stdin or "").split()
+    ti = 0
+    lang = language.lower()
+
+    def read_token():
+        nonlocal ti
+        if ti >= len(tokens):
+            return None
+        val = tokens[ti]
+        ti += 1
+        return val
+
+    def to_value(tok):
+        try:
+            return int(tok)
+        except (TypeError, ValueError):
+            try:
+                return float(tok)
+            except (TypeError, ValueError):
+                return tok
+
+    for idx, raw in enumerate(lines, 1):
+        line = raw.strip()
+        if not line or line.startswith("//") or line.startswith("#") or line.startswith("*"):
+            continue
+        explanation = None
+
+        try:
+            if lang in ("c", "cpp"):
+                decl_m = re.match(r'^(?:unsigned\s+|long\s+|short\s+)?(int|float|double|char)\s+(.+?);', line)
+                if decl_m and "scanf" not in line and "printf" not in line and "main" not in line:
+                    type_name = decl_m.group(1)
+                    default = 0.0 if type_name in ("float", "double") else 0
+                    new_vars = []
+                    for n in decl_m.group(2).split(","):
+                        var = n.strip().split()[0]
+                        if re.match(r'^[a-zA-Z_]\w*$', var) and var not in variables:
+                            variables[var] = default
+                            new_vars.append(var)
+                    if new_vars:
+                        explanation = f"Declara a variavel {type_name}: {', '.join(new_vars)} (valor inicial {default})."
+
+                scanf_m = re.search(r'scanf\s*\(\s*"([^"]*)",\s*([^)]*)\)', line)
+                if scanf_m:
+                    specs = re.findall(r'%(\w)', scanf_m.group(1))
+                    args = re.findall(r'&([a-zA-Z_]\w*)', scanf_m.group(2))
+                    descs = []
+                    for spec, arg in zip(specs, args):
+                        tok = read_token()
+                        if tok is None:
+                            break
+                        val = to_value(tok)
+                        variables[arg] = val
+                        descs.append(f"{arg} = {val}")
+                    if descs:
+                        explanation = "Le da entrada padrão: " + "; ".join(descs) + "."
+
+                cin_m = re.search(r'cin\s*>>(.*?);', line)
+                if cin_m:
+                    names = [n.strip() for n in cin_m.group(1).split(">>") if n.strip()]
+                    descs = []
+                    for name in names:
+                        tok = read_token()
+                        if tok is None:
+                            break
+                        variables[name] = to_value(tok)
+                        descs.append(f"{name} = {variables[name]}")
+                    if descs:
+                        explanation = "Le da entrada padrão: " + "; ".join(descs) + "."
+
+                printf_m = re.search(r'printf\s*\(\s*"([^"]*)"\s*(?:,\s*([^)]*))?\)', line)
+                if printf_m:
+                    fmt = printf_m.group(1)
+                    args = [a.strip() for a in (printf_m.group(2) or "").split(",") if a.strip()]
+                    parts = re.split(r'(%[a-zA-Z])', fmt)
+                    out_piece = ""
+                    ai = 0
+                    for part in parts:
+                        if re.match(r'^%[a-zA-Z]$', part):
+                            if ai < len(args):
+                                val = _safe_eval(args[ai], variables)
+                                out_piece += str(val if val is not None else "?")
+                            ai += 1
+                        else:
+                            out_piece += part.replace("\\n", "\n").replace("\\t", "\t")
+                    output += out_piece
+                    explanation = "Imprime na saida: " + repr(out_piece) + "."
+
+                cout_m = re.search(r'cout\s*<<\s*(.*?);', line)
+                if cout_m:
+                    parts = [p.strip() for p in cout_m.group(1).split("<<") if p.strip()]
+                    out_piece = ""
+                    for p in parts:
+                        if p.startswith('"') and p.endswith('"'):
+                            out_piece += p.strip('"').replace("\\n", "\n").replace("\\t", "\t")
+                        elif p == "endl":
+                            out_piece += "\n"
+                        else:
+                            val = _safe_eval(p, variables)
+                            out_piece += str(val if val is not None else "?")
+                    output += out_piece
+                    explanation = "Imprime na saida: " + repr(out_piece) + "."
+
+                assign_m = re.match(r'^\s*([a-zA-Z_]\w*)\s*=\s*(.+?);', line)
+                if assign_m and not re.match(r'^\s*(if|for|while|else)\b', line):
+                    name, expr = assign_m.group(1), assign_m.group(2)
+                    val = _safe_eval(expr, variables)
+                    if val is not None:
+                        variables[name] = val
+                        explanation = f"Atribui a {name} o valor de {expr} = {val}."
+
+                if re.match(r'^\s*return\b', line):
+                    explanation = "Encerra a funcao main. O programa terminou."
+
+                if re.match(r'^\s*(if|for|while|else)\b', line):
+                    cond_m = re.search(r'\((.*?)\)', line)
+                    if cond_m:
+                        val = _safe_eval(cond_m.group(1), variables)
+                        verdict = "verdadeira" if val else "falsa"
+                        explanation = f"Verifica a condicao {cond_m.group(1)} -> {verdict}."
+
+            elif lang == "python":
+                if re.match(r'^\s*(if|elif|else|for|while|def|import|return)\b', line):
+                    cond_m = re.search(r'\((.*?)\)', line) or re.search(r'^(\w+)\s+(.+?):\s*$', line)
+                    if cond_m and re.match(r'^\s*(if|elif|while)\b', line):
+                        val = _safe_eval(cond_m.group(1), variables)
+                        verdict = "verdadeira" if val else "falsa"
+                        explanation = f"Verifica a condicao {cond_m.group(1)} -> {verdict}."
+                    elif re.match(r'^\s*return\b', line):
+                        explanation = "Encerra a funcao e devolve o resultado."
+                    elif re.match(r'^\s*for\b', line):
+                        explanation = "Inicia um laco: repete o bloco abaixo para cada item."
+                    elif re.match(r'^\s*while\b', line):
+                        explanation = "Inicia um laco: repete enquanto a condicao for verdadeira."
+                    elif re.match(r'^\s*else\b', line):
+                        explanation = "Bloco executado quando a condicao anterior e falsa."
+                    elif re.match(r'^\s*(def|import)\b', line):
+                        explanation = "Define uma funcao (ou importa um modulo)."
+
+                assign_m = re.match(r'^([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\s*=\s*(.+)$', line)
+                if assign_m and "==" not in line and not re.match(r'^\s*(if|elif|for|while|else|def|import)\b', line):
+                    names = [n.strip() for n in assign_m.group(1).split(",")]
+                    rhs = assign_m.group(2)
+                    if "input()" in rhs:
+                        descs = []
+                        for name in names:
+                            tok = read_token()
+                            if tok is None:
+                                break
+                            variables[name] = to_value(tok)
+                            descs.append(f"{name} = {variables[name]}")
+                        if descs:
+                            explanation = "Le da entrada padrão: " + "; ".join(descs) + "."
+                    else:
+                        val = _safe_eval(rhs, variables)
+                        if val is not None and len(names) == 1:
+                            variables[names[0]] = val
+                            explanation = f"Atribui a {names[0]} o valor de {rhs} = {val}."
+
+                print_m = re.match(r'^\s*print\s*\((.*)\)\s*$', line)
+                if print_m:
+                    args = [a.strip() for a in print_m.group(1).split(",")]
+                    vals = []
+                    for a in args:
+                        if a.startswith('"') and a.endswith('"'):
+                            vals.append(a.strip('"'))
+                        else:
+                            val = _safe_eval(a, variables)
+                            vals.append(str(val if val is not None else "?"))
+                    out_piece = " ".join(vals)
+                    output += out_piece + "\n"
+                    explanation = "Imprime na saida: " + repr(out_piece) + "."
+        except Exception as e:
+            logger.warning(f"Walkthrough local error na linha {idx}: {e}")
+            explanation = explanation or f"Executa a linha {idx}."
+
+        if explanation:
+            steps.append({
+                "line": idx,
+                "code": raw,
+                "explanation": explanation,
+                "variables": dict(variables),
+                "output": output,
+            })
+
+    if not steps:
+        steps.append({
+            "line": 1,
+            "code": lines[0] if lines else "",
+            "explanation": "Codigo sem linhas executaveis identificadas.",
+            "variables": {},
+            "output": "",
+        })
+    return steps
+
+
+def _walkthrough_ai(code: str, language: str, stdin: str):
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
+    system_prompt = f"""Voce e um professor de {lang_name} que explica como o codigo executa passo a passo, linha por linha, como se o aluno nunca tivesse programado.
+
+Dado o CODIGO e a ENTRADA, simule a execucao e gere um passo para CADA linha executada (declarar variaveis, ler da entrada, calcular, imprimir, fechar chaves quando encerrar). Pule linhas vazias e comentarios.
+
+Responda APENAS com JSON (sem markdown, sem ```), um array de objetos:
+[{{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "output": "saida acumulada ate este passo"}}]
+
+REGRAS:
+- Use os valores REAIS da execucao (ex: A=2, B=3, soma=5)
+- Quando a linha imprimir, mostre em output a saida acumulada usando \\n
+- Seja MUITO didatico, como aula particular
+- No maximo 40 passos"""
+
+    context = f"""LINGUAGEM: {lang_name}
+ENTRADA DO TESTE:
+{stdin or '(vazia)'}
+
+CODIGO:
+```{language}
+{code}
+```"""
+
+    raw = _call_ai(system_prompt, context)
+    if not raw:
+        return None
+    try:
+        cleaned = re.sub(r"^```\w*\n?", "", raw.strip())
+        cleaned = re.sub(r"\n?```$", "", cleaned)
+        data = json.loads(cleaned)
+        if isinstance(data, dict):
+            data = data.get("steps") or data.get("step_by_step") or []
+        if not isinstance(data, list) or not data:
+            return None
+        steps = []
+        for i, s in enumerate(data):
+            if not isinstance(s, dict):
+                continue
+            steps.append({
+                "line": int(s.get("line") or i + 1),
+                "code": s.get("code") or "",
+                "explanation": s.get("explanation") or s.get("detail") or "",
+                "variables": s.get("variables") or {},
+                "output": s.get("output") or "",
+            })
+        return steps if steps else None
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        logger.error(f"Falha ao parsear walkthrough da IA: {e}: {raw[:300]}")
+        return None
 
 
 def _run_wandbox(conf: dict, code: str, stdin: str):
@@ -723,6 +999,17 @@ async def explain_error(req: SubmitRequest):
         ai_explanation = _fallback_explanation(req.code, req.language, error_text, "", "", compile_error)
     ai_explanation["youtube_videos"] = _get_youtube_videos("erro", req.language, req.code)
     return ai_explanation
+
+
+@router.post("/walkthrough")
+def judge_walkthrough(req: WalkthroughRequest):
+    if not req.code.strip():
+        raise HTTPException(status_code=400, detail="Codigo vazio.")
+    stdin = req.input or (req.test_cases[0].input if req.test_cases else "")
+    steps = _walkthrough_ai(req.code, req.language, stdin)
+    if not steps:
+        steps = _local_walkthrough(req.code, req.language, stdin)
+    return {"steps": steps, "total": len(steps), "language": req.language, "stdin": stdin}
 
 
 def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:

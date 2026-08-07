@@ -10,5 +10,9 @@ services:
   - type: static
     name: frontend
     root: frontend
+    env: static
     buildCommand: yarn install && yarn build
     publishPath: build
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        value: https://backend.onrender.com

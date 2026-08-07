@@ -2,7 +2,8 @@ import { useState } from 'react';
 import axios from 'axios';
 import {
   Code2, Terminal, Star, CheckCircle2, XCircle, Loader2, ArrowLeft,
-  FileCode2, Play, Send, Trophy, ListOrdered, Sparkles,
+  FileCode2, Play, Send, Trophy, ListOrdered, Sparkles, Youtube,
+  Lightbulb, ChevronDown, ChevronUp, Wand2, BookOpen, AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
@@ -12,9 +13,9 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/judge`;
 
 const STARTERS = {
-  c: `#include <stdio.h>\n\nint main() {\n    // seu código aqui\n    return 0;\n}\n`,
-  cpp: `#include <iostream>\nusing namespace std;\n\nint main() {\n    // seu código aqui\n    return 0;\n}\n`,
-  python: `# seu código aqui\n`,
+  c: `#include <stdio.h>\n\nint main() {\n    // seu codigo aqui\n    return 0;\n}\n`,
+  cpp: `#include <iostream>\nusing namespace std;\n\nint main() {\n    // seu codigo aqui\n    return 0;\n}\n`,
+  python: `# seu codigo aqui\n`,
 };
 
 const LANG_NAMES = { c: 'C', cpp: 'C++', python: 'Python 3' };
@@ -36,6 +37,15 @@ const JudgePanel = () => {
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
 
+  const [showCreateExercise, setShowCreateExercise] = useState(false);
+  const [createTopic, setCreateTopic] = useState('variaveis');
+  const [createDifficulty, setCreateDifficulty] = useState(1);
+  const [newExercise, setNewExercise] = useState(null);
+  const [creatingExercise, setCreatingExercise] = useState(false);
+
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [expandedStep, setExpandedStep] = useState(null);
+
   const saveCode = (id, lang, c) => {
     localStorage.setItem(`judge_code_${id}_${lang}`, c);
   };
@@ -45,6 +55,7 @@ const JudgePanel = () => {
     setSelected(p);
     setCode(saved || STARTERS[language]);
     setResult(null);
+    setShowExplanation(false);
   };
 
   const changeLanguage = (lang) => {
@@ -53,32 +64,42 @@ const JudgePanel = () => {
       const saved = localStorage.getItem(`judge_code_${selected.id}_${lang}`);
       setCode(saved || STARTERS[lang]);
     }
+    if (newExercise) {
+      setNewExercise(null);
+    }
   };
 
   const submit = async (runOnly) => {
-    if (!selected) return;
+    if (!selected && !newExercise) return;
     if (!code.trim()) {
-      toast.warning('Escreva seu código antes de enviar.');
+      toast.warning('Escreva seu codigo antes de enviar.');
       return;
     }
     setRunning(true);
     setResult(null);
+    setShowExplanation(false);
     try {
+      const testCases = runOnly
+        ? (selected || newExercise).test_cases.slice(0, 1)
+        : (selected || newExercise).test_cases;
       const res = await axios.post(`${API}/submit`, {
         language,
         code,
-        test_cases: runOnly ? selected.test_cases.slice(0, 1) : selected.test_cases,
+        test_cases: testCases,
       });
-      saveCode(selected.id, language, code);
+      saveCode((selected || newExercise).id || 'custom', language, code);
       setResult(res.data);
       const s = res.data.summary;
       if (s?.accepted) {
-        const next = { ...progress, [selected.id]: { solved: true, attempts: (progress[selected.id]?.attempts || 0) + 1 } };
+        const next = { ...progress, [(selected || newExercise).id || 'custom']: { solved: true, attempts: (progress[(selected || newExercise).id || 'custom']?.attempts || 0) + 1 } };
         setProgress(next);
         localStorage.setItem('judgeProgress', JSON.stringify(next));
         toast.success(`Accepted! ${s.passed}/${s.total} casos passaram.`);
       } else if (!runOnly && s) {
         toast.info(`${s.passed}/${s.total} casos passaram. Continue tentando!`);
+        if (res.data.explanation) {
+          setShowExplanation(true);
+        }
       }
     } catch (e) {
       console.error('Judge error:', e);
@@ -92,46 +113,69 @@ const JudgePanel = () => {
     }
   };
 
-  const solvedCount = Object.values(progress).filter((p) => p?.solved).length;
+  const generateExercise = async () => {
+    setCreatingExercise(true);
+    setNewExercise(null);
+    setSelected(null);
+    try {
+      const res = await axios.post(`${API}/generate-exercise`, {
+        topic: createTopic,
+        difficulty: createDifficulty,
+        language,
+      });
+      setNewExercise(res.data);
+      setCode(res.data.starter_code || STARTERS[language]);
+      toast.success('Novo exercicio gerado!');
+    } catch (e) {
+      console.error('Error generating exercise:', e);
+      toast.error('Erro ao gerar exercicio.');
+    } finally {
+      setCreatingExercise(false);
+    }
+  };
 
-  if (selected) {
+  const solvedCount = Object.values(progress).filter((p) => p?.solved).length;
+  const activeExercise = selected || newExercise;
+
+  if (activeExercise) {
+    const explanation = result?.explanation;
     return (
       <div className="materials-judge">
-        <button className="materials-judge-back" onClick={() => { setSelected(null); setResult(null); }}>
+        <button className="materials-judge-back" onClick={() => { setSelected(null); setNewExercise(null); setResult(null); setShowExplanation(false); }}>
           <ArrowLeft size={16} />
           Voltar para a lista
         </button>
 
         <div className="materials-judge-problem-head">
           <div>
-            <span className="materials-judge-problem-id">{selected.id.toUpperCase()}</span>
-            <h3>{selected.title}</h3>
-            <p>{selected.topic}  - Dificuldade:
+            <span className="materials-judge-problem-id">{(activeExercise.id || 'CUSTOM').toUpperCase()}</span>
+            <h3>{activeExercise.title}</h3>
+            <p>{activeExercise.topic} - Dificuldade:
               {[1, 2, 3, 4, 5].map((i) => (
-                <Star key={i} size={13} className={i <= selected.difficulty ? 'filled' : ''} />
+                <Star key={i} size={13} className={i <= activeExercise.difficulty ? 'filled' : ''} />
               ))}
             </p>
           </div>
-          {progress[selected.id]?.solved && (
+          {progress[activeExercise.id]?.solved && (
             <span className="materials-judge-solved-badge"><CheckCircle2 size={15} /> Resolvido</span>
           )}
         </div>
 
         <div className="materials-judge-statement">
-          <p>{selected.statement}</p>
+          <p>{activeExercise.statement}</p>
           <div className="materials-judge-box">
             <b>Entrada</b>
-            <p>{selected.inputFormat}</p>
+            <p>{activeExercise.inputFormat}</p>
           </div>
           <div className="materials-judge-box">
-            <b>Saída</b>
-            <p>{selected.outputFormat}</p>
+            <b>Saida</b>
+            <p>{activeExercise.outputFormat}</p>
           </div>
           <div className="materials-judge-examples">
-            {selected.examples.map((ex, i) => (
+            {(activeExercise.examples || activeExercise.test_cases || []).slice(0, 3).map((ex, i) => (
               <div className="materials-judge-example" key={i}>
                 <div><b>Entrada</b><pre>{ex.input}</pre></div>
-                <div><b>Saída</b><pre>{ex.output}</pre></div>
+                <div><b>Saida</b><pre>{ex.output || ex.expected}</pre></div>
               </div>
             ))}
           </div>
@@ -150,7 +194,7 @@ const JudgePanel = () => {
                 </button>
               ))}
             </div>
-            <span className="materials-judge-cases"><ListOrdered size={13} /> {selected.test_cases.length} casos de teste</span>
+            <span className="materials-judge-cases"><ListOrdered size={13} /> {(activeExercise.test_cases || []).length} casos de teste</span>
           </div>
           <textarea
             className="materials-judge-code"
@@ -158,13 +202,13 @@ const JudgePanel = () => {
             value={code}
             onChange={(e) => {
               setCode(e.target.value);
-              saveCode(selected.id, language, e.target.value);
+              saveCode(activeExercise.id || 'custom', language, e.target.value);
             }}
           />
           <div className="materials-judge-actions">
             <button className="materials-judge-run" onClick={() => submit(true)} disabled={running}>
               {running ? <Loader2 size={15} className="materials-spin" /> : <Play size={15} />}
-              Executar (1º caso)
+              Executar (1o caso)
             </button>
             <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
               {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
@@ -183,12 +227,14 @@ const JudgePanel = () => {
                   : `Veredito: ${result.summary?.passed}/${result.summary?.total} casos passaram`}
               </b>
             </div>
+
             {result.compile?.stderr && !result.compile?.ok && (
               <div className="materials-judge-compile-error">
-                <b>Erro de compilação:</b>
+                <b>Erro de compilacao:</b>
                 <pre>{result.compile.stderr}</pre>
               </div>
             )}
+
             {result.tests.length > 0 && (
               <div className="materials-judge-tests">
                 {result.tests.map((t) => (
@@ -201,7 +247,7 @@ const JudgePanel = () => {
                       {!t.passed && (
                         <>
                           <small>Esperado: <pre>{t.expected}</pre></small>
-                          <small>Recebido: <pre>{t.actual || '(sem saída)'}</pre></small>
+                          <small>Recebido: <pre>{t.actual || '(sem saida)'}</pre></small>
                         </>
                       )}
                       {t.stderr && <small className="err">stderr: {t.stderr}</small>}
@@ -209,6 +255,123 @@ const JudgePanel = () => {
                   </div>
                 ))}
               </div>
+            )}
+
+            {explanation && showExplanation && (
+              <div className="materials-judge-explanation" style={{
+                marginTop: 16, padding: 16, background: '#fef3c7', borderRadius: 12,
+                border: '1px solid #f59e0b',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <Lightbulb size={20} className="text-amber-600" />
+                  <b style={{ fontSize: 16, color: '#92400e' }}>Analise do Erro - Passo a Passo</b>
+                </div>
+
+                <div style={{
+                  background: '#fff', borderRadius: 8, padding: 12, marginBottom: 12,
+                  borderLeft: '4px solid #f59e0b',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} className="text-amber-500" />
+                    <b>Tipo do erro:</b> <span style={{ color: '#dc2626' }}>{explanation.error_type}</span>
+                  </div>
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: '#78716c' }}>{explanation.code_analysis}</p>
+                </div>
+
+                {explanation.step_by_step?.map((step, i) => (
+                  <div key={i} style={{
+                    background: '#fff', borderRadius: 8, marginBottom: 8,
+                    border: '1px solid #e5e7eb', overflow: 'hidden',
+                  }}>
+                    <button
+                      onClick={() => setExpandedStep(expandedStep === i ? null : i)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '10px 12px', background: expandedStep === i ? '#eff6ff' : '#f9fafb',
+                        border: 'none', cursor: 'pointer', textAlign: 'left',
+                      }}
+                    >
+                      <span style={{
+                        width: 24, height: 24, borderRadius: '50%', background: '#3b82f6',
+                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, fontWeight: 'bold', flexShrink: 0,
+                      }}>{step.step}</span>
+                      <b style={{ flex: 1, fontSize: 14 }}>{step.title}</b>
+                      {expandedStep === i ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                    {expandedStep === i && (
+                      <div style={{ padding: '12px 12px 12px 44px' }}>
+                        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{step.detail}</p>
+                        {step.code_hint && (
+                          <pre style={{
+                            background: '#1e293b', color: '#a5f3fc', padding: 10,
+                            borderRadius: 6, marginTop: 8, fontSize: 12, overflow: 'auto',
+                          }}>{step.code_hint}</pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {explanation.suggestion && (
+                  <div style={{
+                    background: '#ecfdf5', borderRadius: 8, padding: 12, marginTop: 8,
+                    borderLeft: '4px solid #10b981',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <BookOpen size={14} className="text-emerald-600" />
+                      <b style={{ color: '#065f46' }}>Dica:</b>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 13, color: '#065f46' }}>{explanation.suggestion}</p>
+                  </div>
+                )}
+
+                {explanation.youtube_videos?.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <Youtube size={16} className="text-red-500" />
+                      <b style={{ fontSize: 14 }}>Videos Relacionados no YouTube:</b>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {explanation.youtube_videos.map((vid, i) => (
+                        <a
+                          key={i}
+                          href={vid.search_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                            background: '#fef2f2', borderRadius: 8, textDecoration: 'none',
+                            color: '#991b1b', border: '1px solid #fecaca',
+                            transition: 'background 0.2s',
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.background = '#fee2e2'}
+                          onMouseOut={(e) => e.currentTarget.style.background = '#fef2f2'}
+                        >
+                          <Youtube size={14} />
+                          <span style={{ fontSize: 13 }}>{vid.title}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {explanation && !showExplanation && !result.summary?.accepted && (
+              <button
+                onClick={() => setShowExplanation(true)}
+                style={{
+                  marginTop: 12, width: '100%', padding: '10px 16px',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  fontSize: 14, fontWeight: 600,
+                }}
+              >
+                <Lightbulb size={16} />
+                Por que errou? Ver analise passo a passo
+              </button>
             )}
           </div>
         )}
@@ -222,11 +385,79 @@ const JudgePanel = () => {
         <div className="materials-judge-hero-icon"><Code2 size={26} /></div>
         <div className="materials-judge-hero-text">
           <h2>Juiz Online de Estrutura de Dados</h2>
-          <p>Resolva problemas de programação estilo Beecrowd: escreva o código e envie para o juiz executar contra os casos de teste.</p>
+          <p>Resolva problemas de programacao estilo Beecrowd: escreva o codigo e envie para o juiz executar contra os casos de teste.</p>
         </div>
         <div className="materials-judge-hero-stats">
           <Trophy size={14} />
           <b>{solvedCount}</b>/{problems.length} resolvidos
+        </div>
+      </div>
+
+      <div style={{
+        background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+        borderRadius: 16, padding: 20, marginBottom: 20, color: '#fff',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Wand2 size={20} />
+          <b style={{ fontSize: 16 }}>Criar Novo Exercicio</b>
+        </div>
+        <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.9 }}>
+          Gere exercicios automaticos por topic para praticar.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select
+            value={createTopic}
+            onChange={(e) => setCreateTopic(e.target.value)}
+            style={{
+              padding: '8px 12px', borderRadius: 8, border: 'none',
+              fontSize: 13, flex: 1, minWidth: 150,
+            }}
+          >
+            <option value="variaveis">Variaveis e Tipos</option>
+            <option value="condicionais">Condicionais (if/else)</option>
+            <option value="loops">Loops (for/while)</option>
+            <option value="strings">Strings</option>
+            <option value="arrays">Arrays/Listas</option>
+            <option value="estruturas_dados">Estruturas de Dados</option>
+            <option value="recursao">Recursao</option>
+          </select>
+          <select
+            value={createDifficulty}
+            onChange={(e) => setCreateDifficulty(Number(e.target.value))}
+            style={{
+              padding: '8px 12px', borderRadius: 8, border: 'none',
+              fontSize: 13, minWidth: 120,
+            }}
+          >
+            <option value={1}>Facil</option>
+            <option value={2}>Medio</option>
+            <option value={3}>Dificil</option>
+          </select>
+          <select
+            value={language}
+            onChange={(e) => changeLanguage(e.target.value)}
+            style={{
+              padding: '8px 12px', borderRadius: 8, border: 'none',
+              fontSize: 13, minWidth: 100,
+            }}
+          >
+            {Object.entries(LANG_NAMES).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+          <button
+            onClick={generateExercise}
+            disabled={creatingExercise}
+            style={{
+              padding: '8px 16px', borderRadius: 8, border: 'none',
+              background: '#fff', color: '#6366f1', fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 13,
+            }}
+          >
+            {creatingExercise ? <Loader2 size={14} className="materials-spin" /> : <Sparkles size={14} />}
+            Gerar Exercicio
+          </button>
         </div>
       </div>
 
@@ -258,7 +489,7 @@ const JudgePanel = () => {
 
       <div className="materials-judge-hint">
         <Sparkles size={15} />
-        <span>Dica: use <b>Executar</b> para testar o primeiro caso antes de enviar. O juiz compara a saída exata (sem espaços extras no fim).</span>
+        <span>Dica: use <b>Executar</b> para testar o primeiro caso antes de enviar. O juiz compara a saida exata (sem espacos extras no fim).</span>
       </div>
     </div>
   );

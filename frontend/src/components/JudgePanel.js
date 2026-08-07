@@ -147,7 +147,6 @@ const JudgePanel = () => {
       const res = await axios.post(`${API}/submit`, { language, code, test_cases: testCases });
       saveCode((selected || newExercise).id || 'custom', language, code);
       setResult(res.data);
-      recordAttempt((selected || newExercise), s?.accepted);
       const s = res.data.summary;
       if (s?.accepted) {
         const next = { ...progress, [(selected || newExercise).id || 'custom']: { solved: true, attempts: (progress[(selected || newExercise).id || 'custom']?.attempts || 0) + 1 } };

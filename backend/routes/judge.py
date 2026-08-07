@@ -1,9 +1,13 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import requests
 import json
 import re
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/judge", tags=["judge"])
 
@@ -31,7 +35,6 @@ class ExerciseRequest(BaseModel):
     topic: str
     difficulty: int = 1
     language: str = "python"
-    base_exercise_id: Optional[str] = None
 
 
 def _normalize(out: str) -> str:
@@ -44,7 +47,7 @@ def _normalize(out: str) -> str:
 def _run(lang: str, code: str, stdin: str) -> dict:
     conf = LANG_NAMES.get(lang)
     if not conf:
-        raise HTTPException(status_code=400, detail="Linguagem não suportada.")
+        raise HTTPException(status_code=400, detail="Linguagem nao suportada.")
     payload = {
         "language": conf["piston"],
         "version": "*",
@@ -57,416 +60,265 @@ def _run(lang: str, code: str, stdin: str) -> dict:
         r = requests.post(PISTON_URL, json=payload, timeout=60)
     except requests.exceptions.RequestException as e:
         raise HTTPException(
-            status_code=502, detail=f"Falha ao acessar o serviço de execução: {e}"
+            status_code=502, detail=f"Falha ao acessar o servico de execucao: {e}"
         )
     try:
         return r.json()
     except Exception:
-        raise HTTPException(status_code=502, detail="Resposta inválida do serviço de execução.")
+        raise HTTPException(status_code=502, detail="Resposta invalida do servico de execucao.")
 
 
-def _extract_error_type(stderr: str, language: str) -> str:
-    if not stderr:
-        return ""
-    if language == "python":
-        m = re.search(r"(\w+Error):", stderr)
-        if m:
-            return m.group(1)
-        if "SyntaxError" in stderr:
-            return "SyntaxError"
-        if "IndentationError" in stderr:
-            return "IndentationError"
-    elif language in ("c", "cpp"):
-        if "error:" in stderr:
-            m = re.search(r"error:\s*(.+)", stderr)
-            return m.group(1).strip()[:120] if m else "Erro de compilação"
-        if "undefined reference" in stderr:
-            return "undefined reference"
-        if "was not declared" in stderr:
-            return "variável não declarada"
-    elif language == "java":
-        m = re.search(r"(\w+Exception):", stderr)
-        if m:
-            return m.group(1)
-    return stderr.split("\n")[0][:120] if stderr else "Erro desconhecido"
+def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> Optional[dict]:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        logger.warning("OPENROUTER_API_KEY not set, skipping AI explanation")
+        return None
 
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
 
-def _build_explanation(code: str, language: str, error_type: str, stderr: str, stdout: str, expected: str, passed: bool) -> dict:
-    explanation = {
-        "error_type": error_type,
-        "language": language,
-        "passed": passed,
-        "step_by_step": [],
-        "code_analysis": "",
-        "suggestion": "",
-    }
+    if compile_error:
+        context = f"""O codigo {lang_name} do aluno tem ERRO DE COMPILACAO.
 
-    if passed:
-        explanation["step_by_step"] = [
-            {"step": 1, "title": "Código executado com sucesso", "detail": "Todos os casos de teste passaram. Seu código está correto!", "code_hint": None},
-        ]
-        explanation["code_analysis"] = "O código atende a todos os requisitos."
-        explanation["suggestion"] = "Parabéns! Tente otimizar a performance ou usar uma abordagem diferente."
-        return explanation
+CODIGO DO ALUNO:
+```{language}
+{code}
+```
 
-    if language == "python":
-        explanation["step_by_step"] = _python_steps(code, error_type, stderr, expected, stdout)
-    elif language in ("c", "cpp"):
-        explanation["step_by_step"] = _c_steps(code, error_type, stderr, expected, stdout)
-    else:
-        explanation["step_by_step"] = _generic_steps(code, error_type, stderr, expected, stdout)
+ERRO DE COMPILACAO:
+{stderr[:1500]}
 
-    explanation["code_analysis"] = _generate_code_analysis(code, language, error_type, stderr)
-    explanation["suggestion"] = _generate_suggestion(error_type, language, stderr)
-    return explanation
+Gere uma explicacao passo a passo em formato JSON com esta estrutura EXATA:
+{{
+  "error_type": "tipo do erro resumido",
+  "analysis": "analise do que esta errado no codigo, apontando linhas especificas",
+  "step_by_step": [
+    {{"step": 1, "title": "Titulo do passo", "detail": "explicacao detalhada", "code_hint": "exemplo de codigo correto ou null"}}
+  ],
+  "suggestion": "dica final de como corrigir",
+  "corrected_code": "codigo completo corrigido ou null"
+}}
 
-
-def _python_steps(code: str, error_type: str, stderr: str, expected: str, stdout: str) -> list:
-    steps = []
-    lines = code.split("\n")
-
-    if "NameError" in error_type:
-        var_match = re.search(r"name '(\w+)' is not defined", stderr)
-        var_name = var_match.group(1) if var_match else "desconhecida"
-        steps = [
-            {"step": 1, "title": "Identificar o erro", "detail": f"A variável '{var_name}' não foi definida antes de ser usada.", "code_hint": None},
-            {"step": 2, "title": "Verificar escopo", "detail": "Verifique se a variável foi declarada no escopo correto (fora de loops/condicionais se necessário).", "code_hint": None},
-            {"step": 3, "title": "Como corrigir", "detail": f"Adicione a declaração de '{var_name}' antes da linha que a referencia.", "code_hint": f"{var_name} = valor_inicial"},
-        ]
-    elif "TypeError" in error_type:
-        steps = [
-            {"step": 1, "title": "Identificar o erro", "detail": "Está havendo operação entre tipos incompatíveis (ex: somar string com número).", "code_hint": None},
-            {"step": 2, "title": "Localizar a operação", "detail": "Procure no código operações que misturam tipos diferentes.", "code_hint": None},
-            {"step": 3, "title": "Como corrigir", "detail": "Use int(), float() ou str() para converter o tipo antes da operação.", "code_hint": "resultado = int(valor_string) + valor_numero"},
-        ]
-    elif "IndexError" in error_type:
-        steps = [
-            {"step": 1, "title": "Identificar o erro", "detail": "Tentou acessar uma posição que não existe na lista/array.", "code_hint": None},
-            {"step": 2, "title": "Verificar tamanho", "detail": f"Último índice válido é len(lista) - 1.", "code_hint": "ultimo_indice = len(minha_lista) - 1"},
-            {"step": 3, "title": "Como corrigir", "detail": "Use len() para verificar o tamanho antes de acessar por índice.", "code_hint": "if indice < len(minha_lista): valor = minha_lista[indice]"},
-        ]
-    elif "IndentationError" in error_type or "SyntaxError" in error_type:
-        steps = [
-            {"step": 1, "title": "Identificar o erro", "detail": "A indentação do código está incorreta ou há erro de sintaxe.", "code_hint": None},
-            {"step": 2, "title": "Verificar espaços", "detail": "Python usa espaços (4 espaços padrão) para definir blocos. Não misture tabs com espaços.", "code_hint": None},
-            {"step": 3, "title": "Como corrigir", "detail": "Use um editor com visibilidade de whitespace. Reindent o código com Ctrl+Shift+I (VS Code).", "code_hint": None},
-        ]
-    elif "ZeroDivisionError" in error_type:
-        steps = [
-            {"step": 1, "title": "Identificar o erro", "detail": "Tentou dividir por zero, o que é matematicamente impossível.", "code_hint": None},
-            {"step": 2, "title": "Verificar divisor", "detail": "Verifique se o divisor pode ser zero antes da operação.", "code_hint": None},
-            {"step": 3, "title": "Como corrigir", "detail": "Adicione uma verificação antes da divisão.", "code_hint": "if divisor != 0: resultado = numerador / divisor"},
-        ]
-    elif "KeyError" in error_type:
-        key_match = re.search(r"KeyError:\s*['\"](.+?)['\"]", stderr)
-        key_name = key_match.group(1) if key_match else "desconhecida"
-        steps = [
-            {"step": 1, "title": "Identificar o erro", "detail": f"A chave '{key_name}' não existe no dicionário.", "code_hint": None},
-            {"step": 2, "title": "Verificar chaves", "detail": "Use dict.keys() para ver todas as chaves disponíveis.", "code_hint": "print(meus_dicionario.keys())"},
-            {"step": 3, "title": "Como corrigir", "detail": "Use .get() com valor padrão ou verifique se a chave existe.", "code_hint": f"valor = meu_dict.get('{key_name}', valor_padrao)"},
-        ]
+Seja DIRETO e DIDATICO. Aponte EXATAMENTE onde esta o erro linha por linha."""
     elif stdout and expected:
-        steps = [
-            {"step": 1, "title": "Código compilou, mas saída incorreta", "detail": f"Sua saída:\n{stdout[:200]}\nEsperado:\n{expected[:200]}", "code_hint": None},
-            {"step": 2, "title": "Comparar linha por linha", "detail": "Compare cada linha da saída com o esperado. Verifique espaços, quebras de linha e formatação.", "code_hint": None},
-            {"step": 3, "title": "Dicas comuns", "detail": "Cuidado com: print() adiciona '\\n', espaços extras,.case-sensitive, ordem de saída.", "code_hint": None},
-        ]
+        context = f"""O codigo {lang_name} do aluno COMPILOU mas a SAIDA esta INCORRETA.
+
+CODIGO DO ALUNO:
+```{language}
+{code}
+```
+
+SAIDA DO ALUNO:
+{stdout[:500]}
+
+SAIDA ESPERADA:
+{expected[:500]}
+
+Gere uma explicacao passo a passo em formato JSON com esta estrutura EXATA:
+{{
+  "error_type": "saida incorreta",
+  "analysis": "analise de por que a saida nao bate com o esperado",
+  "step_by_step": [
+    {{"step": 1, "title": "Titulo do passo", "detail": "explicacao detalhada", "code_hint": "exemplo de codigo correto ou null"}}
+  ],
+  "suggestion": "dica final de como corrigir a saida",
+  "corrected_code": "codigo completo corrigido ou null"
+}}
+
+Seja DIRETO e DIDATICO."""
     else:
-        steps = _generic_steps(code, error_type, stderr, expected, stdout)
+        context = f"""O codigo {lang_name} do aluno falhou na execucao.
 
-    return steps
+CODIGO DO ALUNO:
+```{language}
+{code}
+```
 
+ERRO:
+{stderr[:1500]}
 
-def _c_steps(code: str, error_type: str, stderr: str, expected: str, stdout: str) -> list:
-    steps = []
-    if "error:" in stderr:
-        err_line = re.search(r"(\d+):\d+:\s*error:\s*(.+)", stderr)
-        line_num = err_line.group(1) if err_line else "?"
-        msg = err_line.group(2) if err_line else error_type
-        steps = [
-            {"step": 1, "title": f"Erro na linha {line_num}", "detail": msg, "code_hint": None},
-            {"step": 2, "title": "Verificar sintaxe", "detail": "Verifique se há ; faltando, parênteses desbalanceados, ouinclude ausente.", "code_hint": None},
-            {"step": 3, "title": "Como corrigir", "detail": "Corrija o erro indicado e compile novamente.", "code_hint": None},
-        ]
-    elif "undefined reference" in stderr:
-        func_match = re.search(r"undefined reference to `(\w+)'", stderr)
-        func_name = func_match.group(1) if func_match else "função"
-        steps = [
-            {"step": 1, "title": f"Função '{func_name}' não implementada", "detail": "O compilador não encontrou a definição desta função.", "code_hint": None},
-            {"step": 2, "title": "Verificar declaração", "detail": "Certifique-se de que a função está declarada e implementada.", "code_hint": f"return_type {func_name}(params) {{ /* implementation */ }}"},
-            {"step": 3, "title": "Link corretamente", "detail": "Se estiver em mais de um arquivo, compile todos juntos.", "code_hint": "gcc main.c utils.c -o programa"},
-        ]
-    elif stdout and expected:
-        steps = [
-            {"step": 1, "title": "Código compilou, mas saída incorreta", "detail": f"Sua saída:\n{stdout[:200]}\nEsperado:\n{expected[:200]}", "code_hint": None},
-            {"step": 2, "title": "Verificar printf/scanf", "detail": "Verifique o formato exato do printf. Use '\\n' para quebras de linha.", "code_hint": None},
-            {"step": 3, "title": "Dicas comuns", "detail": "Cuidado com: '\\n' no final, espaços extras, caso sensitivo.", "code_hint": None},
-        ]
-    else:
-        steps = _generic_steps(code, error_type, stderr, expected, stdout)
-    return steps
+Gere uma explicacao passo a passo em formato JSON com esta estrutura EXATA:
+{{
+  "error_type": "tipo do erro",
+  "analysis": "analise do erro",
+  "step_by_step": [
+    {{"step": 1, "title": "Titulo do passo", "detail": "explicacao detalhada", "code_hint": "exemplo de codigo correto ou null"}}
+  ],
+  "suggestion": "dica final",
+  "corrected_code": "codigo completo corrigido ou null"
+}}"""
 
+    system_prompt = """Voce e um professor de programacao expert. Analise o codigo do aluno, identifique TODOS os erros e explique passo a passo como corrigir.
 
-def _generic_steps(code: str, error_type: str, stderr: str, expected: str, stdout: str) -> list:
-    return [
-        {"step": 1, "title": "Identificar o erro", "detail": f"Tipo: {error_type}\nDetalhes: {stderr[:300] if stderr else 'Sem detalhes'}", "code_hint": None},
-        {"step": 2, "title": "Analisar o código", "detail": "Revise a lógica do programa, especialmente onde o erro ocorre.", "code_hint": None},
-        {"step": 3, "title": "Como corrigir", "detail": "Use print() para debugar variáveis e entender o fluxo de execução.", "code_hint": None},
-    ]
+REGRAS:
+- Responda APENAS com JSON valido (sem markdown, sem ```)
+- Seja especifico: aponte linhas, variaveis, operadores errados
+- Mostre o codigo CORRETO como hint em cada passo quando aplicavel
+- Inclua o codigo corrigido completo no campo corrected_code
+- Use portugues simples e direto"""
 
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
+                "X-Title": "StudyApp Judge",
+            },
+            json={
+                "model": "anthropic/claude-3.5-haiku",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 2000,
+            },
+            timeout=30,
+        )
 
-def _generate_code_analysis(code: str, language: str, error_type: str, stderr: str) -> str:
-    lines = code.split("\n")
-    analysis_parts = []
-    analysis_parts.append(f"O código tem {len(lines)} linhas.")
-    if "import" in code or "#include" in code:
-        analysis_parts.append("Dependências externas detectadas.")
-    if language == "python":
-        funcs = re.findall(r"def (\w+)", code)
-        if funcs:
-            analysis_parts.append(f"Funções definidas: {', '.join(funcs)}.")
-        loops = re.findall(r"(for|while)", code)
-        analysis_parts.append(f"{len(loops)} loop(s) encontrado(s).")
-    elif language in ("c", "cpp"):
-        funcs = re.findall(r"\w+\s+\w+\s*\(", code)
-        if funcs:
-            analysis_parts.append(f"Funções/chamadas detectadas: {len(funcs)}.")
-    if stderr:
-        analysis_parts.append(f"Erro reportado: {error_type}.")
-    return " ".join(analysis_parts)
+        if resp.status_code != 200:
+            logger.error(f"OpenRouter API error {resp.status_code}: {resp.text[:500]}")
+            return None
 
+        data = resp.json()
+        raw = data["choices"][0]["message"]["content"].strip()
+        logger.info(f"AI explanation response: {raw[:200]}")
 
-def _generate_suggestion(error_type: str, language: str, stderr: str) -> str:
-    suggestions = {
-        "python": {
-            "NameError": "Declare a variável antes de usá-la. Ex: x = 0",
-            "TypeError": "Converta os tipos antes da operação. Ex: int(str_val)",
-            "IndexError": "Use len() para verificar limites. Ex: if i < len(lista)",
-            "IndentationError": "Use 4 espaços por nível de indentação.",
-            "SyntaxError": "Verifique parênteses, dois-pontos e vírgulas.",
-            "ZeroDivisionError": "Adicione verificação: if divisor != 0",
-            "KeyError": "Use .get() ou verifique se a chave existe com 'in'.",
-        },
-        "c": {
-            "error": "Verifique incluições (#include), ponto-e-vírgula e parênteses.",
-            "undefined reference": "Implemente a função ou inclua o arquivo correto.",
-            "variável não declarada": "Declare a variável antes de usar: tipo nome;",
-        },
-        "cpp": {
-            "error": "Verifique namespaces (using namespace std), incluições e sintaxe.",
-            "undefined reference": "Implemente a função ou verifique links de compilação.",
-        },
-    }
-    lang_suggestions = suggestions.get(language, {})
-    for key, value in lang_suggestions.items():
-        if key.lower() in error_type.lower() or key.lower() in (stderr or "").lower():
-            return value
-    return "Revise o código, adicione prints para debugar e compare com o esperado."
+        if raw.startswith("```"):
+            raw = re.sub(r"^```\w*\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+
+        parsed = json.loads(raw)
+        return parsed
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse AI response as JSON: {e}\nRaw: {raw[:500] if 'raw' in dir() else 'N/A'}")
+        return {
+            "error_type": "explicacao gerada",
+            "analysis": raw[:800] if 'raw' in dir() else "Nao foi possivel analisar",
+            "step_by_step": [{"step": 1, "title": "Resposta da IA", "detail": raw[:800] if 'raw' in dir() else "Sem detalhes", "code_hint": None}],
+            "suggestion": "Revise o codigo com base na analise acima.",
+            "corrected_code": None,
+        }
+    except Exception as e:
+        logger.error(f"AI explanation failed: {e}")
+        return None
 
 
-def _get_youtube_videos(error_type: str, language: str) -> list:
-    search_terms = {
-        "python": {
-            "NameError": ["python name error tutorial", "python variavel nao definida"],
-            "TypeError": ["python type error tutorial", "python concatenar string numero"],
-            "IndexError": ["python index error tutorial", "python lista indice fora limites"],
-            "IndentationError": ["python indentacao tutorial", "python spaces tabs"],
-            "SyntaxError": ["python syntax error tutorial", "python erro sintaxe"],
-            "ZeroDivisionError": ["python divisao por zero tutorial"],
-            "KeyError": ["python dictionary key error tutorial", "python dicionario chave"],
-        },
-        "c": {
-            "error": ["c programming errors tutorial", "c compilation errors"],
-            "undefined reference": ["c undefined reference tutorial", "c linking errors"],
-            "variável não declarada": ["c variable declaration tutorial"],
-        },
-        "cpp": {
-            "error": ["c++ compilation errors tutorial", "c++ errors tutorial"],
-            "undefined reference": ["c++ undefined reference tutorial"],
-        },
-    }
-    lang_terms = search_terms.get(language, {})
-    terms = lang_terms.get(error_type, [f"{language} programming error tutorial", f"{error_type} {language} tutorial"])
-
+def _get_youtube_videos(error_type: str, language: str, code: str = "") -> list:
     videos = []
-    for term in terms[:2]:
-        encoded = term.replace(" ", "+")
+
+    if "compilacao" in error_type.lower() or "compile" in error_type.lower():
         videos.append({
-            "title": f"Tutorial: {term.title()}",
-            "search_url": f"https://www.youtube.com/results?search_query={encoded}",
-            "query": term,
+            "title": f"Erros de compilacao em {language.upper()} - como resolver",
+            "url": f"https://www.youtube.com/results?search_query=erros+compilacao+{language}+como+resolver",
+        })
+        if language in ("c", "cpp"):
+            videos.append({
+                "title": "GCC/Clang - erros comuns e como interpretar",
+                "url": "https://www.youtube.com/results?search_query=gcc+clang+erros+comuns+c+compilacao",
+            })
+    elif "saida" in error_type.lower() or "output" in error_type.lower():
+        videos.append({
+            "title": f"{language.upper()} - saida incorreta debug",
+            "url": f"https://www.youtube.com/results?search_query={language}+saida+incorreta+debug",
+        })
+    else:
+        videos.append({
+            "title": f"Debug em {language.upper()} - como encontrar erros",
+            "url": f"https://www.youtube.com/results?search_query=debug+{language}+como+encontrar+erros",
         })
 
     videos.append({
-        "title": f"Curso completo de {language.upper()} - YouTube",
-        "search_url": f"https://www.youtube.com/results?search_query=curso+completo+{language}",
-        "query": f"curso completo {language}",
+        "title": f"Curso completo {language.upper()} - YouTube",
+        "url": f"https://www.youtube.com/results?search_query=curso+completo+{language}+programacao",
     })
 
     return videos
 
 
-def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
-    exercises_db = {
-        "variaveis": [
-            {"title": "Troca de Valores", "statement": "Leia dois valores inteiros e troque seus valores (o primeiro passa a ter o valor do segundo e vice-versa). Imprima os valores trocados.", "inputFormat": "Dois inteiros A e B", "outputFormat": "Dois inteiros B A (na ordem trocada)"},
-            {"title": "Soma e Média", "statement": "Leia 3 notas de um aluno e calcule a média aritmética simples.", "inputFormat": "Três números reais", "outputFormat": "A média com 2 casas decimais"},
-        ],
-        "condicionais": [
-            {"title": "Par ou Ímpar", "statement": "Leia um número inteiro e diga se é par ou ímpar.", "inputFormat": "Um inteiro N", "outputFormat": "PAR ou IMPAR"},
-            {"title": "Maior de Três", "statement": "Leia 3 números e mostre o maior deles.", "inputFormat": "Três inteiros", "outputFormat": "O maior valor"},
-        ],
-        "loops": [
-            {"title": "Fatorial", "statement": "Leia um número N e calcule o seu fatorial (N!).", "inputFormat": "Um inteiro N (0 <= N <= 20)", "outputFormat": "O valor de N!"},
-            {"title": "Sequência de Fibonacci", "statement": "Leia N e imprima os N primeiros números da sequência de Fibonacci.", "inputFormat": "Um inteiro N (1 <= N <= 30)", "outputFormat": "N números separados por espaço"},
-        ],
-        "strings": [
-            {"title": "Inverter String", "statement": "Leia uma string e imprima ela invertida.", "inputFormat": "Uma string S", "outputFormat": "A string invertida"},
-            {"title": "Contar Vogais", "statement": "Leia uma string e conte quantas vogais ela contém.", "inputFormat": "Uma string S (pode ter espaços)", "outputFormat": "Um inteiro com a quantidade de vogais"},
-        ],
-        "arrays": [
-            {"title": "Maior e Menor", "statement": "Leia N números e encontre o maior e o menor entre eles.", "inputFormat": "Um inteiro N, seguido de N números", "outputFormat": "Maior e menor separados por espaço"},
-            {"title": "Soma dos Elementos", "statement": "Leia N números e calcule a soma de todos eles.", "inputFormat": "Um inteiro N, seguido de N números", "outputFormat": "A soma total"},
-        ],
-        "estruturas_dados": [
-            {"title": "Pilha - Verificação de Parênteses", "statement": "Verifique se uma expressão matemática tem parênteses balanceados.", "inputFormat": "Uma string com a expressão", "outputFormat": "SIM ou NAO"},
-            {"title": "Fila - Atendimento", "statement": "Simule um sistema de fila: enfileirar (E x), desenfileirar (D), mostrar frente (F).", "inputFormat": "Operações até EOF", "outputFormat": "Resultados de cada operação"},
-        ],
-        "recursao": [
-            {"title": "Potência Recursiva", "statement": "Calcule X^N usando recursão (sem usar ** ou pow).", "inputFormat": "Dois inteiros X e N", "outputFormat": "O resultado de X^N"},
-            {"title": "Soma Recursiva", "statement": "Calcule a soma de 1 até N usando recursão.", "inputFormat": "Um inteiro N", "outputFormat": "A soma de 1+2+...+N"},
-        ],
-    }
-
-    topic_lower = topic.lower().replace(" ", "_").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
-    possible_topics = exercises_db.get(topic_lower, exercises_db.get("variaveis"))
-    import random
-    ex = random.choice(possible_topics)
-
-    test_cases = []
-    if "Fibonacci" in ex["title"]:
-        test_cases = [
-            {"input": "5", "expected": "0 1 1 2 3"},
-            {"input": "1", "expected": "0"},
-            {"input": "10", "expected": "0 1 1 2 3 5 8 13 21 34"},
-        ]
-    elif "Fatorial" in ex["title"]:
-        test_cases = [
-            {"input": "5", "expected": "120"},
-            {"input": "0", "expected": "1"},
-            {"input": "10", "expected": "3628800"},
-        ]
-    elif "Par" in ex["title"]:
-        test_cases = [
-            {"input": "4", "expected": "PAR"},
-            {"input": "7", "expected": "IMPAR"},
-            {"input": "0", "expected": "PAR"},
-        ]
-    elif "Maior" in ex["title"] and "Três" in ex["title"]:
-        test_cases = [
-            {"input": "3 7 5", "expected": "7"},
-            {"input": "10 2 8", "expected": "10"},
-            {"input": "1 1 1", "expected": "1"},
-        ]
-    elif "Troca" in ex["title"]:
-        test_cases = [
-            {"input": "3 7", "expected": "7 3"},
-            {"input": "100 200", "expected": "200 100"},
-        ]
-    elif "Média" in ex["title"] or "Soma e" in ex["title"]:
-        test_cases = [
-            {"input": "7 8 9", "expected": "8.00"},
-            {"input": "10 10 10", "expected": "10.00"},
-        ]
-    elif "Inverter" in ex["title"]:
-        test_cases = [
-            {"input": "hello", "expected": "olleh"},
-            {"input": "abc", "expected": "cba"},
-        ]
-    elif "Vogais" in ex["title"]:
-        test_cases = [
-            {"input": "hello", "expected": "2"},
-            {"input": "aeiou", "expected": "5"},
-        ]
-    elif "Maior e Menor" in ex["title"]:
-        test_cases = [
-            {"input": "5\n3 7 1 9 2", "expected": "9 1"},
-        ]
-    elif "Soma dos" in ex["title"]:
-        test_cases = [
-            {"input": "3\n1 2 3", "expected": "6"},
-        ]
-    elif "Parênteses" in ex["title"]:
-        test_cases = [
-            {"input": "(a+b)", "expected": "SIM"},
-            {"input": "((a+b)", "expected": "NAO"},
-            {"input": ")( ", "expected": "NAO"},
-        ]
-    elif "Potência" in ex["title"]:
-        test_cases = [
-            {"input": "2 3", "expected": "8"},
-            {"input": "5 0", "expected": "1"},
-        ]
-    elif "Soma Recursiva" in ex["title"]:
-        test_cases = [
-            {"input": "5", "expected": "15"},
-            {"input": "1", "expected": "1"},
-        ]
+def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> dict:
+    if compile_error:
+        err_line = re.search(r"(\d+):\d+", stderr)
+        line_num = err_line.group(1) if err_line else "?"
+        err_msg = stderr.split("\n")[0][:200] if stderr else "Erro desconhecido"
+        return {
+            "error_type": "Erro de compilacao",
+            "analysis": f"Erro na linha {line_num}: {err_msg}",
+            "step_by_step": [
+                {"step": 1, "title": f"Erro detectado na linha {line_num}", "detail": err_msg, "code_hint": None},
+                {"step": 2, "title": "Verifique a sintaxe", "detail": "Revise a linha indicada. Verifique: ponto-e-virgula, parenteses, chaves, tipo de variavel.", "code_hint": None},
+                {"step": 3, "title": "Corrija e recompile", "detail": "Apos corrigir, compile novamente.", "code_hint": None},
+            ],
+            "suggestion": "Leia a mensagem de erro completa. O compilador sempre aponta a linha exata do problema.",
+            "corrected_code": None,
+        }
+    elif stdout and expected:
+        return {
+            "error_type": "Saida incorreta",
+            "analysis": f"O codigo executou mas gerou saida diferente do esperado.",
+            "step_by_step": [
+                {"step": 1, "title": "Sua saida", "detail": stdout[:300], "code_hint": None},
+                {"step": 2, "title": "Saida esperada", "detail": expected[:300], "code_hint": None},
+                {"step": 3, "title": "Compare e corrija", "detail": "Verifique formatacao, espacos, quebras de linha e logica.", "code_hint": None},
+            ],
+            "suggestion": "Use print() para debugar e comparar saida linha por linha.",
+            "corrected_code": None,
+        }
     else:
-        test_cases = [{"input": "1", "expected": "1"}]
-
-    starter_codes = {
-        "python": f"# {ex['title']}\n# {ex['statement']}\n\ndef main():\n    # sua solucao aqui\n    pass\n\nif __name__ == '__main__':\n    main()\n",
-        "c": f"/* {ex['title']} */\n/* {ex['statement']} */\n\n#include <stdio.h>\n\nint main() {{\n    // sua solucao aqui\n    return 0;\n}}\n",
-        "cpp": f"// {ex['title']}\n// {ex['statement']}\n\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    // sua solucao aqui\n    return 0;\n}}\n",
-    }
-
-    return {
-        "title": ex["title"],
-        "statement": ex["statement"],
-        "topic": topic,
-        "difficulty": difficulty,
-        "inputFormat": ex["inputFormat"],
-        "outputFormat": ex["outputFormat"],
-        "test_cases": test_cases,
-        "starter_code": starter_codes.get(language, starter_codes["python"]),
-        "youtube_videos": [
-            {"title": f"Tutorial: {ex['title']} em {language.upper()}", "search_url": f"https://www.youtube.com/results?search_query={ex['title'].replace(' ', '+')}+{language}+tutorial"},
-        ],
-    }
+        return {
+            "error_type": "Erro na execucao",
+            "analysis": stderr[:300] if stderr else "Erro desconhecido",
+            "step_by_step": [
+                {"step": 1, "title": "Erro detectado", "detail": stderr[:300] if stderr else "Sem detalhes", "code_hint": None},
+                {"step": 2, "title": "Revise o codigo", "detail": "Verifique logica, variaveis e operacoes.", "code_hint": None},
+            ],
+            "suggestion": "Adicione prints para debugar o fluxo de execucao.",
+            "corrected_code": None,
+        }
 
 
 @router.post("/submit")
-def judge_submit(req: SubmitRequest):
+async def judge_submit(req: SubmitRequest):
     if not req.code.strip():
-        raise HTTPException(status_code=400, detail="Código vazio.")
+        raise HTTPException(status_code=400, detail="Codigo vazio.")
     if not req.test_cases:
         raise HTTPException(status_code=400, detail="Nenhum caso de teste enviado.")
 
     first_result = _run(req.language, req.code, req.test_cases[0].input)
+    compile_ok = True
+    compile_stderr = ""
+
     if first_result.get("compile") and first_result["compile"].get("code") is not None and first_result["compile"].get("code") != 0:
+        compile_ok = False
         compile_stderr = first_result["compile"].get("stderr", "")
-        error_type = _extract_error_type(compile_stderr, req.language)
-        explanation = _build_explanation(req.code, req.language, error_type, compile_stderr, "", "", False)
-        explanation["youtube_videos"] = _get_youtube_videos(error_type, req.language)
+
+        ai_explanation = _ai_explain(req.code, req.language, compile_stderr, "", "", True)
+        if not ai_explanation:
+            ai_explanation = _fallback_explanation(req.code, req.language, compile_stderr, "", "", True)
+        ai_explanation["youtube_videos"] = _get_youtube_videos("compilacao", req.language, req.code)
+
         return {
             "compile": {"ok": False, "stderr": compile_stderr},
             "tests": [],
             "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
-            "explanation": explanation,
+            "explanation": ai_explanation,
         }
 
     if not first_result.get("run"):
-        stderr = (first_result.get("compile") or {}).get("stderr", "")
-        error_type = _extract_error_type(stderr, req.language)
-        explanation = _build_explanation(req.code, req.language, error_type, stderr, "", "", False)
-        explanation["youtube_videos"] = _get_youtube_videos(error_type, req.language)
+        stderr_val = (first_result.get("compile") or {}).get("stderr", "")
+        ai_explanation = _ai_explain(req.code, req.language, stderr_val, "", "", True)
+        if not ai_explanation:
+            ai_explanation = _fallback_explanation(req.code, req.language, stderr_val, "", "", True)
+        ai_explanation["youtube_videos"] = _get_youtube_videos("execucao", req.language, req.code)
+
         return {
             "compile": {"ok": True, "stderr": ""},
             "tests": [],
             "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
-            "error": "Falha ao executar o código. Verifique erros de sintaxe/compilação.",
-            "explanation": explanation,
+            "error": "Falha ao executar o codigo.",
+            "explanation": ai_explanation,
         }
 
     results = [first_result]
@@ -475,7 +327,7 @@ def judge_submit(req: SubmitRequest):
 
     tests = []
     passed = 0
-    first_error = None
+    first_fail = None
     for i, (tc, res) in enumerate(zip(req.test_cases, results)):
         run = res.get("run") or {}
         stderr = run.get("stderr", "") or ""
@@ -484,9 +336,8 @@ def judge_submit(req: SubmitRequest):
         ok = output == expected
         if ok:
             passed += 1
-        else:
-            if first_error is None:
-                first_error = {"stderr": stderr, "output": output, "expected": expected}
+        elif first_fail is None:
+            first_fail = {"stderr": stderr, "output": output, "expected": expected}
         tests.append({
             "index": i + 1,
             "passed": ok,
@@ -498,14 +349,24 @@ def judge_submit(req: SubmitRequest):
         })
 
     explanation = None
-    if first_error:
-        error_type = _extract_error_type(first_error["stderr"], req.language)
-        explanation = _build_explanation(
-            req.code, req.language, error_type,
-            first_error["stderr"], first_error["output"],
-            first_error["expected"], passed == len(req.test_cases)
+    if first_fail and passed < len(req.test_cases):
+        error_label = "execucao"
+        if first_fail["stderr"] and ("error" in first_fail["stderr"].lower() or "exception" in first_fail["stderr"].lower()):
+            error_label = "runtime error"
+
+        ai_explanation = _ai_explain(
+            req.code, req.language,
+            first_fail["stderr"], first_fail["output"],
+            first_fail["expected"], False
         )
-        explanation["youtube_videos"] = _get_youtube_videos(error_type, req.language)
+        if not ai_explanation:
+            ai_explanation = _fallback_explanation(
+                req.code, req.language,
+                first_fail["stderr"], first_fail["output"],
+                first_fail["expected"], False
+            )
+        ai_explanation["youtube_videos"] = _get_youtube_videos(error_label, req.language, req.code)
+        explanation = ai_explanation
 
     return {
         "compile": {"ok": True, "stderr": (results[0].get("compile") or {}).get("stderr", "")},
@@ -520,43 +381,120 @@ def judge_submit(req: SubmitRequest):
 
 
 @router.post("/explain")
-def explain_error(req: SubmitRequest):
+async def explain_error(req: SubmitRequest):
     if not req.code.strip():
-        raise HTTPException(status_code=400, detail="Código vazio.")
+        raise HTTPException(status_code=400, detail="Codigo vazio.")
 
     result = _run(req.language, req.code, "")
     stderr = ""
     compile_stderr = ""
+    compile_error = False
 
     if result.get("compile") and result["compile"].get("code") is not None and result["compile"].get("code") != 0:
         compile_stderr = result["compile"].get("stderr", "")
+        compile_error = True
 
     if result.get("run"):
         stderr = (result.get("run") or {}).get("stderr", "")
 
     error_text = compile_stderr or stderr
-    error_type = _extract_error_type(error_text, req.language)
-    explanation = _build_explanation(req.code, req.language, error_type, error_text, "", "", False)
-    explanation["youtube_videos"] = _get_youtube_videos(error_type, req.language)
-    return explanation
+    ai_explanation = _ai_explain(req.code, req.language, error_text, "", "", compile_error)
+    if not ai_explanation:
+        ai_explanation = _fallback_explanation(req.code, req.language, error_text, "", "", compile_error)
+    ai_explanation["youtube_videos"] = _get_youtube_videos("erro", req.language, req.code)
+    return ai_explanation
+
+
+def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
+    exercises_db = {
+        "variaveis": [
+            {"title": "Soma de Dois Numeros", "statement": "Leia dois inteiros A e B e imprima a soma A + B.",
+             "inputFormat": "Dois inteiros A B", "outputFormat": "Um inteiro (A+B)",
+             "test_cases": [{"input": "2 3", "expected": "5"}, {"input": "10 5", "expected": "15"}, {"input": "-1 1", "expected": "0"}]},
+            {"title": "Troca de Valores", "statement": "Leia dois inteiros e troque seus valores.",
+             "inputFormat": "Dois inteiros A B", "outputFormat": "Dois inteiros B A",
+             "test_cases": [{"input": "3 7", "expected": "7 3"}, {"input": "100 200", "expected": "200 100"}]},
+        ],
+        "condicionais": [
+            {"title": "Par ou Impar", "statement": "Leia um inteiro e diga se e par ou impar.",
+             "inputFormat": "Um inteiro N", "outputFormat": "PAR ou IMPAR",
+             "test_cases": [{"input": "4", "expected": "PAR"}, {"input": "7", "expected": "IMPAR"}]},
+            {"title": "Maior de Tres", "statement": "Leia 3 numeros e mostre o maior.",
+             "inputFormat": "Tres inteiros", "outputFormat": "O maior valor",
+             "test_cases": [{"input": "3 7 5", "expected": "7"}, {"input": "10 2 8", "expected": "10"}]},
+        ],
+        "loops": [
+            {"title": "Fatorial", "statement": "Leia N e calcule N!.",
+             "inputFormat": "Um inteiro N", "outputFormat": "O valor de N!",
+             "test_cases": [{"input": "5", "expected": "120"}, {"input": "0", "expected": "1"}]},
+            {"title": "Fibonacci", "statement": "Leia N e imprima os N primeiros numeros de Fibonacci.",
+             "inputFormat": "Um inteiro N", "outputFormat": "N numeros separados por espaco",
+             "test_cases": [{"input": "5", "expected": "0 1 1 2 3"}, {"input": "1", "expected": "0"}]},
+        ],
+        "strings": [
+            {"title": "Inverter String", "statement": "Leia uma string e imprima invertida.",
+             "inputFormat": "Uma string S", "outputFormat": "A string invertida",
+             "test_cases": [{"input": "hello", "expected": "olleh"}, {"input": "abc", "expected": "cba"}]},
+            {"title": "Contar Vogais", "statement": "Conte quantas vogais uma string tem.",
+             "inputFormat": "Uma string S", "outputFormat": "Quantidade de vogais",
+             "test_cases": [{"input": "hello", "expected": "2"}, {"input": "aeiou", "expected": "5"}]},
+        ],
+        "arrays": [
+            {"title": "Soma dos Elementos", "statement": "Leia N numeros e calcule a soma.",
+             "inputFormat": "N seguido de N numeros", "outputFormat": "A soma total",
+             "test_cases": [{"input": "3\n1 2 3", "expected": "6"}]},
+        ],
+        "estruturas_dados": [
+            {"title": "Verificacao de Parenteses", "statement": "Verifique se uma expressao tem parenteses balanceados.",
+             "inputFormat": "Uma string com expressao", "outputFormat": "SIM ou NAO",
+             "test_cases": [{"input": "(a+b)", "expected": "SIM"}, {"input": "((a+b)", "expected": "NAO"}]},
+        ],
+        "recursao": [
+            {"title": "Potencia Recursiva", "statement": "Calcule X^N usando recursao.",
+             "inputFormat": "Dois inteiros X N", "outputFormat": "X^N",
+             "test_cases": [{"input": "2 3", "expected": "8"}, {"input": "5 0", "expected": "1"}]},
+        ],
+    }
+
+    topic_lower = topic.lower().replace(" ", "_").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+    possible = exercises_db.get(topic_lower, exercises_db["variaveis"])
+    import random
+    ex = random.choice(possible)
+
+    starter_codes = {
+        "python": f"# {ex['title']}\n# {ex['statement']}\n\nvalores = input().split()\nA = int(valores[0])\nB = int(valores[1])\nprint(A + B)\n",
+        "c": f"/* {ex['title']} */\n#include <stdio.h>\n\nint main() {{\n    int A, B;\n    scanf(\"%d %d\", &A, &B);\n    printf(\"%d\\n\", A + B);\n    return 0;\n}}\n",
+        "cpp": f"// {ex['title']}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int A, B;\n    cin >> A >> B;\n    cout << A + B << endl;\n    return 0;\n}}\n",
+    }
+
+    return {
+        "id": f"custom_{topic_lower}",
+        "title": ex["title"],
+        "statement": ex["statement"],
+        "topic": topic,
+        "difficulty": difficulty,
+        "inputFormat": ex["inputFormat"],
+        "outputFormat": ex["outputFormat"],
+        "test_cases": ex["test_cases"],
+        "starter_code": starter_codes.get(language, starter_codes["python"]),
+    }
 
 
 @router.post("/generate-exercise")
 def generate_exercise(req: ExerciseRequest):
-    exercise = _generate_new_exercise(req.topic, req.difficulty, req.language)
-    return exercise
+    return _generate_new_exercise(req.topic, req.difficulty, req.language)
 
 
 @router.get("/topics")
 def get_topics():
     return {
         "topics": [
-            {"id": "variaveis", "name": "Variáveis e Tipos", "icon": "variables"},
-            {"id": "condicionais", "name": "Condicionais (if/else)", "icon": "git-branch"},
-            {"id": "loops", "name": "Loops (for/while)", "icon": "repeat"},
-            {"id": "strings", "name": "Strings", "icon": "type"},
-            {"id": "arrays", "name": "Arrays/Listas", "icon": "list"},
-            {"id": "estruturas_dados", "name": "Estruturas de Dados", "icon": "database"},
-            {"id": "recursao", "name": "Recursão", "icon": "corner-down-right"},
+            {"id": "variaveis", "name": "Variaveis e Tipos"},
+            {"id": "condicionais", "name": "Condicionais (if/else)"},
+            {"id": "loops", "name": "Loops (for/while)"},
+            {"id": "strings", "name": "Strings"},
+            {"id": "arrays", "name": "Arrays/Listas"},
+            {"id": "estruturas_dados", "name": "Estruturas de Dados"},
+            {"id": "recursao", "name": "Recursao"},
         ]
     }

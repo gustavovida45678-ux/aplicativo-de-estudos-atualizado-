@@ -128,9 +128,11 @@ class ChatService:
         if api_key:
             params["api_key"] = api_key
         
-        # Add base URL if configured
-        if provider_config.base_url:
-            params["base_url"] = provider_config.base_url
+        # Add base URL for OpenRouter
+        if provider_type == ProviderType.OPENROUTER:
+            params["api_base"] = "https://openrouter.ai/api/v1"
+        elif provider_config.base_url:
+            params["api_base"] = provider_config.base_url
         
         try:
             logger.info(f"Sending chat to {provider_config.name} / {model_id}")
@@ -247,8 +249,10 @@ class ChatService:
         
         if api_key:
             params["api_key"] = api_key
-        if provider_config.base_url:
-            params["base_url"] = provider_config.base_url
+        if provider_type == ProviderType.OPENROUTER:
+            params["api_base"] = "https://openrouter.ai/api/v1"
+        elif provider_config.base_url:
+            params["api_base"] = provider_config.base_url
         
         try:
             response = await acompletion(**params)

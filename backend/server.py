@@ -133,12 +133,14 @@ app.include_router(schedule_api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://aplicativo-de-estudos-atualizado.onrender.com"
+        "https://aplicativo-de-estudos-atualizado.onrender.com",
+        "https://frontend-*.onrender.com",
+        "http://localhost:3000",
+        "*",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    
 )
 
 # Configure logging

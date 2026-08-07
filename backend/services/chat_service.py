@@ -99,9 +99,14 @@ class ChatService:
         # Get API key
         api_key = self._get_api_key(provider_type, custom_api_key)
         if not api_key and provider_config.requires_api_key:
+            available = self.get_available_providers()
+            key_names = [f"{p['name']} ({p.get('env_var', '')})" for p in available if p.get('has_key')]
+            hint = ""
+            if key_names:
+                hint = f" Chaves disponíveis: {', '.join(key_names)}."
             raise ValueError(
-                f"API key required for {provider_config.name}. "
-                f"Set {provider_config.env_var} or provide custom key."
+                f"Chave API necessária para {provider_config.name}. "
+                f"Configure {provider_config.env_var} no Render ou envie uma chave personalizada.{hint}"
             )
         
         # Prepare messages

@@ -6,6 +6,7 @@ import {
   FileCode2, Play, Send, Trophy, ListOrdered, Sparkles, Youtube,
   Lightbulb, ChevronDown, ChevronUp, Wand2, BookOpen, AlertTriangle,
   Brain, ExternalLink, RefreshCw, StepBack, StepForward, Pause, X, ListChecks,
+  HelpCircle, MessageSquare, Calendar as CalendarIcon, TrendingUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
@@ -56,6 +57,14 @@ const JudgePanel = () => {
   const [walkLoading, setWalkLoading] = useState(false);
   const [walkPlay, setWalkPlay] = useState(false);
 
+  const [showQuestionTab, setShowQuestionTab] = useState(false);
+  const [questionInput, setQuestionInput] = useState('');
+  const [questionLoading, setQuestionLoading] = useState(false);
+  const [questionHistory, setQuestionHistory] = useState([]);
+  const [showReviewCalendar, setShowReviewCalendar] = useState(false);
+  const [reviewSessions, setReviewSessions] = useState([]);
+  const [generatedReport, setGeneratedReport] = useState(null);
+
   useEffect(() => {
     if (!walkPlay || !walk) return;
     const t = setInterval(() => {
@@ -69,13 +78,50 @@ const JudgePanel = () => {
 
   const saveCode = (id, lang, c) => { localStorage.setItem(`judge_code_${id}_${lang}`, c); };
 
+  const recordAttempt = (exercise, accepted) => {
+    const topicKey = exercise?.topic || 'default';
+    const attemptsStr = localStorage.getItem('judgeAttempts') || '{}';
+    let attempts;
+    try { attempts = JSON.parse(attemptsStr); } catch { attempts = {}; }
+    attempts[topicKey] = attempts[topicKey] || { successes: 0, total: 0, lastWrongTopics: [] };
+    attempts[topicKey].total += 1;
+    if (accepted) attempts[topicKey].successes += 1;
+    localStorage.setItem('judgeAttempts', JSON.stringify(attempts));
+  };
+
+  const getTopicProgress = (topic) => {
+    try {
+      const attemptsStr = localStorage.getItem('judgeAttempts') || '{}';
+      const attempts = JSON.parse(attemptsStr);
+      const t = attempts[topic];
+      if (!t || !t.total) return { successRate: 0, total: 0, successes: 0 };
+      return { successRate: Math.round((t.successes / t.total) * 100), total: t.total, successes: t.successes };
+    } catch { return { successRate: 0, total: 0, successes: 0 }; }
+  };
+
   const openProblem = (p) => {
+    const tp = p.topic || 'default';
+    const progress = getTopicProgress(tp);
+    if (!progress.successes && progress.total === 0) {
+      // First attempt on this topic, allow opening
+    } else if (progress.successRate < 90) {
+      toast.warning(
+        `Sua taxa de acerto em "${tp}" e de apenas ${progress.successRate}% (${progress.successes}/${progress.total}). ` +
+        'Estude os topicos de erro e faca as revoes antes de avancar.',
+        { duration: 7000 }
+      );
+      return;
+    }
     const saved = localStorage.getItem(`judge_code_${p.id}_${language}`);
     setSelected(p);
     setCode(saved || STARTERS[language]);
     setResult(null);
     setShowExplanation(false);
     setExpandedStep(0);
+    setShowQuestionTab(false);
+    setQuestionHistory([]);
+    setGeneratedReport(null);
+    setShowReviewCalendar(false);
   };
 
   const changeLanguage = (lang) => {
@@ -101,6 +147,7 @@ const JudgePanel = () => {
       const res = await axios.post(`${API}/submit`, { language, code, test_cases: testCases });
       saveCode((selected || newExercise).id || 'custom', language, code);
       setResult(res.data);
+      recordAttempt((selected || newExercise), s?.accepted);
       const s = res.data.summary;
       if (s?.accepted) {
         const next = { ...progress, [(selected || newExercise).id || 'custom']: { solved: true, attempts: (progress[(selected || newExercise).id || 'custom']?.attempts || 0) + 1 } };
@@ -171,7 +218,8 @@ const JudgePanel = () => {
     setGeneratingSimilar(true);
     try {
       const topic = (selected || newExercise)?.topic || createTopic;
-      const diff = (selected || newExercise)?.difficulty || createDifficulty;
+      const baseDiff = (selected || newExercise)?.difficulty || createDifficulty;
+      const diff = Math.min(5, baseDiff + 1);
       const title = (selected || newExercise)?.title || '';
       const res = await axios.post(`${API}/generate-similar`, { topic, difficulty: diff, language, original_title: title });
       setSelected(null);
@@ -180,11 +228,132 @@ const JudgePanel = () => {
       setResult(null);
       setShowExplanation(false);
       setExpandedStep(0);
-      toast.success('Exercicio parecido gerado!');
+      toast.success(`Exercicio parecido gerado! (Dificuldade: ${diff})`);
     } catch (e) {
       console.error(e);
       toast.error('Erro ao gerar exercicio parecido.');
     } finally { setGeneratingSimilar(false); }
+  };
+
+  const askQuestion = async () => {
+    if (!questionInput.trim() || questionLoading) return;
+
+    const question = questionInput.trim();
+    const userMsg = { id: Date.now().toString(), role: 'user', content: question, timestamp: new Date().toISOString() };
+    setQuestionHistory((prev) => [...prev, userMsg]);
+    setQuestionInput('');
+    setQuestionLoading(true);
+
+    try {
+      const ex = activeExercise;
+      const res = await axios.post(`${API}/question`, {
+        language,
+        code,
+        statement: ex?.statement || '',
+        topic: ex?.topic || '',
+        question,
+      });
+      const assistantMsg = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: res.data.answer,
+        timestamp: new Date().toISOString(),
+      };
+      setQuestionHistory((prev) => [...prev, assistantMsg]);
+    } catch (e) {
+      console.error(e);
+      const assistantMsg = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: typeof e.response?.data?.detail === 'string'
+          ? e.response.data.detail
+          : 'Erro ao consultar o professor virtual. Tente novamente.',
+        timestamp: new Date().toISOString(),
+      };
+      setQuestionHistory((prev) => [...prev, assistantMsg]);
+    } finally { setQuestionLoading(false); }
+  };
+
+  const generateReviewCalendar = async () => {
+    const ex = activeExercise;
+    if (!ex) return;
+    try {
+      const res = await axios.post(`${API}/review-calendar`, {
+        topic: ex.topic || 'variaveis',
+        topic_name: ex.title || ex.topic,
+        difficulty: ex.difficulty || 1,
+        failed: !result?.summary?.accepted,
+      });
+      setReviewSessions(res.data.reviews || []);
+      setShowReviewCalendar(true);
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao gerar calendario de revisoes.');
+    }
+  };
+
+  const detectWrongTopics = (exercise, result) => {
+    const topic = exercise?.topic || '';
+    const errorType = result?.explanation?.error_type || '';
+    const stderr = result?.compile?.stderr || '';
+    const testInfo = result?.tests?.filter(t => !t.passed) || [];
+
+    const wrongTopics = [];
+    const allTopics = {
+      'variaveis': ['Variaveis', 'Tipos de dados', 'Entrada e saida', 'Operadores aritmeticos'],
+      'condicionais': ['Condicionais (if/else)', 'Operadores logicos', 'Comparacao de valores'],
+      'loops': ['Loops (for/while)', 'Contagem', 'Acumulacao'],
+      'strings': ['Manipulacao de strings', 'Funcoes de string'],
+      'arrays': ['Arrays/Listas', 'Iteracao em arrays', 'Indexacao'],
+      'estruturas_dados': ['Pilhas', 'Filas', 'Listas encadeadas'],
+      'recursao': ['Recursao', 'Casos base', 'Chamadas recursivas'],
+    };
+
+    const topicLower = topic?.toLowerCase() || '';
+    let topicKey = Object.keys(allTopics).find(k => topicLower.includes(k));
+    if (!topicKey && testInfo.some(t => t.stderr?.toLowerCase().includes('segmentation') || t.stderr?.toLowerCase().includes('pointer'))) {
+      topicKey = 'ponteiros';
+    }
+    if (!topicKey) topicKey = 'variaveis';
+
+    const candidates = allTopics[topicKey] || allTopics['variaveis'];
+
+    if (stderr.toLowerCase().includes('undeclared') || stderr.toLowerCase().includes('nao declarada')) {
+      wrongTopics.push('Declaracao e inicializacao de variaveis');
+    }
+    if (stderr.toLowerCase().includes('syntax') || stderr.toLowerCase().includes('syntaxe')) {
+      wrongTopics.push('Sintaxe da linguagem');
+    }
+    if (testInfo.length > 0) {
+      wrongTopics.push('Logica do problema (saida incorreta)');
+      if (result.explanation?.analysis) {
+        wrongTopics.push(...candidates);
+      }
+    }
+    if (stderr.toLowerCase().includes('segmentation fault') || stderr.toLowerCase().includes('segmentation')) {
+      wrongTopics.push('Acesso invalido a memoria (ponteiros)');
+    }
+
+    return [...new Set(wrongTopics)];
+  };
+
+  const buildErrorReport = (exercise, result) => {
+    const wrongTopics = detectWrongTopics(exercise, result);
+    const studySummary = result?.explanation?.analysis || result?.explanation?.suggestion || 'Revise o conceito e tente novamente.';
+    const errorType = result?.explanation?.error_type || (result?.summary?.accepted ? '' : 'Erro de logica');
+
+    const report = {
+      exerciseTitle: exercise?.title || 'Exercicio',
+      topic: exercise?.topic || '',
+      difficulty: exercise?.difficulty || 1,
+      errorType,
+      wrongTopics,
+      studySummary,
+      testCasesPassed: result?.summary?.passed || 0,
+      testCasesTotal: result?.summary?.total || 0,
+      successRate: result ? Math.round((result.summary?.passed / result.summary?.total) * 100) : 0,
+    };
+    return report;
   };
 
   const solvedCount = Object.values(progress).filter((p) => p?.solved).length;
@@ -231,22 +400,135 @@ const JudgePanel = () => {
             <span className="materials-judge-cases"><ListOrdered size={13} /> {(activeExercise.test_cases || []).length} testes</span>
           </div>
           <textarea className="materials-judge-code" spellCheck="false" value={code} onChange={(e) => { setCode(e.target.value); saveCode(activeExercise.id || 'custom', language, e.target.value); }} />
-          <div className="materials-judge-actions">
-            <button className="materials-judge-run" onClick={() => submit(true)} disabled={running}>
-              {running ? <Loader2 size={15} className="materials-spin" /> : <Play size={15} />} Executar (1o caso)
-            </button>
-            <button className="materials-judge-steps" onClick={runWalkthrough} disabled={running || walkLoading}>
-              {walkLoading ? <Loader2 size={15} className="materials-spin" /> : <ListChecks size={15} />}
-              Passo a Passo
-            </button>
-            <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
-              {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
-              {running ? 'Executando...' : 'Enviar para o juiz'}
-            </button>
-          </div>
-        </div>
+           <div className="materials-judge-actions">
+             <button className="materials-judge-run" onClick={() => submit(true)} disabled={running}>
+               {running ? <Loader2 size={15} className="materials-spin" /> : <Play size={15} />} Executar (1o caso)
+             </button>
+             <button className="materials-judge-steps" onClick={runWalkthrough} disabled={running || walkLoading}>
+               {walkLoading ? <Loader2 size={15} className="materials-spin" /> : <ListChecks size={15} />}
+               Passo a Passo
+             </button>
+             <button
+               onClick={generateSimilar}
+               disabled={generatingSimilar}
+               className="materials-judge-similar"
+               title="Gerar exercicio similar com dificuldade +1"
+             >
+               {generatingSimilar ? <Loader2 size={14} className="materials-spin" /> : <RefreshCw size={14} />}
+               Exercicio Parecido
+             </button>
+             <button
+               onClick={() => setShowQuestionTab(!showQuestionTab)}
+               className="materials-judge-question"
+               title="Tire duvidas sobre este exercicio"
+             >
+               <HelpCircle size={14} />
+               Duvidas
+             </button>
+             <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
+               {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
+               {running ? 'Executando...' : 'Enviar para o juiz'}
+             </button>
+           </div>
+         </div>
 
-        {walk && walk.steps.length > 0 && (
+         {showQuestionTab && (
+           <div className="materials-judge-question-tab">
+             <div style={{
+               marginTop: 14, borderRadius: 12, overflow: 'hidden',
+               border: '2px solid #06b6d4', background: '#111',
+             }}>
+               <div style={{
+                 background: '#0f172a', padding: '12px 16px',
+                 borderBottom: '1px solid #333',
+                 display: 'flex', alignItems: 'center', gap: 10,
+               }}>
+                 <MessageSquare size={18} color="#67e8f9" />
+                 <b style={{ fontSize: 15, color: '#67e8f9' }}>Duvidas sobre este Exercicio</b>
+                 <span style={{ flex: 1 }} />
+                 <button
+                   onClick={() => setShowQuestionTab(false)}
+                   style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', padding: 2 }}
+                 >
+                   <X size={16} />
+                 </button>
+               </div>
+
+               <div style={{
+                 padding: 14,
+                 display: 'flex',
+                 flexDirection: 'column',
+                 gap: 10,
+                 maxHeight: 280,
+                 overflowY: 'auto',
+               }}>
+                 {questionHistory.length === 0 ? (
+                   <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+                     Faca perguntas sobre este exercicio! O professor virtual vai ajudar.
+                   </p>
+                 ) : (
+                   questionHistory.map((msg) => (
+                     <div key={msg.id} style={{
+                       display: 'flex', flexDirection: 'column', gap: 4,
+                       alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                       maxWidth: '80%',
+                     }}>
+                       <div style={{
+                         padding: '8px 12px', borderRadius: 10, fontSize: 13,
+                         lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                         background: msg.role === 'user' ? '#1e3a5f' : '#1a1a1a',
+                         color: msg.role === 'user' ? '#93c5fd' : '#d4d4d4',
+                         border: '1px solid ' + (msg.role === 'user' ? '#3b82f6' : '#333'),
+                       }}>
+                         {msg.content}
+                       </div>
+                     </div>
+                   ))
+                 )}
+                 {questionLoading && (
+                   <div style={{ display: 'flex', gap: 4, color: '#64748b', fontSize: 12 }}>
+                     <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#64748b', animation: 'pulse 0.9s infinite' }} />
+                     <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#64748b', animation: 'pulse 0.9s infinite 0.2s' }} />
+                     <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#64748b', animation: 'pulse 0.9s infinite 0.4s' }} />
+                   </div>
+                 )}
+               </div>
+
+               <div style={{
+                 padding: '10px 12px', borderTop: '1px solid #333',
+                 display: 'flex', gap: 8, alignItems: 'center',
+               }}>
+                 <input
+                   type="text"
+                   value={questionInput}
+                   onChange={(e) => setQuestionInput(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && askQuestion()}
+                   placeholder="Digite sua duvida aqui..."
+                   style={{
+                     flex: 1, padding: '8px 12px', borderRadius: 8,
+                     border: '1px solid #333', background: '#0d1117',
+                     color: '#fff', fontSize: 13, outline: 'none',
+                   }}
+                   disabled={questionLoading}
+                 />
+                 <button
+                   onClick={askQuestion}
+                   disabled={questionLoading || !questionInput.trim()}
+                   style={{
+                     padding: '8px 14px', borderRadius: 8, border: 'none',
+                     background: '#06b6d4', color: '#fff', fontWeight: 700,
+                     cursor: 'pointer', fontSize: 13,
+                   }}
+                 >
+                   {questionLoading ? <Loader2 size={14} className="materials-spin" /> : <Send size={14} />}
+                   Enviar
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
+
+         {walk && walk.steps.length > 0 && (
           <div style={{
             marginTop: 14, borderRadius: 12, overflow: 'hidden',
             border: '2px solid #7c3aed', background: '#111',
@@ -557,25 +839,7 @@ const JudgePanel = () => {
                     </div>
                   )}
 
-                  {/* Criar Exercicio Parecido */}
-                  <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={generateSimilar}
-                      disabled={generatingSimilar}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none',
-                        background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
-                        color: '#fff', fontWeight: 700, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        fontSize: 13, transition: 'opacity 0.2s',
-                      }}
-                    >
-                      {generatingSimilar ? <Loader2 size={14} className="materials-spin" /> : <RefreshCw size={14} />}
-                      Criar Exercicio Parecido
-                    </button>
-                  </div>
-
-                  {/* YouTube Videos por Passo */}
+                   {/* YouTube Videos por Passo */}
                   {explanation.step_by_step?.some(step => step.youtube_search) && (
                     <div style={{ marginTop: 14 }}>
                       <div style={{
@@ -686,6 +950,187 @@ const JudgePanel = () => {
                 Por que errou? Ver analise passo a passo
               </button>
             )}
+          </div>
+        )}
+
+        {result && result.summary && !result.summary.accepted && (
+          <div style={{ marginTop: 14 }}>
+            {(() => {
+              const report = buildErrorReport(activeExercise, result);
+              const successRate = report.successRate;
+              const has90 = successRate >= 90;
+
+              const recordAttempt = () => {
+                const topicKey = activeExercise.topic || 'default';
+                const attemptsStr = localStorage.getItem('judgeAttempts') || '{}';
+                let attempts;
+                try { attempts = JSON.parse(attemptsStr); } catch { attempts = {}; }
+                attempts[topicKey] = attempts[topicKey] || { successes: 0, total: 0 };
+                attempts[topicKey].total += 1;
+                if (result.summary.accepted) attempts[topicKey].successes += 1;
+                else {
+                  const wrongTopics = detectWrongTopics(activeExercise, result);
+                  attempts[topicKey].lastWrongTopics = [...new Set([...(attempts[topicKey].lastWrongTopics || []), ...wrongTopics])];
+                }
+                localStorage.setItem('judgeAttempts', JSON.stringify(attempts));
+              };
+
+              if (!generatedReport) {
+                recordAttempt();
+                setGeneratedReport(report);
+              }
+
+              return (
+                <>
+                  <div style={{
+                    background: '#1a0b2e', borderRadius: 12, padding: 16,
+                    border: '1px solid #f59e0b',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <AlertTriangle size={18} color="#f59e0b" />
+                      <b style={{ fontSize: 16, color: '#f59e0b' }}>Relatorio de Erros</b>
+                      <span style={{ flex: 1 }} />
+                      <span style={{ fontSize: 12, color: '#fbbf24' }}>
+                        {successRate}% de acerto
+                      </span>
+                    </div>
+
+                    <div style={{ marginBottom: 10 }}>
+                      <b style={{ fontSize: 12, color: '#93c5fd', textTransform: 'uppercase' }}>
+                        Topicos com erro:
+                      </b>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                        {report.wrongTopics.length > 0 ? (
+                          report.wrongTopics.map((t, i) => (
+                            <span key={i} style={{
+                              fontSize: 11, color: '#fca5a5',
+                              background: 'rgba(248,113,113,0.15)',
+                              padding: '2px 8px', borderRadius: 10, border: '1px solid rgba(248,113,113,0.3)',
+                            }}>{t}</span>
+                          ))
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#64748b' }}>Nenhum topico especifico detectado</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <b style={{ fontSize: 12, color: '#93c5fd', textTransform: 'uppercase' }}>
+                        Resumo do que estudar:
+                      </b>
+                      <p style={{
+                        margin: '4px 0 0', fontSize: 12.5, color: '#d4d4d4', lineHeight: 1.6,
+                        whiteSpace: 'pre-wrap',
+                      }}>{report.studySummary}</p>
+                    </div>
+
+                    <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <TrendingUp size={14} color={has90 ? '#34d399' : '#f59e0b'} />
+                      <span style={{ fontSize: 12, color: has90 ? '#34d399' : '#f59e0b' }}>
+                        {has90
+                          ? 'Parabens! Voce atingiu 90% de acerto. Pode avancar!'
+                          : `Ainda precisa de 90% de acerto para avancar. Ate agora: ${successRate}%. Faca mais exercicios e revise.`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    marginTop: 12,
+                    display: 'flex', gap: 8, alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <button
+                      onClick={() => setShowQuestionTab(true)}
+                      style={{
+                        padding: '8px 14px', borderRadius: 8, border: '1px solid #333',
+                        background: '#1a1a1a', color: '#67e8f9', cursor: 'pointer',
+                        fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <HelpCircle size={13} /> Tire duvidas sobre este erro
+                    </button>
+                    <button
+                      onClick={generateReviewCalendar}
+                      style={{
+                        padding: '8px 14px', borderRadius: 8, border: '1px solid #7c3aed',
+                        background: 'rgba(124,58,237,0.15)', color: '#a78bfa', cursor: 'pointer',
+                        fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <CalendarIcon size={13} /> Gerar calendario de 6 revisoes
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {showReviewCalendar && reviewSessions.length > 0 && (
+          <div style={{ marginTop: 14, borderRadius: 12, overflow: 'hidden', border: '2px solid #10b981', background: '#111' }}>
+            <div style={{
+              background: '#0f172a', padding: '12px 16px',
+              borderBottom: '1px solid #333',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <CalendarIcon size={18} color="#34d399" />
+              <b style={{ fontSize: 15, color: '#34d399' }}>Calendario de Revisoes (6 sessoes)</b>
+              <span style={{ flex: 1 }} />
+              <button
+                onClick={() => setShowReviewCalendar(false)}
+                style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', padding: 2 }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {reviewSessions.map((rev, i) => (
+                <div key={rev.id} style={{
+                  padding: 12, borderRadius: 10,
+                  background: rev.completed ? 'rgba(16,185,129,0.1)' : 'rgba(55,63,73,0.5)',
+                  border: '1px solid ' + (rev.completed ? 'rgba(16,185,129,0.3)' : '#333'),
+                  display: 'flex', gap: 10, alignItems: 'center',
+                }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: rev.completed ? '#10b981' : '#7c3aed',
+                    color: '#fff', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: 12, fontWeight: 'bold', flexShrink: 0,
+                  }}>{i + 1}</div>
+                  <div style={{ flex: 1 }}>
+                    <b style={{ fontSize: 13, color: rev.completed ? '#34d399' : '#fff' }}>{rev.title}</b>
+                    <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#64748b' }}>{rev.date} (daqui a {rev.day_offset} dias)</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (rev.completed) return;
+                      const res = await axios.post(`${API}/review-complete`, { id: rev.id });
+                      if (res.data?.success) {
+                        setReviewSessions((prev) => prev.map(r => r.id === rev.id ? { ...r, completed: true } : r));
+                        toast.success('Revisao marcada como concluida!');
+                      }
+                    }}
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, border: '1px solid #333',
+                      background: rev.completed ? 'rgba(16,185,129,0.1)' : '#1a1a1a',
+                      color: rev.completed ? '#34d399' : '#64748b', cursor: rev.completed ? 'default' : 'pointer',
+                      fontSize: 11,
+                    }}
+                    disabled={rev.completed}
+                  >
+                    {rev.completed ? 'Feito' : 'Marcar'}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              padding: '8px 16px', borderTop: '1px solid #333',
+              fontSize: 11, color: '#64748b',
+            }}>
+              Revisoes espacadas: 1, 3, 7, 14, 30, 60 dias
+            </div>
           </div>
         )}
       </div>

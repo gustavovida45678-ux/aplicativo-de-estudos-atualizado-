@@ -219,6 +219,17 @@ class SimpleCodeExplainer:
         }
 
 
+class TestCase(BaseModel):
+    input: str
+    expected: str
+
+
+class SubmitRequest(BaseModel):
+    language: str
+    code: str
+    test_cases: List[TestCase] = []
+
+
 def _normalize(out: str) -> str:
     lines = (out or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
     while lines and lines[-1].strip() == "":
@@ -300,22 +311,6 @@ def judge_submit(req: SubmitRequest):
             }
         )
 
-    # Generate AI-based explanation for errors encountered
-    explanation_result = None
-    if not result.get("compile", {}).get("ok", True) or not results[0].get("compile", {}).get("ok", True):
-        # Generate explanation based on compile errors
-        error_details = (results[0].get("compile", {}) or {}).get("stderr", "")
-        language = req.language
-        explanation_result = _generate_simple_explanation(req.code, language, error_details)
-    elif any(not test.get("passed", False) for test in tests):
-        # Generate explanation based on runtime errors
-        for test in tests:
-            if not test.get("passed", False):
-                error_details = test.get("stderr", "")
-                language = req.language
-                explanation_result = _generate_simple_explanation(req.code, language, error_details)
-                break
-
     return {
         "compile": {"ok": True, "stderr": (results[0].get("compile") or {}).get("stderr", "")},
         "tests": tests,
@@ -324,5 +319,4 @@ def judge_submit(req: SubmitRequest):
             "total": len(req.test_cases),
             "accepted": passed == len(req.test_cases),
         },
-        "error_explanation": explanation_result,
     }

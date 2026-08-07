@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import confetti from 'canvas-confetti';
 import {
   Code2, Star, CheckCircle2, XCircle, Loader2, ArrowLeft,
   FileCode2, Play, Send, Trophy, ListOrdered, Sparkles, Youtube,
@@ -106,6 +107,16 @@ const JudgePanel = () => {
         setProgress(next);
         localStorage.setItem('judgeProgress', JSON.stringify(next));
         toast.success(`Accepted! ${s.passed}/${s.total} casos passaram.`);
+        const duration = 3000;
+        const end = Date.now() + duration;
+        const colors = ['#7c3aed', '#a78bfa', '#06b6d4', '#22c55e', '#f59e0b', '#ef4444'];
+        confetti({ particleCount: 120, spread: 100, origin: { y: 0.35 }, colors });
+        const frame = () => {
+          confetti({ particleCount: 6, angle: 60, spread: 60, origin: { x: 0 }, colors });
+          confetti({ particleCount: 6, angle: 120, spread: 60, origin: { x: 1 }, colors });
+          if (Date.now() < end) requestAnimationFrame(frame);
+        };
+        frame();
       } else if (!runOnly && s) {
         toast.info(`${s.passed}/${s.total} casos passaram.`);
         if (res.data.explanation) { setShowExplanation(true); }
@@ -343,6 +354,26 @@ const JudgePanel = () => {
                         }}>{Object.keys(cur?.variables || {}).length
                           ? JSON.stringify(cur.variables, null, 2)
                           : '(nenhuma variavel ainda)'}</pre>
+                        {cur?.variable_details?.length > 0 && (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', marginBottom: 4 }}>
+                              POR QUE CADA VARIAVEL EXISTE
+                            </div>
+                            {cur.variable_details.map((vd, i) => (
+                              <div key={i} style={{
+                                background: '#1a0b2e', borderRadius: 6, border: '1px solid #7c3aed',
+                                padding: '8px 10px', marginBottom: 6,
+                              }}>
+                                <b style={{ color: '#c4b5fd', fontSize: 12 }}>
+                                  {vd.name} <span style={{ color: '#7c3aed', fontWeight: 600 }}>({vd.type || 'variavel'})</span>
+                                </b>
+                                {vd.purpose && <p style={{ margin: '4px 0 0', fontSize: 12, color: '#e9d5ff', lineHeight: 1.55 }}><b style={{ color: '#a78bfa' }}>Serve para: </b>{vd.purpose}</p>}
+                                {vd.why && <p style={{ margin: '4px 0 0', fontSize: 12, color: '#e9d5ff', lineHeight: 1.55 }}><b style={{ color: '#a78bfa' }}>Por que: </b>{vd.why}</p>}
+                                {vd.used_in && <p style={{ margin: '4px 0 0', fontSize: 12, color: '#e9d5ff', lineHeight: 1.55 }}><b style={{ color: '#a78bfa' }}>Usada em: </b>{vd.used_in}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', margin: '10px 0 4px' }}>SAIDA ACUMULADA</div>
                         <pre style={{
                           margin: 0, background: '#0d1117', borderRadius: 6, padding: 8, fontSize: 11.5,

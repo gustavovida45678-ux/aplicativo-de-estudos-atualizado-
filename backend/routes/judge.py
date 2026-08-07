@@ -274,11 +274,29 @@ def _local_walkthrough(code: str, language: str, stdin: str) -> list:
             explanation = explanation or f"Executa a linha {idx}."
 
         if explanation:
+            details = []
+            for name, val in variables.items():
+                if isinstance(val, float):
+                    vtype = "float/double (numero decimal)"
+                elif isinstance(val, int):
+                    vtype = "int (numero inteiro)"
+                elif isinstance(val, bool):
+                    vtype = "bool (verdadeiro/falso)"
+                else:
+                    vtype = "texto/string"
+                details.append({
+                    "name": name,
+                    "type": vtype,
+                    "purpose": f"Guarda o valor {val} para ser usado nas proximas linhas do programa.",
+                    "why": f"Precisa de uma variavel para armazenar esse valor em memoria; se nao guardasse, o valor seria perdido.",
+                    "used_in": "Usado nos calculos e nas impressoes que vem a seguir.",
+                })
             steps.append({
                 "line": idx,
                 "code": raw,
                 "explanation": explanation,
                 "variables": dict(variables),
+                "variable_details": details,
                 "output": output,
             })
 
@@ -305,7 +323,7 @@ Responda APENAS com JSON (sem markdown, sem ```), com esta estrutura exata:
   "template": true,
   "corrected_code": "codigo completo corrigido em {lang_name} que resolve o problema",
   "steps": [
-    {{"line": 1, "code": "texto exato da linha do corrected_code", "explanation": "explicacao didatica em portugues do que esta linha faz, com valores concretos", "variables": {{"A": 2}}, "output": "saida acumulada ate aqui"}}
+    {{"line": 1, "code": "texto exato da linha do corrected_code", "explanation": "explicacao didatica em portugues do que esta linha faz, com valores concretos", "variables": {{"A": 2}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel no programa", "why": "por que foi usado esse tipo e esse nome", "used_in": "onde essa variavel e usada (linhas/frases)"}}], "output": "saida acumulada ate aqui"}}
   ]
 }}
 
@@ -313,7 +331,11 @@ REGRAS:
 - Primeiro passo: explique que o codigo enviado estava vazio e que a solucao foi preenchida automaticamente
 - Depois, simule CADA linha da solucao preenchida usando os valores reais da entrada
 - `line` deve corresponder a linha correspondente dentro do corrected_code (1-based)
-- Seja MUITO didatico, como aula particular
+- IMPORTANTE: em TODO passo que envolver variaveis (declaracao, leitura, calculo, impressao), preencha `variable_details` explicando COM MAXIMO DETALHE:
+  * purpose: o que essa variavel guarda e para que ela serve no programa
+  * why: por que escolhemos esse tipo (int para inteiros, float/double para decimais) e por que ela precisa existir
+  * used_in: onde essa variavel sera usada nas proximas linhas
+- Seja MUITO didatico, como aula particular para alguem que nunca programou
 - No maximo 40 passos"""
     else:
         system_prompt = f"""Voce e um professor de {lang_name} que explica como o codigo executa passo a passo, linha por linha, como se o aluno nunca tivesse programado.
@@ -321,11 +343,15 @@ REGRAS:
 Dado o CODIGO e a ENTRADA, simule a execucao e gere um passo para CADA linha executada (declarar variaveis, ler da entrada, calcular, imprimir, fechar chaves quando encerrar). Pule linhas vazias e comentarios. NUNCA invente linhas que nao existem no codigo.
 
 Responda APENAS com JSON (sem markdown, sem ```), um array de objetos:
-[{{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "output": "saida acumulada ate este passo"}}]
+[{{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel", "why": "por que foi usado esse tipo e por que ela existe", "used_in": "onde e usada nas proximas linhas"}}], "output": "saida acumulada ate este passo"}}]
 
 REGRAS:
 - Use os valores REAIS da execucao (ex: A=2, B=3, soma=5)
 - Cada passo deve referenciar uma linha que REALMENTE existe no codigo fornecido
+- IMPORTANTE: em TODO passo que envolver variaveis (declaracao, leitura, calculo, impressao), preencha `variable_details` explicando COM MAXIMO DETALHE:
+  * purpose: o que essa variavel guarda e para que ela serve no programa
+  * why: por que o tipo foi escolhido (int para inteiros, float/double para decimais, char para um caractere) e por que a variavel precisa existir em vez de usar o valor direto
+  * used_in: onde essa variavel sera usada (calculos, impressoes, condicoes)
 - Quando a linha imprimir, mostre em output a saida acumulada usando \\n
 - Seja MUITO didatico, como aula particular
 - No maximo 40 passos"""
@@ -356,11 +382,18 @@ REGRAS:
         for i, s in enumerate(data):
             if not isinstance(s, dict):
                 continue
+            var_details = s.get("variable_details") or s.get("variables_usage") or []
+            if isinstance(var_details, dict):
+                var_details = [
+                    {"name": k, "purpose": v.get("purpose") if isinstance(v, dict) else "", "why": v.get("why") if isinstance(v, dict) else "", "used_in": v.get("used_in") if isinstance(v, dict) else ""}
+                    for k, v in var_details.items()
+                ]
             steps.append({
                 "line": int(s.get("line") or i + 1),
                 "code": s.get("code") or "",
                 "explanation": s.get("explanation") or s.get("detail") or "",
                 "variables": s.get("variables") or {},
+                "variable_details": var_details if isinstance(var_details, list) else [],
                 "output": s.get("output") or "",
             })
         return (steps if steps else None), corrected_code

@@ -19,6 +19,14 @@ LANG_NAMES = {
     "python": {"piston": "python", "file": "main.py", "run_timeout": 5000},
 }
 
+FALLBACK_MODELS = [
+    "anthropic/claude-3.5-haiku",
+    "google/gemini-2.0-flash-001",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "qwen/qwen-2.5-72b-instruct:free",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
+]
+
 
 class TestCase(BaseModel):
     input: str
@@ -58,51 +66,107 @@ def _run(lang: str, code: str, stdin: str) -> dict:
     }
     try:
         r = requests.post(PISTON_URL, json=payload, timeout=60)
+        data = r.json()
+        if "message" in data and "whitelist" in data.get("message", "").lower():
+            logger.error("Piston API is now whitelist-only. Need alternative execution service.")
+            return {"compile": {"code": -1, "stderr": "Servico de execucao indisponivel. Tente novamente mais tarde."}, "run": None}
+        return data
     except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=502, detail=f"Falha ao acessar o servico de execucao: {e}"
-        )
-    try:
-        return r.json()
+        raise HTTPException(status_code=502, detail=f"Falha ao acessar servico de execucao: {e}")
     except Exception:
         raise HTTPException(status_code=502, detail="Resposta invalida do servico de execucao.")
 
 
-def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> Optional[dict]:
+def _call_openrouter(system_prompt: str, user_prompt: str) -> Optional[str]:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
-        logger.warning("OPENROUTER_API_KEY not set, skipping AI explanation")
+        logger.warning("OPENROUTER_API_KEY not set")
         return None
 
+    for model in FALLBACK_MODELS:
+        try:
+            logger.info(f"Trying model: {model}")
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
+                    "X-Title": "StudyApp Judge",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 2000,
+                },
+                timeout=30,
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if content:
+                    logger.info(f"Model {model} responded OK")
+                    return content
+            else:
+                logger.warning(f"Model {model} returned {resp.status_code}: {resp.text[:200]}")
+                continue
+        except Exception as e:
+            logger.warning(f"Model {model} failed: {e}")
+            continue
+
+    return None
+
+
+def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> Optional[dict]:
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
 
-    if compile_error:
-        context = f"""O codigo {lang_name} do aluno tem ERRO DE COMPILACAO.
+    system_prompt = """Voce e um professor de programacao expert. Analise o codigo do aluno, identifique TODOS os erros e explique passo a passo como corrigir.
 
-CODIGO DO ALUNO:
+REGRAS OBRIGATORIAS:
+- Responda APENAS com JSON valido (sem markdown, sem ```)
+- Seja MUITO especifico: aponte linhas exatas, variaveis, operadores errados
+- Mostre o codigo CORRETO como hint em cada passo
+- Inclua o codigo corrigido completo no campo corrected_code
+- Em cada passo, explique O QUE o aluno precisa aprender para nao errar de novo
+- Use portugues simples e didatico
+
+ESTRUTURA DO JSON:
+{
+  "error_type": "tipo do erro resumido",
+  "analysis": "analise detalhada do que esta errado",
+  "step_by_step": [
+    {
+      "step": 1,
+      "title": "Titulo claro do passo",
+      "detail": "explicacao completa e didatica",
+      "code_hint": "exemplo de codigo correto ou null",
+      "concept": "conceito que o aluno precisa aprender"
+    }
+  ],
+  "suggestion": "dica final de como corrigir",
+  "corrected_code": "codigo completo corrigido ou null",
+  "youtube_search": "termo de busca para video aula no youtube"
+}"""
+
+    if compile_error:
+        context = f"""CODIGO {lang_name} DO ALUNO COM ERRO DE COMPILACAO:
+
 ```{language}
 {code}
 ```
 
 ERRO DE COMPILACAO:
-{stderr[:1500]}
+{stderr[:2000]}
 
-Gere uma explicacao passo a passo em formato JSON com esta estrutura EXATA:
-{{
-  "error_type": "tipo do erro resumido",
-  "analysis": "analise do que esta errado no codigo, apontando linhas especificas",
-  "step_by_step": [
-    {{"step": 1, "title": "Titulo do passo", "detail": "explicacao detalhada", "code_hint": "exemplo de codigo correto ou null"}}
-  ],
-  "suggestion": "dica final de como corrigir",
-  "corrected_code": "codigo completo corrigido ou null"
-}}
-
-Seja DIRETO e DIDATICO. Aponte EXATAMENTE onde esta o erro linha por linha."""
+Analise CADA erro, aponte a LINHA EXATA e explique como corrigir. Mostre o codigo correto."""
     elif stdout and expected:
-        context = f"""O codigo {lang_name} do aluno COMPILOU mas a SAIDA esta INCORRETA.
+        context = f"""CODIGO {lang_name} DO ALUNO - SAIDA INCORRETA:
 
-CODIGO DO ALUNO:
 ```{language}
 {code}
 ```
@@ -113,169 +177,190 @@ SAIDA DO ALUNO:
 SAIDA ESPERADA:
 {expected[:500]}
 
-Gere uma explicacao passo a passo em formato JSON com esta estrutura EXATA:
-{{
-  "error_type": "saida incorreta",
-  "analysis": "analise de por que a saida nao bate com o esperado",
-  "step_by_step": [
-    {{"step": 1, "title": "Titulo do passo", "detail": "explicacao detalhada", "code_hint": "exemplo de codigo correto ou null"}}
-  ],
-  "suggestion": "dica final de como corrigir a saida",
-  "corrected_code": "codigo completo corrigido ou null"
-}}
-
-Seja DIRETO e DIDATICO."""
+Explique POR QUE a saida esta errada e como corrigir a logica."""
     else:
-        context = f"""O codigo {lang_name} do aluno falhou na execucao.
+        context = f"""CODIGO {lang_name} DO ALUNO FALHOU NA EXECUCAO:
 
-CODIGO DO ALUNO:
 ```{language}
 {code}
 ```
 
 ERRO:
-{stderr[:1500]}
+{stderr[:2000]}
 
-Gere uma explicacao passo a passo em formato JSON com esta estrutura EXATA:
-{{
-  "error_type": "tipo do erro",
-  "analysis": "analise do erro",
-  "step_by_step": [
-    {{"step": 1, "title": "Titulo do passo", "detail": "explicacao detalhada", "code_hint": "exemplo de codigo correto ou null"}}
-  ],
-  "suggestion": "dica final",
-  "corrected_code": "codigo completo corrigido ou null"
-}}"""
+Analise o erro e explique como corrigir."""
 
-    system_prompt = """Voce e um professor de programacao expert. Analise o codigo do aluno, identifique TODOS os erros e explique passo a passo como corrigir.
-
-REGRAS:
-- Responda APENAS com JSON valido (sem markdown, sem ```)
-- Seja especifico: aponte linhas, variaveis, operadores errados
-- Mostre o codigo CORRETO como hint em cada passo quando aplicavel
-- Inclua o codigo corrigido completo no campo corrected_code
-- Use portugues simples e direto"""
+    raw = _call_openrouter(system_prompt, context)
+    if not raw:
+        return None
 
     try:
-        resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
-                "X-Title": "StudyApp Judge",
-            },
-            json={
-                "model": "anthropic/claude-3.5-haiku",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context},
-                ],
-                "temperature": 0.3,
-                "max_tokens": 2000,
-            },
-            timeout=30,
-        )
-
-        if resp.status_code != 200:
-            logger.error(f"OpenRouter API error {resp.status_code}: {resp.text[:500]}")
-            return None
-
-        data = resp.json()
-        raw = data["choices"][0]["message"]["content"].strip()
-        logger.info(f"AI explanation response: {raw[:200]}")
-
         if raw.startswith("```"):
             raw = re.sub(r"^```\w*\n?", "", raw)
             raw = re.sub(r"\n?```$", "", raw)
-
         parsed = json.loads(raw)
         return parsed
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse AI response as JSON: {e}\nRaw: {raw[:500] if 'raw' in dir() else 'N/A'}")
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse AI response as JSON: {raw[:500]}")
         return {
-            "error_type": "explicacao gerada",
-            "analysis": raw[:800] if 'raw' in dir() else "Nao foi possivel analisar",
-            "step_by_step": [{"step": 1, "title": "Resposta da IA", "detail": raw[:800] if 'raw' in dir() else "Sem detalhes", "code_hint": None}],
+            "error_type": "explicacao da IA",
+            "analysis": raw[:1000],
+            "step_by_step": [{"step": 1, "title": "Analise da IA", "detail": raw[:1000], "code_hint": None, "concept": None}],
             "suggestion": "Revise o codigo com base na analise acima.",
             "corrected_code": None,
+            "youtube_search": f"{language} programacao erros comuns",
         }
-    except Exception as e:
-        logger.error(f"AI explanation failed: {e}")
-        return None
 
 
 def _get_youtube_videos(error_type: str, language: str, code: str = "") -> list:
     videos = []
+    lang_lower = language.lower()
 
     if "compilacao" in error_type.lower() or "compile" in error_type.lower():
-        videos.append({
-            "title": f"Erros de compilacao em {language.upper()} - como resolver",
-            "url": f"https://www.youtube.com/results?search_query=erros+compilacao+{language}+como+resolver",
-        })
-        if language in ("c", "cpp"):
-            videos.append({
-                "title": "GCC/Clang - erros comuns e como interpretar",
-                "url": "https://www.youtube.com/results?search_query=gcc+clang+erros+comuns+c+compilacao",
-            })
-    elif "saida" in error_type.lower() or "output" in error_type.lower():
-        videos.append({
-            "title": f"{language.upper()} - saida incorreta debug",
-            "url": f"https://www.youtube.com/results?search_query={language}+saida+incorreta+debug",
-        })
+        if lang_lower == "c":
+            videos.extend([
+                {"title": "Aprenda C do Zero - Aula 1: Primeiro Programa", "url": "https://www.youtube.com/watch?v=edXaRMEVfDg", "thumbnail": "https://img.youtube.com/vi/edXaRMEVfDg/mqdefault.jpg"},
+                {"title": "Erros Comuns em C - Compilacao e Sintaxe", "url": "https://www.youtube.com/results?search_query=erros+compilacao+linguagem+C+tutorial"},
+                {"title": "C com Guy Virtuelle - Variaveis e Tipos", "url": "https://www.youtube.com/results?search_query=c+linguagem+variaveis+tipos+tutorial+portugues"},
+            ])
+        elif lang_lower == "cpp":
+            videos.extend([
+                {"title": "C++ do Zero - Aula Completa", "url": "https://www.youtube.com/results?search_query=C%2B%2B+do+zero+aula+completa+portugues"},
+                {"title": "Erros Comuns em C++", "url": "https://www.youtube.com/results?search_query=erros+compilacao+C%2B%2B+tutorial"},
+            ])
+        else:
+            videos.extend([
+                {"title": "Python do Zero - Aula Completa", "url": "https://www.youtube.com/results?search_query=python+do+zero+aula+completa+portugues"},
+                {"title": "Erros Comuns em Python", "url": "https://www.youtube.com/results?search_query=erros+python+sintaxe+tutorial+portugues"},
+            ])
+    elif "saida" in error_type.lower() or "incorreta" in error_type.lower():
+        videos.extend([
+            {"title": f"Logica de Programacao - Como Pensar como Programador", "url": "https://www.youtube.com/results?search_query=logica+programacao+como+pensar+programador+portugues"},
+            {"title": f"{lang_lower.upper()} - Debug e Encontrar Erros", "url": f"https://www.youtube.com/results?search_query={lang_lower}+debug+encontrar+erros+portugues"},
+        ])
     else:
-        videos.append({
-            "title": f"Debug em {language.upper()} - como encontrar erros",
-            "url": f"https://www.youtube.com/results?search_query=debug+{language}+como+encontrar+erros",
-        })
-
-    videos.append({
-        "title": f"Curso completo {language.upper()} - YouTube",
-        "url": f"https://www.youtube.com/results?search_query=curso+completo+{language}+programacao",
-    })
+        videos.extend([
+            {"title": f"Curso Completo {language.upper()} - Programacao", "url": f"https://www.youtube.com/results?search_query=curso+completo+{lang_lower}+programacao+portugues"},
+            {"title": "Logica de Programacao para Iniciantes", "url": "https://www.youtube.com/results?search_query=logica+programacao+iniciantes+portugues"},
+        ])
 
     return videos
 
 
 def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> dict:
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
+
     if compile_error:
-        err_line = re.search(r"(\d+):\d+", stderr)
-        line_num = err_line.group(1) if err_line else "?"
-        err_msg = stderr.split("\n")[0][:200] if stderr else "Erro desconhecido"
+        err_lines = stderr.strip().split("\n") if stderr else []
+        errors = []
+        for line in err_lines:
+            if "error:" in line.lower() or "erreur:" in line.lower():
+                errors.append(line.strip())
+
+        err_detail = errors[0] if errors else (err_lines[0] if err_lines else "Erro desconhecido")
+        err_line_match = re.search(r"(\d+):\d+", stderr or "")
+        line_num = err_line_match.group(1) if err_line_match else None
+
+        step_by_step = []
+        step_num = 1
+
+        if line_num:
+            code_lines = code.split("\n")
+            if int(line_num) <= len(code_lines):
+                problem_line = code_lines[int(line_num) - 1]
+                step_by_step.append({
+                    "step": step_num,
+                    "title": f"Erro na linha {line_num}",
+                    "detail": f"A linha {line_num} do seu codigo tem um erro de compilacao:\n{problem_line.strip()}\n\nMensagem do compilador: {err_detail}",
+                    "code_hint": None,
+                    "concept": "Compilador C - como interpretar mensagens de erro",
+                })
+                step_num += 1
+
+        if "expected" in (stderr or "").lower() or ";" in (stderr or ""):
+            step_by_step.append({
+                "step": step_num,
+                "title": "Verifique pontuacao e sintaxe",
+                "detail": "Em C/C++, toda instrucao termina com ponto-e-virgula (;). Verifique se nao falta nenhum ; ou se ha parenteses/chaves desbalanceados.",
+                "code_hint": "int x = 5;  // ponto-e-virgula no final",
+                "concept": "Sintaxe basica do C/C++",
+            })
+            step_num += 1
+
+        if "undeclared" in (stderr or "").lower() or "not declared" in (stderr or "").lower():
+            var_match = re.search(r"'(\w+)' undeclared|was not declared", stderr or "")
+            var_name = var_match.group(1) if var_match else "variavel"
+            step_by_step.append({
+                "step": step_num,
+                "title": f"Variavel '{var_name}' nao foi declarada",
+                "detail": f"Voce esta usando '{var_name}' mas esqueceu de declarar o tipo dela. Em C, toda variavel precisa ser declarada antes de usar.",
+                "code_hint": f"int {var_name};  // declare o tipo antes de usar",
+                "concept": "Declaracao de variaveis em C",
+            })
+            step_num += 1
+
+        if "redefinition" in (stderr or "").lower():
+            step_by_step.append({
+                "step": step_num,
+                "title": "Redefinicao de variavel/funcao",
+                "detail": "Voce declarou a mesma variavel ou funcao mais de uma vez. Cada variavel so pode ser declarada uma vez no mesmo escopo.",
+                "code_hint": None,
+                "concept": "Escopo de variaveis em C",
+            })
+            step_num += 1
+
+        if not step_by_step:
+            step_by_step.append({
+                "step": step_num,
+                "title": "Erro de compilacao detectado",
+                "detail": f"O compilador encontrou um erro:\n{err_detail}\n\nRevise a linha indicada e verifique: ponto-e-virgula, parenteses, chaves, tipo de variavel.",
+                "code_hint": None,
+                "concept": "Interpretacao de erros do compilador GCC",
+            })
+
+        step_num += 1
+        step_by_step.append({
+            "step": step_num,
+            "title": "Corrija e recompile",
+            "detail": "Apos corrigir o erro, compile novamente. O compilador sempre aponta a linha exata do problema. Leia a mensagem de erro completa.",
+            "code_hint": None,
+            "concept": None,
+        })
+
         return {
             "error_type": "Erro de compilacao",
-            "analysis": f"Erro na linha {line_num}: {err_msg}",
-            "step_by_step": [
-                {"step": 1, "title": f"Erro detectado na linha {line_num}", "detail": err_msg, "code_hint": None},
-                {"step": 2, "title": "Verifique a sintaxe", "detail": "Revise a linha indicada. Verifique: ponto-e-virgula, parenteses, chaves, tipo de variavel.", "code_hint": None},
-                {"step": 3, "title": "Corrija e recompile", "detail": "Apos corrigir, compile novamente.", "code_hint": None},
-            ],
-            "suggestion": "Leia a mensagem de erro completa. O compilador sempre aponta a linha exata do problema.",
+            "analysis": f"O compilador encontrou erros no codigo {lang_name}. {err_detail}",
+            "step_by_step": step_by_step,
+            "suggestion": f"Leia a mensagem de erro completa. O compilador GCC sempre aponta a linha exata. Verifique: pontuacao (;), parenteses (), chaves {{}}, declaracao de variaveis.",
             "corrected_code": None,
+            "youtube_search": f"compilador {lang_name} erros comuns tutorial",
         }
+
     elif stdout and expected:
         return {
             "error_type": "Saida incorreta",
-            "analysis": f"O codigo executou mas gerou saida diferente do esperado.",
+            "analysis": f"O codigo {lang_name} compilou e executou, mas a saida esta diferente do esperado.",
             "step_by_step": [
-                {"step": 1, "title": "Sua saida", "detail": stdout[:300], "code_hint": None},
-                {"step": 2, "title": "Saida esperada", "detail": expected[:300], "code_hint": None},
-                {"step": 3, "title": "Compare e corrija", "detail": "Verifique formatacao, espacos, quebras de linha e logica.", "code_hint": None},
+                {"step": 1, "title": "Sua saida", "detail": f"Saida gerada pelo seu codigo:\n{stdout[:300]}", "code_hint": None, "concept": None},
+                {"step": 2, "title": "Saida esperada", "detail": f"Saida que o exercicio espera:\n{expected[:300]}", "code_hint": None, "concept": None},
+                {"step": 3, "title": "Compare e identifique a diferenca", "detail": "Compare linha por linha. Verifique: espacos extras, quebras de linha, formatacao de numeros, maiusculas/minusculas.", "code_hint": None, "concept": "Formatacao de saida em C - printf()"},
+                {"step": 4, "title": "Corrija a logica", "detail": "Se a saida e numericamente diferente, revise os calculos. Se e de formatacao, ajuste o printf().", "code_hint": None, "concept": None},
             ],
-            "suggestion": "Use print() para debugar e comparar saida linha por linha.",
+            "suggestion": "Use printf() para debugar e ver intermediarios. Compare sua saida com a esperada caractere por caractere.",
             "corrected_code": None,
+            "youtube_search": f"{lang_name} saida incorreta debug tutorial",
         }
     else:
         return {
             "error_type": "Erro na execucao",
             "analysis": stderr[:300] if stderr else "Erro desconhecido",
             "step_by_step": [
-                {"step": 1, "title": "Erro detectado", "detail": stderr[:300] if stderr else "Sem detalhes", "code_hint": None},
-                {"step": 2, "title": "Revise o codigo", "detail": "Verifique logica, variaveis e operacoes.", "code_hint": None},
+                {"step": 1, "title": "Erro detectado", "detail": stderr[:300] if stderr else "Sem detalhes do erro", "code_hint": None, "concept": None},
+                {"step": 2, "title": "Revise o codigo", "detail": "Verifique logica, variaveis e operacoes.", "code_hint": None, "concept": None},
             ],
-            "suggestion": "Adicione prints para debugar o fluxo de execucao.",
+            "suggestion": "Adicione printf() para debugar o fluxo de execucao.",
             "corrected_code": None,
+            "youtube_search": f"{lang_name} programacao debug tutorial",
         }
 
 
@@ -287,18 +372,13 @@ async def judge_submit(req: SubmitRequest):
         raise HTTPException(status_code=400, detail="Nenhum caso de teste enviado.")
 
     first_result = _run(req.language, req.code, req.test_cases[0].input)
-    compile_ok = True
-    compile_stderr = ""
 
     if first_result.get("compile") and first_result["compile"].get("code") is not None and first_result["compile"].get("code") != 0:
-        compile_ok = False
         compile_stderr = first_result["compile"].get("stderr", "")
-
         ai_explanation = _ai_explain(req.code, req.language, compile_stderr, "", "", True)
         if not ai_explanation:
             ai_explanation = _fallback_explanation(req.code, req.language, compile_stderr, "", "", True)
         ai_explanation["youtube_videos"] = _get_youtube_videos("compilacao", req.language, req.code)
-
         return {
             "compile": {"ok": False, "stderr": compile_stderr},
             "tests": [],
@@ -306,13 +386,12 @@ async def judge_submit(req: SubmitRequest):
             "explanation": ai_explanation,
         }
 
-    if not first_result.get("run"):
-        stderr_val = (first_result.get("compile") or {}).get("stderr", "")
+    if not first_result.get("run") or (first_result.get("run") and first_result["run"].get("stdout") is None and first_result["run"].get("code") != 0):
+        stderr_val = (first_result.get("compile") or {}).get("stderr", "") or ((first_result.get("run") or {}).get("stderr", ""))
         ai_explanation = _ai_explain(req.code, req.language, stderr_val, "", "", True)
         if not ai_explanation:
             ai_explanation = _fallback_explanation(req.code, req.language, stderr_val, "", "", True)
         ai_explanation["youtube_videos"] = _get_youtube_videos("execucao", req.language, req.code)
-
         return {
             "compile": {"ok": True, "stderr": ""},
             "tests": [],
@@ -332,12 +411,12 @@ async def judge_submit(req: SubmitRequest):
         run = res.get("run") or {}
         stderr = run.get("stderr", "") or ""
         output = _normalize(run.get("stdout", ""))
-        expected = _normalize(tc.expected)
-        ok = output == expected
+        expected_norm = _normalize(tc.expected)
+        ok = output == expected_norm
         if ok:
             passed += 1
         elif first_fail is None:
-            first_fail = {"stderr": stderr, "output": output, "expected": expected}
+            first_fail = {"stderr": stderr, "output": output, "expected": expected_norm}
         tests.append({
             "index": i + 1,
             "passed": ok,
@@ -350,10 +429,6 @@ async def judge_submit(req: SubmitRequest):
 
     explanation = None
     if first_fail and passed < len(req.test_cases):
-        error_label = "execucao"
-        if first_fail["stderr"] and ("error" in first_fail["stderr"].lower() or "exception" in first_fail["stderr"].lower()):
-            error_label = "runtime error"
-
         ai_explanation = _ai_explain(
             req.code, req.language,
             first_fail["stderr"], first_fail["output"],
@@ -365,7 +440,7 @@ async def judge_submit(req: SubmitRequest):
                 first_fail["stderr"], first_fail["output"],
                 first_fail["expected"], False
             )
-        ai_explanation["youtube_videos"] = _get_youtube_videos(error_label, req.language, req.code)
+        ai_explanation["youtube_videos"] = _get_youtube_videos("saida incorreta", req.language, req.code)
         explanation = ai_explanation
 
     return {
@@ -386,18 +461,15 @@ async def explain_error(req: SubmitRequest):
         raise HTTPException(status_code=400, detail="Codigo vazio.")
 
     result = _run(req.language, req.code, "")
-    stderr = ""
-    compile_stderr = ""
     compile_error = False
+    error_text = ""
 
     if result.get("compile") and result["compile"].get("code") is not None and result["compile"].get("code") != 0:
-        compile_stderr = result["compile"].get("stderr", "")
+        error_text = result["compile"].get("stderr", "")
         compile_error = True
+    elif result.get("run"):
+        error_text = (result.get("run") or {}).get("stderr", "")
 
-    if result.get("run"):
-        stderr = (result.get("run") or {}).get("stderr", "")
-
-    error_text = compile_stderr or stderr
     ai_explanation = _ai_explain(req.code, req.language, error_text, "", "", compile_error)
     if not ai_explanation:
         ai_explanation = _fallback_explanation(req.code, req.language, error_text, "", "", compile_error)
@@ -435,9 +507,6 @@ def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
             {"title": "Inverter String", "statement": "Leia uma string e imprima invertida.",
              "inputFormat": "Uma string S", "outputFormat": "A string invertida",
              "test_cases": [{"input": "hello", "expected": "olleh"}, {"input": "abc", "expected": "cba"}]},
-            {"title": "Contar Vogais", "statement": "Conte quantas vogais uma string tem.",
-             "inputFormat": "Uma string S", "outputFormat": "Quantidade de vogais",
-             "test_cases": [{"input": "hello", "expected": "2"}, {"input": "aeiou", "expected": "5"}]},
         ],
         "arrays": [
             {"title": "Soma dos Elementos", "statement": "Leia N numeros e calcule a soma.",

@@ -207,35 +207,35 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
         category="Agregador",
         models={
             "claude-3-5-sonnet": ModelConfig(
-                model_id="openrouter/anthropic/claude-3.5-sonnet",
+                model_id="anthropic/claude-3.5-sonnet",
                 display_name="Claude 3.5 Sonnet (via OpenRouter)",
                 context_window=200000,
                 supports_vision=True
             ),
             "claude-3-5-haiku": ModelConfig(
-                model_id="openrouter/anthropic/claude-3.5-haiku",
+                model_id="anthropic/claude-3.5-haiku",
                 display_name="Claude 3.5 Haiku (via OpenRouter)",
                 context_window=200000,
                 supports_vision=True
             ),
             "claude-3-7-sonnet": ModelConfig(
-                model_id="openrouter/anthropic/claude-3.7-sonnet",
+                model_id="anthropic/claude-3.7-sonnet",
                 display_name="Claude 3.7 Sonnet (via OpenRouter)",
                 context_window=200000,
                 supports_vision=True
             ),
             "qwen-2.5-72b-instruct": ModelConfig(
-                model_id="openrouter/qwen/qwen-2.5-72b-instruct",
+                model_id="qwen/qwen-2.5-72b-instruct",
                 display_name="Qwen 2.5 72B (Free)",
                 context_window=32768
             ),
             "mistral-nemo": ModelConfig(
-                model_id="openrouter/mistralai/mistral-nemo",
+                model_id="mistralai/mistral-nemo",
                 display_name="Mistral Nemo (Free)",
                 context_window=128000
             ),
             "deepseek-v3": ModelConfig(
-                model_id="openrouter/deepseek/deepseek-chat",
+                model_id="deepseek/deepseek-chat",
                 display_name="DeepSeek V3 via OpenRouter",
                 context_window=64000
             ),

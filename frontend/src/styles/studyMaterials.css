@@ -2503,8 +2503,8 @@
 .materials-judge-submit:disabled, .materials-judge-run:disabled { opacity: 0.6; cursor: not-allowed; }
 .materials-judge-result {
   border-radius: 14px;
-  border: 1px solid #1e2a3a;
-  background: #101826;
+  border: 1px solid #333;
+  background: #0a0a0a;
   padding: 0.9rem 1.1rem;
 }
 .materials-judge-result.accepted { border-color: rgba(16, 185, 129, 0.5); box-shadow: 0 0 22px rgba(16, 185, 129, 0.12); }
@@ -2518,8 +2518,8 @@
 .materials-judge-result.accepted .materials-judge-result-head { color: #34d399; }
 .materials-judge-compile-error {
   margin-top: 0.7rem;
-  background: rgba(248, 113, 113, 0.07);
-  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: #111;
+  border: 1px solid #333;
   border-radius: 9px;
   padding: 0.6rem 0.8rem;
 }
@@ -2538,8 +2538,8 @@
   align-items: flex-start;
   padding: 0.55rem 0.8rem;
   border-radius: 9px;
-  border: 1px solid #1e2a3a;
-  background: #0d1420;
+  border: 1px solid #333;
+  background: #111;
 }
 .materials-judge-test.pass { border-color: rgba(16, 185, 129, 0.35); }
 .materials-judge-test.fail { border-color: rgba(248, 113, 113, 0.35); }

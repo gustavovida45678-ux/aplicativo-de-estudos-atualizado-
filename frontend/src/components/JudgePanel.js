@@ -218,15 +218,16 @@ const JudgePanel = () => {
             {explanation && showExplanation && (
               <div style={{
                 marginTop: 16, borderRadius: 12, overflow: 'hidden',
-                border: '2px solid #f59e0b',
+                border: '2px solid #333',
               }}>
                 {/* Header */}
                 <div style={{
-                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  background: '#111',
                   padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10,
+                  borderBottom: '1px solid #333',
                 }}>
-                  <Brain size={20} color="#000" />
-                  <b style={{ fontSize: 16, color: '#000' }}>Analise do Erro</b>
+                  <Brain size={20} color="#f59e0b" />
+                  <b style={{ fontSize: 16, color: '#f59e0b' }}>Analise do Erro - Passo a Passo</b>
                 </div>
 
                 {/* Content */}
@@ -234,8 +235,8 @@ const JudgePanel = () => {
 
                   {/* Error Type */}
                   <div style={{
-                    background: '#1e1e1e', borderRadius: 8, padding: 12, marginBottom: 12,
-                    borderLeft: '4px solid #f59e0b',
+                    background: '#111', borderRadius: 8, padding: 12, marginBottom: 12,
+                    borderLeft: '4px solid #f59e0b', border: '1px solid #333',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                       <AlertTriangle size={14} color="#f59e0b" />
@@ -306,8 +307,8 @@ const JudgePanel = () => {
                   {/* Suggestion */}
                   {explanation.suggestion && (
                     <div style={{
-                      background: '#052e16', borderRadius: 8, padding: 12, marginTop: 8,
-                      borderLeft: '4px solid #22c55e',
+                      background: '#111', borderRadius: 8, padding: 12, marginTop: 8,
+                      borderLeft: '4px solid #22c55e', border: '1px solid #333',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                         <Lightbulb size={14} color="#22c55e" />
@@ -354,11 +355,12 @@ const JudgePanel = () => {
                   {explanation.step_by_step?.some(step => step.youtube_search) && (
                     <div style={{ marginTop: 14 }}>
                       <div style={{
-                        background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
+                        background: '#111',
                         borderRadius: 8, padding: '10px 14px', marginBottom: 10,
                         display: 'flex', alignItems: 'center', gap: 8,
+                        border: '1px solid #333',
                       }}>
-                        <Youtube size={18} color="#fff" />
+                        <Youtube size={18} color="#dc2626" />
                         <b style={{ color: '#fff', fontSize: 14 }}>Videoaulas por Conceito</b>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -398,11 +400,12 @@ const JudgePanel = () => {
                   {explanation.youtube_videos?.length > 0 && (
                     <div style={{ marginTop: 16 }}>
                       <div style={{
-                        background: 'linear-gradient(135deg, #7f1d1d, #991b1b)',
+                        background: '#111',
                         borderRadius: 8, padding: '10px 14px', marginBottom: 10,
                         display: 'flex', alignItems: 'center', gap: 8,
+                        border: '1px solid #333',
                       }}>
-                        <Youtube size={18} color="#fff" />
+                        <Youtube size={18} color="#dc2626" />
                         <b style={{ color: '#fff', fontSize: 14 }}>Mais Videoaulas</b>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -449,8 +452,8 @@ const JudgePanel = () => {
                 onClick={() => setShowExplanation(true)}
                 style={{
                   marginTop: 12, width: '100%', padding: '12px 16px',
-                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                  color: '#000', border: 'none', borderRadius: 8, cursor: 'pointer',
+                  background: '#111',
+                  color: '#f59e0b', border: '1px solid #333', borderRadius: 8, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   fontSize: 15, fontWeight: 700,
                 }}

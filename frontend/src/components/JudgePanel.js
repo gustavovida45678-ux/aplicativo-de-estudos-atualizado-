@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Code2, Star, CheckCircle2, XCircle, Loader2, ArrowLeft,
   FileCode2, Play, Send, Trophy, ListOrdered, Sparkles, Youtube,
   Lightbulb, ChevronDown, ChevronUp, Wand2, BookOpen, AlertTriangle,
-  Brain, ExternalLink, RefreshCw,
+  Brain, ExternalLink, RefreshCw, StepBack, StepForward, Pause, X, ListChecks,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
@@ -20,6 +20,12 @@ const STARTERS = {
 };
 
 const LANG_NAMES = { c: 'C', cpp: 'C++', python: 'Python 3' };
+
+const wtCtrl = {
+  width: 34, height: 34, borderRadius: 8, border: '1px solid #444',
+  color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+const wtCtrlDisabled = { opacity: 0.35, cursor: 'default' };
 
 const loadProgress = () => {
   try { return JSON.parse(localStorage.getItem('judgeProgress') || '{}'); } catch { return {}; }
@@ -43,6 +49,22 @@ const JudgePanel = () => {
   const [showExplanation, setShowExplanation] = useState(false);
   const [expandedStep, setExpandedStep] = useState(0);
   const [generatingSimilar, setGeneratingSimilar] = useState(false);
+
+  const [walk, setWalk] = useState(null);
+  const [walkIdx, setWalkIdx] = useState(0);
+  const [walkLoading, setWalkLoading] = useState(false);
+  const [walkPlay, setWalkPlay] = useState(false);
+
+  useEffect(() => {
+    if (!walkPlay || !walk) return;
+    const t = setInterval(() => {
+      setWalkIdx((i) => {
+        if (i >= walk.steps.length - 1) { setWalkPlay(false); return i; }
+        return i + 1;
+      });
+    }, 1800);
+    return () => clearInterval(t);
+  }, [walkPlay, walk]);
 
   const saveCode = (id, lang, c) => { localStorage.setItem(`judge_code_${id}_${lang}`, c); };
 
@@ -107,6 +129,26 @@ const JudgePanel = () => {
       console.error(e);
       toast.error('Erro ao gerar exercicio.');
     } finally { setCreatingExercise(false); }
+  };
+
+  const runWalkthrough = async () => {
+    if (!code.trim()) { toast.warning('Escreva seu codigo primeiro.'); return; }
+    setWalkLoading(true);
+    setWalk(null);
+    setWalkIdx(0);
+    setWalkPlay(false);
+    try {
+      const tc = (selected || newExercise)?.test_cases || [];
+      const res = await axios.post(`${API}/walkthrough`, { language, code, test_cases: tc });
+      if (!res.data.steps?.length) {
+        toast.error('Nao foi possivel gerar o passo a passo.');
+        return;
+      }
+      setWalk(res.data);
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao gerar o passo a passo.');
+    } finally { setWalkLoading(false); }
   };
 
   const generateSimilar = async () => {
@@ -177,12 +219,124 @@ const JudgePanel = () => {
             <button className="materials-judge-run" onClick={() => submit(true)} disabled={running}>
               {running ? <Loader2 size={15} className="materials-spin" /> : <Play size={15} />} Executar (1o caso)
             </button>
+            <button className="materials-judge-steps" onClick={runWalkthrough} disabled={running || walkLoading}>
+              {walkLoading ? <Loader2 size={15} className="materials-spin" /> : <ListChecks size={15} />}
+              Passo a Passo
+            </button>
             <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
               {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
               {running ? 'Executando...' : 'Enviar para o juiz'}
             </button>
           </div>
         </div>
+
+        {walk && walk.steps.length > 0 && (
+          <div style={{
+            marginTop: 14, borderRadius: 12, overflow: 'hidden',
+            border: '2px solid #7c3aed', background: '#111',
+          }}>
+            <div style={{
+              background: '#1a0b2e', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
+              borderBottom: '1px solid #7c3aed',
+            }}>
+              <ListChecks size={18} color="#a78bfa" />
+              <b style={{ fontSize: 15, color: '#a78bfa' }}>Passo a Passo - Execucao do Codigo</b>
+              <span style={{ flex: 1 }} />
+              {walk.stdin ? (
+                <span style={{ fontSize: 11, color: '#94a3b8', background: '#111', padding: '4px 8px', borderRadius: 6, border: '1px solid #333' }}>
+                  Entrada: {walk.stdin.replace(/\n/g, ' ')}
+                </span>
+              ) : null}
+              <button onClick={() => { setWalk(null); setWalkPlay(false); }} style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', display: 'flex', padding: 2 }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {(() => {
+                const cur = walk.steps[walkIdx];
+                const codeLines = code.split('\n');
+                return (
+                  <>
+                    <div style={{
+                      background: '#0d1117', padding: '12px 0', borderBottom: '1px solid #333',
+                      fontFamily: "'SF Mono', Menlo, Consolas, monospace", fontSize: 12.5, lineHeight: 1.7,
+                    }}>
+                      {codeLines.map((line, i) => {
+                        const n = i + 1;
+                        const isActive = cur && n === cur.line;
+                        const isDone = cur && n < cur.line;
+                        return (
+                          <div key={i} style={{
+                            display: 'flex', padding: '1px 12px',
+                            background: isActive ? '#3b0764' : isDone ? '#161616' : 'transparent',
+                            borderLeft: isActive ? '3px solid #a78bfa' : '3px solid transparent',
+                          }}>
+                            <span style={{ width: 30, color: '#4b5563', userSelect: 'none', flexShrink: 0 }}>{n}</span>
+                            <span style={{
+                              color: isActive ? '#fff' : isDone ? '#9ca3af' : '#d4d4d4',
+                              whiteSpace: 'pre', flex: 1,
+                            }}>{line || ' '}</span>
+                            {isActive && <StepForward size={14} color="#a78bfa" style={{ marginTop: 3 }} />}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ padding: 14, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                      <div style={{ flex: '1 1 260px', minWidth: 220 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <span style={{
+                            width: 26, height: 26, borderRadius: '50%', background: '#7c3aed', color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 'bold',
+                          }}>{walkIdx + 1}</span>
+                          <b style={{ color: '#fff', fontSize: 13 }}>Passo {walkIdx + 1} de {walk.steps.length}</b>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, color: '#d4d4d4', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                          {cur?.explanation || ''}
+                        </p>
+                      </div>
+                      <div style={{ flex: '1 1 200px', minWidth: 180 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', marginBottom: 4 }}>VARIAVEIS</div>
+                        <pre style={{
+                          margin: 0, background: '#0f172a', borderRadius: 6, padding: 8, fontSize: 11.5,
+                          color: '#93c5fd', border: '1px solid #1e40af', whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto',
+                        }}>{Object.keys(cur?.variables || {}).length
+                          ? JSON.stringify(cur.variables, null, 2)
+                          : '(nenhuma variavel ainda)'}</pre>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', margin: '10px 0 4px' }}>SAIDA ACUMULADA</div>
+                        <pre style={{
+                          margin: 0, background: '#0d1117', borderRadius: 6, padding: 8, fontSize: 11.5,
+                          color: '#7ee787', border: '1px solid #30363d', whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto',
+                        }}>{cur?.output || '(ainda sem saida)'}</pre>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      padding: '10px 14px', borderTop: '1px solid #333', display: 'flex', alignItems: 'center',
+                      gap: 8, justifyContent: 'center',
+                    }}>
+                      <button
+                        onClick={() => { setWalkIdx(Math.max(0, walkIdx - 1)); setWalkPlay(false); }}
+                        disabled={walkIdx === 0}
+                        style={{ ...wtCtrl, background: '#1a1a1a', ...(walkIdx === 0 ? wtCtrlDisabled : {}) }}
+                      ><StepBack size={15} /></button>
+                      <button
+                        onClick={() => setWalkPlay(!walkPlay)}
+                        style={{ ...wtCtrl, background: '#7c3aed', width: 38, height: 34 }}
+                      >{walkPlay ? <Pause size={15} /> : <Play size={15} />}</button>
+                      <button
+                        onClick={() => { setWalkIdx(Math.min(walk.steps.length - 1, walkIdx + 1)); setWalkPlay(false); }}
+                        disabled={walkIdx === walk.steps.length - 1}
+                        style={{ ...wtCtrl, background: '#1a1a1a', ...(walkIdx === walk.steps.length - 1 ? wtCtrlDisabled : {}) }}
+                      ><StepForward size={15} /></button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
 
         {result && (
           <div className={`materials-judge-result ${result.summary?.accepted ? 'accepted' : ''}`}>

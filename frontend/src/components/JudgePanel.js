@@ -394,15 +394,16 @@ const JudgePanel = () => {
       </div>
 
       <div style={{
-        background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+        background: '#111',
         borderRadius: 16, padding: 20, marginBottom: 20, color: '#fff',
+        border: '1px solid #333',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <Wand2 size={20} />
+          <Wand2 size={20} color="#a78bfa" />
           <b style={{ fontSize: 16 }}>Criar Novo Exercicio</b>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select value={createTopic} onChange={(e) => setCreateTopic(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: 'none', fontSize: 13, flex: 1, minWidth: 150 }}>
+          <select value={createTopic} onChange={(e) => setCreateTopic(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #444', fontSize: 13, flex: 1, minWidth: 150, background: '#1a1a1a', color: '#fff' }}>
             <option value="variaveis">Variaveis e Tipos</option>
             <option value="condicionais">Condicionais</option>
             <option value="loops">Loops</option>
@@ -411,16 +412,16 @@ const JudgePanel = () => {
             <option value="estruturas_dados">Estruturas de Dados</option>
             <option value="recursao">Recursao</option>
           </select>
-          <select value={createDifficulty} onChange={(e) => setCreateDifficulty(Number(e.target.value))} style={{ padding: '8px 12px', borderRadius: 8, border: 'none', fontSize: 13, minWidth: 100 }}>
+          <select value={createDifficulty} onChange={(e) => setCreateDifficulty(Number(e.target.value))} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #444', fontSize: 13, minWidth: 100, background: '#1a1a1a', color: '#fff' }}>
             <option value={1}>Facil</option>
             <option value={2}>Medio</option>
             <option value={3}>Dificil</option>
           </select>
-          <select value={language} onChange={(e) => changeLanguage(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: 'none', fontSize: 13, minWidth: 90 }}>
+          <select value={language} onChange={(e) => changeLanguage(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #444', fontSize: 13, minWidth: 90, background: '#1a1a1a', color: '#fff' }}>
             {Object.entries(LANG_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
           <button onClick={generateExercise} disabled={creatingExercise} style={{
-            padding: '8px 16px', borderRadius: 8, border: 'none', background: '#fff', color: '#6366f1',
+            padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff',
             fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
           }}>
             {creatingExercise ? <Loader2 size={14} className="materials-spin" /> : <Sparkles size={14} />} Gerar

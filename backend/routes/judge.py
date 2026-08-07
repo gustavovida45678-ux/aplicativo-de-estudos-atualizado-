@@ -19,13 +19,8 @@ LANG_NAMES = {
     "python": {"piston": "python", "file": "main.py", "run_timeout": 5000},
 }
 
-FALLBACK_MODELS = [
-    "anthropic/claude-3.5-haiku",
-    "google/gemini-2.0-flash-001",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "qwen/qwen-2.5-72b-instruct:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-]
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 class TestCase(BaseModel):
@@ -77,49 +72,47 @@ def _run(lang: str, code: str, stdin: str) -> dict:
         raise HTTPException(status_code=502, detail="Resposta invalida do servico de execucao.")
 
 
-def _call_openrouter(system_prompt: str, user_prompt: str) -> Optional[str]:
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
+    api_key = GROQ_API_KEY
     if not api_key:
-        logger.warning("OPENROUTER_API_KEY not set")
+        logger.warning("GROQ_API_KEY not set")
         return None
 
-    for model in FALLBACK_MODELS:
-        try:
-            logger.info(f"Trying model: {model}")
-            resp = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
-                    "X-Title": "StudyApp Judge",
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 2000,
-                },
-                timeout=30,
-            )
+    try:
+        logger.info(f"Calling Groq API with model {GROQ_MODEL}")
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": GROQ_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 2000,
+            },
+            timeout=30,
+        )
 
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                if content:
-                    logger.info(f"Model {model} responded OK")
-                    return content
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            if content:
+                logger.info(f"Groq responded OK ({len(content)} chars)")
+                return content
             else:
-                logger.warning(f"Model {model} returned {resp.status_code}: {resp.text[:200]}")
-                continue
-        except Exception as e:
-            logger.warning(f"Model {model} failed: {e}")
-            continue
-
-    return None
+                logger.error("Groq returned empty content")
+                return None
+        else:
+            logger.error(f"Groq API error {resp.status_code}: {resp.text[:500]}")
+            return None
+    except Exception as e:
+        logger.error(f"Groq API failed: {e}")
+        return None
 
 
 def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> Optional[dict]:
@@ -190,7 +183,7 @@ ERRO:
 
 Analise o erro e explique como corrigir."""
 
-    raw = _call_openrouter(system_prompt, context)
+    raw = _call_ai(system_prompt, context)
     if not raw:
         return None
 
@@ -247,91 +240,229 @@ def _get_youtube_videos(error_type: str, language: str, code: str = "") -> list:
     return videos
 
 
+def _analyze_code_errors(code: str, language: str, stderr: str) -> list:
+    errors_found = []
+    code_lines = code.split("\n")
+
+    if language in ("c", "cpp"):
+        for i, line in enumerate(code_lines, 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*") or stripped.startswith("#"):
+                continue
+
+            if stripped.startswith("int main") or stripped.startswith("void main") or stripped.startswith("int ") and "(" in stripped:
+                if not stripped.endswith("{") and "{" not in stripped and i < len(code_lines):
+                    next_line = code_lines[i].strip() if i < len(code_lines) else ""
+                    if not next_line.startswith("{"):
+                        pass
+
+            if "scanf" in stripped and language == "c":
+                if "%d" in stripped:
+                    scan_vars = re.findall(r'&(\w+)', stripped)
+                    for var in scan_vars:
+                        declared = any(f"int {var}" in cl or f"float {var}" in cl or f"char {var}" in cl or f"double {var}" in cl for cl in code_lines)
+                        if not declared:
+                            errors_found.append({
+                                "line": i,
+                                "error": f"Variavel '{var}' usada no scanf mas nao foi declarada",
+                                "hint": f"Adicione 'int {var};' antes do scanf",
+                                "concept": "Declaracao de variaveis em C",
+                            })
+
+            if re.match(r'^\s*(int|float|double|char)\s+\w+\s*=', stripped):
+                pass
+
+            if language == "c" and re.search(r'\b(bol|bool|Boolean)\b', stripped):
+                errors_found.append({
+                    "line": i,
+                    "error": f"Tipo '{stripped.split()[0]}' nao existe em C padrao. Use 'int' para valores 0/1",
+                    "hint": "int variavel = 0;  // 0 = falso, 1 = verdadeiro",
+                    "concept": "Tipos de dados em C",
+                })
+
+            if re.search(r'\bif\s*\([^)]*\)=', stripped):
+                errors_found.append({
+                    "line": i,
+                    "error": "Operador de atribuicao (=) usado em vez de comparacao (==) no if",
+                    "hint": "if (a == b)  // duplo igual para comparar",
+                    "concept": "Diferenca entre = (atribuicao) e == (comparacao)",
+                })
+
+            if re.search(r'\bif\s*\([^)]*[^=!<>]==[^=]', stripped) or re.search(r'\bif\s*\([^)]*[^=!<>]=[^=]', stripped):
+                pass
+
+            if re.search(r'\b(soma|resultado|media)\s*=\s*true\b', stripped):
+                errors_found.append({
+                    "line": i,
+                    "error": f"Atribuicao invalida: 'true' nao e um valor numerico",
+                    "hint": "int soma = 0;  // Use valor numerico, nao 'true'",
+                    "concept": "Atribuicao de valores em C",
+                })
+
+            if re.search(r'\bif\s*\(\s*\w+\s*\+\s*\w+\s*\)\s*=', stripped):
+                errors_found.append({
+                    "line": i,
+                    "error": "Expressao matematica no if com = em vez de ==",
+                    "hint": "if (a + b == resultado)  // use == para comparar",
+                    "concept": "Expressoes condicionais em C",
+                })
+
+            if "(" in stripped and ")" not in stripped and ";" not in stripped and "{" not in stripped:
+                next_line = code_lines[i].strip() if i < len(code_lines) else ""
+                if not next_line.startswith("{"):
+                    pass
+
+            if re.search(r'\breturn\s+\w+\s*;', stripped):
+                pass
+
+        all_errors = re.findall(r"(\d+):\d+:\s*(error|warning):\s*(.+)", stderr or "")
+        for line_num_str, err_type, err_msg in all_errors:
+            line_num = int(line_num_str)
+            if line_num <= len(code_lines):
+                problem_line = code_lines[line_num - 1].strip()
+                already_found = any(e["line"] == line_num for e in errors_found)
+                if not already_found:
+                    hint = ""
+                    concept = ""
+                    if "expected" in err_msg.lower() and ";" in err_msg:
+                        hint = f"Adicione ';' no final da linha {line_num}"
+                        concept = "Ponto-e-virgula em C - toda instrucao termina com ;"
+                    elif "undeclared" in err_msg.lower() or "not declared" in err_msg.lower():
+                        var_m = re.search(r"'(\w+)'", err_msg)
+                        var_n = var_m.group(1) if var_m else "variavel"
+                        hint = f"int {var_n};  // declare antes de usar"
+                        concept = "Declaracao de variaveis em C"
+                    elif "redefinition" in err_msg.lower():
+                        hint = "Remova a declaracao duplicada"
+                        concept = "Escopo de variaveis - cada variavel so pode ser declarada uma vez"
+                    elif "expected" in err_msg.lower() and ("')" in err_msg or "') " in err_msg):
+                        hint = f"Verifique se ha parenteses ou aspas desbalanceados na linha {line_num}"
+                        concept = "Balanceamento de parenteses e aspas"
+                    elif "too few arguments" in err_msg.lower() or "too many arguments" in err_msg.lower():
+                        hint = "Verifique a quantidade de argumentos passados para a funcao"
+                        concept = "Parametros de funcoes em C"
+                    elif "implicit declaration" in err_msg.lower():
+                        hint = "Inclua o cabecalho correto (#include) ou declare a funcao antes de usar"
+                        concept = "Declaracao de funcoes e include"
+                    elif "format" in err_msg.lower() and "mismatch" in err_msg.lower():
+                        hint = "Verifique se os tipos no printf/scanf combinam com as variaveis"
+                        concept = "Formatacao de saida - printf e scanf"
+                    else:
+                        hint = f"Revise a linha {line_num}: {err_msg[:100]}"
+                        concept = "Interpretacao de erros do compilador GCC"
+
+                    errors_found.append({
+                        "line": line_num,
+                        "error": err_msg.strip()[:200],
+                        "hint": hint,
+                        "concept": concept,
+                        "code_line": problem_line,
+                    })
+
+    elif language == "python":
+        for i, line in enumerate(code_lines, 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if re.search(r'\bdef\s+\w+\s*\(', stripped) and not stripped.endswith(":"):
+                errors_found.append({
+                    "line": i, "error": "Definicao de funcao sem ':' no final",
+                    "hint": f"def minha_funcao():  // adicione : no final",
+                    "concept": "Sintaxe de funcoes em Python",
+                })
+
+        py_errors = re.findall(r'File "(.+?)", line (\d+)', stderr or "")
+        py_msg = re.search(r"(\w+Error):\s*(.+)", stderr or "")
+        if py_msg and py_errors:
+            line_num = int(py_errors[0][1])
+            err_type = py_msg.group(1)
+            err_detail = py_msg.group(2)
+            if line_num <= len(code_lines):
+                already = any(e["line"] == line_num for e in errors_found)
+                if not already:
+                    hint = ""
+                    if "NameError" in err_type:
+                        var_m = re.search(r"name '(\w+)'", err_detail)
+                        var_n = var_m.group(1) if var_m else "variavel"
+                        hint = f"{var_n} = valor  // declare antes de usar"
+                    elif "SyntaxError" in err_type:
+                        hint = "Verifique: dois-pontos, parenteses, indentacao"
+                    elif "TypeError" in err_type:
+                        hint = "Converta tipos: int(), float(), str()"
+                    elif "IndexError" in err_type:
+                        hint = "Use len(lista) para verificar limites"
+                    errors_found.append({
+                        "line": line_num, "error": f"{err_type}: {err_detail}",
+                        "hint": hint, "concept": f"Erro {err_type} em Python",
+                    })
+
+    return errors_found
+
+
 def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> dict:
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
+    code_lines = code.split("\n")
 
     if compile_error:
-        err_lines = stderr.strip().split("\n") if stderr else []
-        errors = []
-        for line in err_lines:
-            if "error:" in line.lower() or "erreur:" in line.lower():
-                errors.append(line.strip())
-
-        err_detail = errors[0] if errors else (err_lines[0] if err_lines else "Erro desconhecido")
-        err_line_match = re.search(r"(\d+):\d+", stderr or "")
-        line_num = err_line_match.group(1) if err_line_match else None
-
+        errors_found = _analyze_code_errors(code, language, stderr)
         step_by_step = []
-        step_num = 1
 
-        if line_num:
-            code_lines = code.split("\n")
-            if int(line_num) <= len(code_lines):
-                problem_line = code_lines[int(line_num) - 1]
+        if errors_found:
+            for idx, err in enumerate(errors_found[:5], 1):
+                code_line = err.get("code_line", "")
+                if not code_line and err["line"] <= len(code_lines):
+                    code_line = code_lines[err["line"] - 1].strip()
+
+                detail_parts = [f"Linha {err['line']}: {err['error']}"]
+                if code_line:
+                    detail_parts.append(f"Seu codigo: {code_line}")
+                if err.get("hint"):
+                    detail_parts.append(f"Como corrigir: {err['hint']}")
+
                 step_by_step.append({
-                    "step": step_num,
-                    "title": f"Erro na linha {line_num}",
-                    "detail": f"A linha {line_num} do seu codigo tem um erro de compilacao:\n{problem_line.strip()}\n\nMensagem do compilador: {err_detail}",
-                    "code_hint": None,
-                    "concept": "Compilador C - como interpretar mensagens de erro",
+                    "step": idx,
+                    "title": f"Erro na linha {err['line']}",
+                    "detail": "\n".join(detail_parts),
+                    "code_hint": err.get("hint"),
+                    "concept": err.get("concept"),
                 })
-                step_num += 1
+        else:
+            all_errs = re.findall(r"(\d+):\d+:\s*(?:error|warning):\s*(.+)", stderr or "")
+            if all_errs:
+                for idx, (ln, msg) in enumerate(all_errs[:3], 1):
+                    ln_int = int(ln)
+                    code_line = code_lines[ln_int - 1].strip() if ln_int <= len(code_lines) else ""
+                    step_by_step.append({
+                        "step": idx,
+                        "title": f"Erro na linha {ln}",
+                        "detail": f"Mensagem: {msg}\nCodigo: {code_line}",
+                        "code_hint": None,
+                        "concept": "Interpretacao de erros do compilador",
+                    })
+            else:
+                first_err = (stderr or "").split("\n")[0][:200] if stderr else "Erro desconhecido"
+                step_by_step.append({
+                    "step": 1,
+                    "title": "Erro de compilacao",
+                    "detail": f"Mensagem do compilador:\n{first_err}",
+                    "code_hint": None,
+                    "concept": "Interpretacao de erros do compilador GCC",
+                })
 
-        if "expected" in (stderr or "").lower() or ";" in (stderr or ""):
-            step_by_step.append({
-                "step": step_num,
-                "title": "Verifique pontuacao e sintaxe",
-                "detail": "Em C/C++, toda instrucao termina com ponto-e-virgula (;). Verifique se nao falta nenhum ; ou se ha parenteses/chaves desbalanceados.",
-                "code_hint": "int x = 5;  // ponto-e-virgula no final",
-                "concept": "Sintaxe basica do C/C++",
-            })
-            step_num += 1
-
-        if "undeclared" in (stderr or "").lower() or "not declared" in (stderr or "").lower():
-            var_match = re.search(r"'(\w+)' undeclared|was not declared", stderr or "")
-            var_name = var_match.group(1) if var_match else "variavel"
-            step_by_step.append({
-                "step": step_num,
-                "title": f"Variavel '{var_name}' nao foi declarada",
-                "detail": f"Voce esta usando '{var_name}' mas esqueceu de declarar o tipo dela. Em C, toda variavel precisa ser declarada antes de usar.",
-                "code_hint": f"int {var_name};  // declare o tipo antes de usar",
-                "concept": "Declaracao de variaveis em C",
-            })
-            step_num += 1
-
-        if "redefinition" in (stderr or "").lower():
-            step_by_step.append({
-                "step": step_num,
-                "title": "Redefinicao de variavel/funcao",
-                "detail": "Voce declarou a mesma variavel ou funcao mais de uma vez. Cada variavel so pode ser declarada uma vez no mesmo escopo.",
-                "code_hint": None,
-                "concept": "Escopo de variaveis em C",
-            })
-            step_num += 1
-
-        if not step_by_step:
-            step_by_step.append({
-                "step": step_num,
-                "title": "Erro de compilacao detectado",
-                "detail": f"O compilador encontrou um erro:\n{err_detail}\n\nRevise a linha indicada e verifique: ponto-e-virgula, parenteses, chaves, tipo de variavel.",
-                "code_hint": None,
-                "concept": "Interpretacao de erros do compilador GCC",
-            })
-
-        step_num += 1
         step_by_step.append({
-            "step": step_num,
+            "step": len(step_by_step) + 1,
             "title": "Corrija e recompile",
-            "detail": "Apos corrigir o erro, compile novamente. O compilador sempre aponta a linha exata do problema. Leia a mensagem de erro completa.",
+            "detail": "Apos corrigir todos os erros acima, clique em 'Enviar para o juiz' novamente. Leia cada mensagem de erro cuidadosamente.",
             "code_hint": None,
             "concept": None,
         })
 
+        err_summary = "; ".join([e["error"][:80] for e in errors_found[:3]]) if errors_found else (stderr.split("\n")[0][:100] if stderr else "Erro")
         return {
             "error_type": "Erro de compilacao",
-            "analysis": f"O compilador encontrou erros no codigo {lang_name}. {err_detail}",
+            "analysis": f"O compilador {lang_name} encontrou {len(errors_found) or 1} erro(s). Veja abaixo a analise de cada erro.",
             "step_by_step": step_by_step,
-            "suggestion": f"Leia a mensagem de erro completa. O compilador GCC sempre aponta a linha exata. Verifique: pontuacao (;), parenteses (), chaves {{}}, declaracao de variaveis.",
+            "suggestion": "Leia cada erro acima, entenda o que esta errado, e corrija o codigo. O compilador sempre aponta a linha exata.",
             "corrected_code": None,
             "youtube_search": f"compilador {lang_name} erros comuns tutorial",
         }

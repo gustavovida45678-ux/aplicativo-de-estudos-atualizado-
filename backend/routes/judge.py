@@ -13,11 +13,12 @@ router = APIRouter(prefix="/judge", tags=["judge"])
 
 PISTON_URL = "https://emkc.org/api/v2/piston/execute"
 SANDBOX_URL = "https://api.sandboxapi.dev/v1/execute"
+WANDBOX_URL = "https://wandbox.org/api/compile.json"
 
 LANG_NAMES = {
-    "c": {"piston": "c", "sandbox": "c", "file": "main.c", "run_timeout": 5000},
-    "cpp": {"piston": "c++", "sandbox": "cpp", "file": "main.cpp", "run_timeout": 5000},
-    "python": {"piston": "python", "sandbox": "python", "file": "main.py", "run_timeout": 5000},
+    "c": {"piston": "c", "sandbox": "c", "wandbox": "gcc-13.2.0-c", "file": "main.c", "run_timeout": 5000},
+    "cpp": {"piston": "c++", "sandbox": "cpp", "wandbox": "gcc-13.2.0", "file": "main.cpp", "run_timeout": 5000},
+    "python": {"piston": "python", "sandbox": "python", "wandbox": "cpython-3.13.8", "file": "main.py", "run_timeout": 5000},
 }
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
@@ -48,34 +49,79 @@ def _normalize(out: str) -> str:
     return "\n".join(l.rstrip() for l in lines)
 
 
-def _run(lang: str, code: str, stdin: str) -> dict:
-    conf = LANG_NAMES.get(lang)
-    if not conf:
-        raise HTTPException(status_code=400, detail="Linguagem nao suportada.")
+def _run_wandbox(conf: dict, code: str, stdin: str):
+    try:
+        payload = {
+            "compiler": conf["wandbox"],
+            "code": code,
+            "stdin": stdin or "",
+            "save": False,
+        }
+        r = requests.post(WANDBOX_URL, json=payload, timeout=30)
+        if r.status_code != 200:
+            logger.warning(f"Wandbox HTTP {r.status_code}: {r.text[:200]}")
+            return None
+        data = r.json()
+        status = str(data.get("status", "0"))
+        if status == "0":
+            return {
+                "compile": {"code": 0, "stderr": ""},
+                "run": {
+                    "stdout": data.get("program_output", "") or "",
+                    "stderr": data.get("program_error", "") or "",
+                    "code": 0,
+                },
+            }
+        if status == "1":
+            compile_stderr = (data.get("compiler_error", "") or "") or (data.get("program_error", "") or "")
+            return {
+                "compile": {"code": 1, "stderr": compile_stderr},
+                "run": {"stdout": data.get("program_output", "") or "", "stderr": "", "code": 1},
+            }
+        exit_code = int(status) if status.isdigit() else 1
+        return {
+            "compile": {"code": 0, "stderr": ""},
+            "run": {
+                "stdout": data.get("program_output", "") or "",
+                "stderr": (data.get("program_error", "") or "") or (data.get("program_message", "") or ""),
+                "code": exit_code,
+            },
+        }
+    except Exception as e:
+        logger.warning(f"Wandbox failed: {e}, trying next execution service...")
+        return None
 
-    # Try SandboxAPI first
+
+def _run_sandbox(conf: dict, code: str, stdin: str):
+    if not os.environ.get("SANDBOX_API_KEY"):
+        return None
     try:
         sandbox_payload = {
             "language": conf["sandbox"],
             "stdin": stdin or "",
             "files": [{"name": conf["file"], "content": code}],
         }
-        r = requests.post(SANDBOX_URL, json=sandbox_payload, timeout=30)
-        if r.status_code == 200:
-            data = r.json()
-            run_result = data.get("run", {})
-            compile_result = data.get("compile", {})
-            stdout_val = run_result.get("stdout", "") or ""
-            stderr_val = (run_result.get("stderr", "") or "") + (compile_result.get("stderr", "") or "")
-            exit_code = run_result.get("code", compile_result.get("code", 0))
-            return {
-                "compile": {"code": compile_result.get("code", 0), "stderr": compile_result.get("stderr", "")},
-                "run": {"stdout": stdout_val, "stderr": stderr_val, "code": exit_code},
-            }
+        headers = {"X-RapidAPI-Proxy-Secret": os.environ["SANDBOX_API_KEY"]}
+        r = requests.post(SANDBOX_URL, json=sandbox_payload, headers=headers, timeout=30)
+        if r.status_code != 200:
+            logger.warning(f"SandboxAPI HTTP {r.status_code}")
+            return None
+        data = r.json()
+        run_result = data.get("run", {})
+        compile_result = data.get("compile", {})
+        stdout_val = run_result.get("stdout", "") or ""
+        stderr_val = (run_result.get("stderr", "") or "") + (compile_result.get("stderr", "") or "")
+        exit_code = run_result.get("code", compile_result.get("code", 0))
+        return {
+            "compile": {"code": compile_result.get("code", 0), "stderr": compile_result.get("stderr", "")},
+            "run": {"stdout": stdout_val, "stderr": stderr_val, "code": exit_code},
+        }
     except Exception as e:
         logger.warning(f"SandboxAPI failed: {e}, trying Piston...")
+        return None
 
-    # Fallback to Piston
+
+def _run_piston(conf: dict, code: str, stdin: str):
     payload = {
         "language": conf["piston"],
         "version": "*",
@@ -95,6 +141,22 @@ def _run(lang: str, code: str, stdin: str) -> dict:
         raise HTTPException(status_code=502, detail=f"Falha ao acessar servico de execucao: {e}")
     except Exception:
         raise HTTPException(status_code=502, detail="Resposta invalida do servico de execucao.")
+
+
+def _run(lang: str, code: str, stdin: str) -> dict:
+    conf = LANG_NAMES.get(lang)
+    if not conf:
+        raise HTTPException(status_code=400, detail="Linguagem nao suportada.")
+
+    result = _run_wandbox(conf, code, stdin)
+    if result:
+        return result
+
+    result = _run_sandbox(conf, code, stdin)
+    if result:
+        return result
+
+    return _run_piston(conf, code, stdin)
 
 
 def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:

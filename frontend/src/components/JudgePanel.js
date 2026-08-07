@@ -139,7 +139,12 @@ const JudgePanel = () => {
     setWalkPlay(false);
     try {
       const tc = (selected || newExercise)?.test_cases || [];
-      const res = await axios.post(`${API}/walkthrough`, { language, code, test_cases: tc });
+      const stmt = (selected || newExercise)?.statement || '';
+      const res = await axios.post(`${API}/walkthrough`, {
+        language, code, test_cases: tc,
+        statement: stmt,
+        expected: tc[0]?.expected || '',
+      });
       if (!res.data.steps?.length) {
         toast.error('Nao foi possivel gerar o passo a passo.');
         return;
@@ -252,16 +257,50 @@ const JudgePanel = () => {
               </button>
             </div>
 
+            {walk.template && (
+              <div style={{
+                background: 'rgba(124, 58, 237, 0.12)', borderBottom: '1px solid #7c3aed',
+                padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              }}>
+                <Sparkles size={15} color="#a78bfa" />
+                <span style={{ fontSize: 12.5, color: '#c4b5fd', flex: 1, minWidth: 200 }}>
+                  Codigo vazio detectado: a solucao abaixo foi <b>preenchida automaticamente</b> para demonstrar como o exercicio deve ser resolvido.
+                </span>
+                {walk.corrected_code && (
+                  <button
+                    onClick={() => {
+                      setCode(walk.corrected_code);
+                      saveCode(activeExercise.id || 'custom', language, walk.corrected_code);
+                      toast.success('Solucao preenchida no editor!');
+                    }}
+                    style={{
+                      padding: '6px 12px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff',
+                      fontWeight: 700, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <Wand2 size={13} /> Usar solucao no editor
+                  </button>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {(() => {
                 const cur = walk.steps[walkIdx];
-                const codeLines = code.split('\n');
+                const shownCode = (walk.template && walk.corrected_code) ? walk.corrected_code : code;
+                const codeLines = shownCode.split('\n');
                 return (
                   <>
                     <div style={{
                       background: '#0d1117', padding: '12px 0', borderBottom: '1px solid #333',
                       fontFamily: "'SF Mono', Menlo, Consolas, monospace", fontSize: 12.5, lineHeight: 1.7,
                     }}>
+                      {walk.template && walk.corrected_code && (
+                        <div style={{
+                          padding: '2px 12px 6px', fontSize: 10.5, color: '#a78bfa', fontFamily: 'inherit',
+                          letterSpacing: 0.3, textTransform: 'uppercase', fontWeight: 700,
+                        }}>Codigo preenchido automaticamente (simulacao)</div>
+                      )}
                       {codeLines.map((line, i) => {
                         const n = i + 1;
                         const isActive = cur && n === cur.line;

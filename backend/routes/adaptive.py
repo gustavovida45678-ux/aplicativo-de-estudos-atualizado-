@@ -19,7 +19,7 @@ import json
 import logging
 import random
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -1086,3 +1086,261 @@ async def schedule(user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Erro ao ler cronograma: {e}")
         raise HTTPException(status_code=500, detail="Erro ao ler o cronograma")
+
+
+# ------------------------------------------------------------------ feynman
+class FeynmanRequest(BaseModel):
+    topic_id: str = ""
+    topic_name: str = ""
+    explanation: str = ""
+
+
+_STOPWORDS = {
+    "como", "para", "que", "com", "uma", "uma", "dos", "das", "qual", "sobre",
+    "entre", "aula", "exercicio", "questao", "forma", "tem", "ser", "por",
+    "sao", "sua", "mais", "muito", "isso", "mesmo", "exemplo",
+}
+
+
+def _feynman_keywords(topic_name: str, subject: str, questions: list) -> list:
+    """Conceitos-chave esperados numa explicação: nome do tópico + termos das questões."""
+    words = set()
+    for src in (topic_name, subject):
+        for w in re.findall(r"[A-Za-zÀ-ú0-9]{4,}", src or ""):
+            words.add(w.lower())
+    for q in questions[:4]:
+        for w in re.findall(r"[A-Za-zÀ-ú0-9]{5,}", (q.get("question") or "")[:140]):
+            words.add(w.lower())
+    return sorted(words - _STOPWORDS)[:8]
+
+
+def _feynman_eval_heuristic(explanation: str, keywords: list, topic_questions: list) -> dict:
+    """Avaliação sem IA: cobre os conceitos-chave? tem exemplo? é substantiva?"""
+    text = explanation.lower()
+    mentioned = [k for k in keywords if k in text]
+    missing = [k for k in keywords if k not in text]
+    points = 0
+    length = len(explanation.strip())
+    if length >= 60:
+        points += 1
+    if length >= 120:
+        points += 1
+    if length >= 240:
+        points += 1
+    points += min(3, len(mentioned))
+    has_example = any(x in text for x in ("exemplo", "ex.:", "ex:", "exemplo:")) or any(
+        c.isdigit() for c in explanation
+    )
+    if has_example:
+        points += 1
+    if "não sei" not in text and "nao sei" not in text:
+        points += 1
+    max_points = 7
+    score = min(100, round(points / max_points * 100))
+    if score >= 75:
+        verdict = "Explicação sólida"
+    elif score >= 50:
+        verdict = "Boa explicação, com lacunas"
+    else:
+        verdict = "Explicação precisa de reforço"
+    reference = ""
+    if topic_questions:
+        for q in topic_questions[:2]:
+            ref = q.get("explanation") or ""
+            if ref:
+                reference += ref.strip() + "\n\n"
+        reference = reference.strip()[:600]
+    return {
+        "mode": "heuristico",
+        "score": score,
+        "verdict": verdict,
+        "strengths": [f"Você mencionou o conceito '{k}'" for k in mentioned[:4]] or ["Você tentou explicar o tópico com suas palavras"],
+        "gaps": [f"O conceito '{k}' não apareceu na sua explicação" for k in missing[:3]],
+        "reference_explanation": reference,
+    }
+
+
+async def _feynman_eval_ai(explanation: str, topic_name: str, keywords: list) -> Optional[dict]:
+    """Avaliação pela técnica Feynman via IA (fallback silencioso para heurística)."""
+    try:
+        from backend.services.chat_service import chat_service
+        from backend.services.providers import ProviderType
+
+        prompt = (
+            "Avalie a explicação de um aluno pela técnica Feynman (explicar com as próprias "
+            "palavras, simples, com exemplo).\n"
+            f"TÓPICO: {topic_name}\n"
+            f"EXPLICAÇÃO DO ALUNO: {explanation[:1200]}\n\n"
+            "Responda APENAS com JSON válido neste formato (sem markdown):\n"
+            '{"score": 0-100, "verdict": "frase curta", "strengths": ["..."], '
+            '"gaps": ["..."], "feedback": "1-2 frases didáticas"}'
+        )
+        resp = await chat_service.chat(
+            message=prompt,
+            provider_type=ProviderType.GROQ,
+            system_prompt="Você é um professor especialista em aprendizagem ativa (método Feynman).",
+            temperature=0.3,
+            max_tokens=400,
+        )
+        text = (resp.get("content") or "").strip()
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if not m:
+            return None
+        data = json.loads(m.group(0))
+        return {
+            "mode": "ia",
+            "score": max(0, min(100, int(data.get("score", 0)))),
+            "verdict": data.get("verdict") or "Avaliação concluída",
+            "strengths": [str(s) for s in data.get("strengths", [])][:4],
+            "gaps": [str(s) for s in data.get("gaps", [])][:4],
+            "feedback": data.get("feedback", ""),
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Avaliação Feynman por IA indisponível: %s", exc)
+        return None
+
+
+@router.post("/feynman")
+async def feynman_evaluate(req: FeynmanRequest, user: dict = Depends(get_current_user)):
+    """Método Feynman: o aluno explica o tópico com as próprias palavras e recebe
+    veredito com lacunas, pontos fortes e explicação de referência."""
+    user_id = user["email"]
+    await _ensure_seeded()
+    explanation = (req.explanation or "").strip()
+    if len(explanation) < 15:
+        raise HTTPException(status_code=400, detail="Escreva uma explicação com pelo menos 15 caracteres")
+
+    pool_meta = _question_pool_meta(POOL)
+    topic_id = req.topic_id
+    topic_name = req.topic_name.strip()
+    if not topic_id:
+        for tid, m in pool_meta.items():
+            if m["topic_name"].lower() == topic_name.lower():
+                topic_id = tid
+                break
+    if topic_id not in pool_meta:
+        raise HTTPException(status_code=404, detail="Tópico não encontrado no banco de questões")
+    meta = pool_meta[topic_id]
+    topic_name = topic_name or meta["topic_name"]
+
+    questions = await adaptive_store.find_questions(topic_id=topic_id, limit=6)
+    keywords = _feynman_keywords(topic_name, meta.get("subject", ""), questions)
+
+    result = await _feynman_eval_ai(explanation, topic_name, keywords)
+    if result is None:
+        result = _feynman_eval_heuristic(explanation, keywords, questions)
+
+    await adaptive_store.add_feynman(user_id, {
+        "topic_id": topic_id,
+        "topic_name": topic_name,
+        "subject": meta.get("subject", ""),
+        "explanation": explanation[:2000],
+        "score": result["score"],
+        "verdict": result["verdict"],
+        "mode": result["mode"],
+    })
+    return {
+        "topic_id": topic_id,
+        "topic_name": topic_name,
+        "subject": meta.get("subject", ""),
+        "score": result["score"],
+        "verdict": result["verdict"],
+        "mode": result["mode"],
+        "strengths": result["strengths"],
+        "gaps": result["gaps"],
+        "feedback": result.get("feedback"),
+        "reference_explanation": result.get("reference_explanation"),
+        "history": await adaptive_store.list_feynman(user_id, limit=8),
+    }
+
+
+# ------------------------------------------------------------------ relatório semanal
+def _weekday_label(iso_date: str) -> str:
+    try:
+        return ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][date.fromisoformat(iso_date).weekday()]
+    except Exception:
+        return iso_date
+
+
+@router.get("/report/weekly")
+async def report_weekly(user: dict = Depends(get_current_user)):
+    """Relatório semanal com dados reais: minutos/dia, questões, domínio, streak, erros resolvidos."""
+    user_id = user["email"]
+    today = _today()
+
+    sessions = await adaptive_store.list_sessions(user_id)
+    finished = [s for s in sessions if s.get("status") == "finished"]
+    finished_by_date = {}
+    for s in finished:
+        key = str(s.get("ended_at", ""))[:10]
+        if not key:
+            continue
+        finished_by_date.setdefault(key, []).append(s)
+
+    days = []
+    for i in range(6, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        ds = finished_by_date.get(d, [])
+        minutes = sum(s.get("duration_min") or 0 for s in ds)
+        questions = sum((s.get("stats") or {}).get("total", 0) for s in ds)
+        correct = sum((s.get("stats") or {}).get("correct", 0) for s in ds)
+        wrong = sum((s.get("stats") or {}).get("wrong", 0) for s in ds)
+        days.append({
+            "date": d,
+            "weekday": _weekday_label(d),
+            "minutes": minutes,
+            "questions": questions,
+            "correct": correct,
+            "wrong": wrong,
+            "sessions": len(ds),
+        })
+
+    streak = 0
+    d = today
+    while finished_by_date.get(d.isoformat()):
+        streak += 1
+        d -= timedelta(days=1)
+
+    per_subject = {}
+    for s in finished:
+        for it in s.get("items", []):
+            if not it.get("result"):
+                continue
+            subj = it.get("subject") or "geral"
+            row = per_subject.setdefault(subj, {"correct": 0, "wrong": 0, "minutes": 0})
+            row["correct" if it["result"] == "correct" else "wrong"] += 1
+    for s in finished:
+        subj = (s.get("subjects") or [None])[0]
+        if subj:
+            per_subject.setdefault(subj, {"correct": 0, "wrong": 0, "minutes": 0})
+
+    skills = [(_decayed(s)) for s in await adaptive_store.list_skills(user_id)]
+    overall = round(sum(s.get("mastery", 0) for s in skills) / len(skills), 1) if skills else None
+    top_topics = sorted(
+        [{"topic_id": s["topic_id"], "topic_name": s.get("topic_name", s["topic_id"]),
+          "mastery": round(s.get("mastery", 0), 1)} for s in skills],
+        key=lambda x: x["mastery"],
+    )[:5]
+
+    errors = await adaptive_store.list_errors(user_id, resolved=True)
+    week_start = (today - timedelta(days=7)).isoformat()
+    resolved_week = [e for e in errors if str(e.get("resolved_at", ""))[:10] >= week_start]
+
+    feynman_logs = await adaptive_store.list_feynman(user_id, limit=3)
+
+    return {
+        "days": days,
+        "total_minutes": sum(d["minutes"] for d in days),
+        "total_questions": sum(d["questions"] for d in days),
+        "total_sessions": len(finished),
+        "streak": streak,
+        "overall_mastery": overall,
+        "per_subject": per_subject,
+        "errors_resolved_week": len(resolved_week),
+        "top_topics": top_topics,
+        "recent_feynman": [
+            {"topic_name": f.get("topic_name"), "score": f.get("score"), "verdict": f.get("verdict"),
+             "date": f.get("created_at", "")[:10]} for f in feynman_logs
+        ],
+        "available": True,
+    }

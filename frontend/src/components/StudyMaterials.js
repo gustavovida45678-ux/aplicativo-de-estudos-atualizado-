@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   BookOpen, FileText, Folder, Video, GraduationCap,
   Cpu, ArrowUpRight, Brain, Library, ChevronDown, ChevronUp,
-  CalendarDays, Clock, MapPin, ClipboardList, Target, Sigma, Code2,
+  CalendarDays, Clock, MapPin, ClipboardList, Target, Sigma,
   RefreshCw, ListChecks, PlayCircle, BookOpenCheck, CheckCircle2,
   Circle, LayoutDashboard, BarChart3, Trophy, ChevronRight, X,
   AlertTriangle, TrendingDown, Lightbulb, PenLine, Calculator,
@@ -20,7 +20,7 @@ import '../styles/studyMaterials.css';
 import MindMapModal from './MindMap';
 import DailySchedule from './DailySchedule';
 import AssessmentPractice from './AssessmentPractice';
-import JudgePanel from './JudgePanel';
+
 import { VIDEO_EXERCISES } from '../data/videoExercises';
 import { getAvaliacaoByPart } from '../data/avaliacoesDisciplinas';
 import { SIMULADOS_CRONOGRAMA } from '../data/simuladosCronograma';
@@ -1599,18 +1599,10 @@ const StudyMaterials = () => {
             <CalendarDays size={18} />
             Cronograma Diário
           </button>
-          <button
-            onClick={() => setActiveTab('judge')}
-            className={`schedule-tab ${activeTab === 'judge' ? 'active' : ''}`}
-          >
-            <Code2 size={18} />
-            Juiz Online
-          </button>
         </div>
 
         <div className="materials-content">
           {activeTab === 'daily' && <DailySchedule />}
-          {activeTab === 'judge' && <JudgePanel />}
           {activeTab === 'topics' && (
             <div className="materials-grid">
               {materialsData.map((discipline) => {

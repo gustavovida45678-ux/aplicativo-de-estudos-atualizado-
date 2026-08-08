@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -18,6 +18,7 @@ import UserDashboard from "./components/UserDashboard";
 import SmartDashboard from "./components/SmartDashboard";
 import FeedbackForm from "./components/FeedbackForm";
 import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
+import JudgePanel from "./components/JudgePanel";
 // import DebugPanel from "./components/DebugPanel"; // Removed
 
 import { BACKEND_URL } from "./lib/backendUrl";
@@ -66,6 +67,7 @@ function App() {
   const [imageGenPrompt, setImageGenPrompt] = useState("");
   const [chatProviders, setChatProviders] = useState([]);
   const [selectedChatProvider, setSelectedChatProvider] = useState("auto");
+  const [teacherMode, setTeacherMode] = useState(() => localStorage.getItem("chat_teacher_mode") === "1");
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -336,7 +338,8 @@ function App() {
         const customKey = getCustomApiKey(selectedChatProvider);
         if (customKey) payload.custom_api_key = customKey;
 
-        const response = await axios.post(`${API}/chat`, payload);
+        const endpoint = teacherMode ? `${API}/chat/teacher` : `${API}/chat`;
+        const response = await axios.post(endpoint, payload);
 
         setMessages((prev) => [
           ...prev,
@@ -496,6 +499,42 @@ function App() {
             </div>
 
             <div className="nav-group">
+              <span className="nav-group-label">Aprendizado</span>
+              <button
+                onClick={() => openAdaptiveView("feynman")}
+                className={`nav-tab ${activeTab === "adaptive" && adaptiveView === "feynman" ? "active" : ""}`}
+                data-testid="tab-feynman"
+              >
+                <NotebookPen size={18} />
+                <span className="nav-tab-text">Feynman</span>
+              </button>
+              <button
+                onClick={() => openAdaptiveView("simulado")}
+                className={`nav-tab ${activeTab === "adaptive" && adaptiveView === "simulado" ? "active" : ""}`}
+                data-testid="tab-simulado"
+              >
+                <ClipboardList size={18} />
+                <span className="nav-tab-text">Simulado</span>
+              </button>
+              <button
+                onClick={() => openAdaptiveView("report")}
+                className={`nav-tab ${activeTab === "adaptive" && adaptiveView === "report" ? "active" : ""}`}
+                data-testid="tab-report"
+              >
+                <TrendingUp size={18} />
+                <span className="nav-tab-text">Relatório</span>
+              </button>
+              <button
+                onClick={() => openAdaptiveView("dictionary")}
+                className={`nav-tab ${activeTab === "adaptive" && adaptiveView === "dictionary" ? "active" : ""}`}
+                data-testid="tab-dictionary"
+              >
+                <BookOpen size={18} />
+                <span className="nav-tab-text">Dicionário</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
               <span className="nav-group-label">IA</span>
               <button
                 onClick={() => setActiveTab("chat")}
@@ -504,6 +543,18 @@ function App() {
               >
                 <MessageSquare size={18} />
                 <span className="nav-tab-text">Chat</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
+              <span className="nav-group-label">Programação</span>
+              <button
+                onClick={() => setActiveTab("judge")}
+                className={`nav-tab ${activeTab === "judge" ? "active" : ""}`}
+                data-testid="tab-judge"
+              >
+                <Code2 size={18} />
+                <span className="nav-tab-text">Juiz Online</span>
               </button>
             </div>
 
@@ -552,6 +603,10 @@ function App() {
             <ExerciseSystem />
           ) : activeTab === "math" ? (
             <MathExplainer />
+          ) : activeTab === "judge" ? (
+            <div className="mx-auto max-w-5xl px-4 py-8">
+              <JudgePanel />
+            </div>
           ) : (
         <>
           {/* Drag and drop overlay */}
@@ -703,6 +758,20 @@ function App() {
         />
 
         <div className="chat-provider-bar">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !teacherMode;
+              setTeacherMode(next);
+              localStorage.setItem("chat_teacher_mode", next ? "1" : "0");
+            }}
+            className={`chat-teacher-toggle ${teacherMode ? "active" : ""}`}
+            title={teacherMode ? "Modo Professor Virtual ativo: usa seu histórico de erros e domínio" : "Ativar o Professor Virtual (usa seu histórico de erros e domínio)"}
+            data-testid="teacher-mode-toggle"
+          >
+            <GraduationCap size={14} />
+            {teacherMode ? "Professor Virtual" : "Chat Geral"}
+          </button>
           <select
             value={selectedChatProvider}
             onChange={(e) => {

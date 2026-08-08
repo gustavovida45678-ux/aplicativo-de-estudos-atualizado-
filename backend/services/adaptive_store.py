@@ -27,6 +27,7 @@ COLLECTIONS = [
     "adaptive_reviews",
     "adaptive_sessions",
     "adaptive_questions",
+    "adaptive_feynman",
 ]
 
 
@@ -255,6 +256,41 @@ class AdaptiveStore:
             and s.get("status") == "finished"
             and str(s.get("ended_at", "")).startswith(today)
         ]
+
+    async def list_sessions(self, user_id: str, since: str = None):
+        """Todas as sessões do usuário (para relatórios), opcionalmente desde uma data."""
+        col = self._mongo("adaptive_sessions")
+        if col is not None:
+            query = {"user_id": user_id}
+            if since:
+                query["created_at"] = {"$gte": since}
+            cursor = col.find(query).sort("created_at", 1)
+            return [doc async for doc in cursor]
+        items = [s for s in self._mem["adaptive_sessions"] if s.get("user_id") == user_id]
+        if since:
+            items = [s for s in items if s.get("created_at", "") >= since]
+        return items
+
+    # -------------------------------------------------------------- feynman
+    async def add_feynman(self, user_id: str, log: dict):
+        log = dict(log)
+        log["id"] = self._new_id("fy_")
+        log["user_id"] = user_id
+        log["created_at"] = self._now()
+        col = self._mongo("adaptive_feynman")
+        if col is not None:
+            await col.insert_one(log)
+        else:
+            self._mem["adaptive_feynman"].append(log)
+        return log
+
+    async def list_feynman(self, user_id: str, limit: int = 10):
+        col = self._mongo("adaptive_feynman")
+        if col is not None:
+            cursor = col.find({"user_id": user_id}).sort("created_at", -1).limit(limit)
+            return [doc async for doc in cursor]
+        items = [f for f in self._mem["adaptive_feynman"] if f.get("user_id") == user_id]
+        return sorted(items, key=lambda f: f.get("created_at", ""), reverse=True)[:limit]
 
     # ------------------------------------------------------------- questions
     async def seed_questions(self, pool: list):

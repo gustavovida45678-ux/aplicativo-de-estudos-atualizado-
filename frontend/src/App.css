@@ -498,6 +498,29 @@ code, pre {
   margin-bottom: 0.15rem;
 }
 
+.chat-teacher-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.chat-teacher-toggle:hover { background: rgba(139, 92, 246, 0.22); }
+
+.chat-teacher-toggle.active {
+  background: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+}
+
 .chat-provider-select {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border-medium);

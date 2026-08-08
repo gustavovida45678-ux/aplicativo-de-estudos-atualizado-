@@ -191,6 +191,51 @@ async def test_schedule_filter():
         adaptive_route._schedule_subjects = original
 
 
+async def test_feynman():
+    """Feynman avalia explicação (heurística sem IA) e persiste o histórico."""
+    pool = build_question_pool()
+    await adaptive_store.seed_questions(pool)
+    topics = await adaptive_store.list_topics()
+    t = topics[0]
+    req = adaptive_route.FeynmanRequest(
+        topic_id=t["topic_id"], topic_name=t["topic_name"],
+        explanation="Este tópico trata de conceitos centrais. Por exemplo, na prática, "
+                    "usamos as ideias principais passo a passo para resolver problemas. "
+                    "O importante é aplicar cada conceito no momento certo e conferir o resultado.",
+    )
+    res = await adaptive_route.feynman_evaluate(req, USER)
+    assert res["topic_id"] == t["topic_id"]
+    assert 0 <= res["score"] <= 100
+    assert res["verdict"]
+    assert "gaps" in res and "strengths" in res
+    assert res["history"], "histórico não persistiu"
+    print(f"feynman OK: {res['score']}% ({res['verdict']}) — {res['mode']}")
+
+    # validação: explicação curta é rejeitada
+    try:
+        await adaptive_route.feynman_evaluate(
+            adaptive_route.FeynmanRequest(topic_id=t["topic_id"], topic_name="", explanation="curto"),
+            USER)
+        assert False, "deveria rejeitar explicação curta"
+    except Exception:
+        pass
+
+
+async def test_report_weekly():
+    """Relatório semanal com dados reais das sessões."""
+    report = await adaptive_route.report_weekly(USER)
+    assert report["available"] is True
+    assert len(report["days"]) == 7
+    assert report["days"][-1]["date"] <= __import__("datetime").date.today().isoformat()
+    assert report["total_minutes"] >= 0
+    assert report["streak"] >= 0
+    assert "per_subject" in report
+    print(f"relatório semanal OK: {report['total_minutes']}min, streak={report['streak']}, "
+          f"domínio={report['overall_mastery']}")
+
+
 asyncio.run(test_srs())
 asyncio.run(test_flow())
 asyncio.run(test_schedule_filter())
+asyncio.run(test_feynman())
+asyncio.run(test_report_weekly())

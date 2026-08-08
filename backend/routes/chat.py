@@ -12,6 +12,8 @@ from datetime import datetime
 
 from backend.services.chat_service import chat_service
 from backend.services.providers import ProviderType, get_all_providers_info, AUTO_PRIORITY
+from utils.auth import get_current_user
+from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,106 @@ class ProvidersResponse(BaseModel):
     providers: List[ProviderInfo]
     configured_count: int
     total_count: int
+
+TEACHER_SYSTEM_PROMPT = (
+    "Você é o Professor Virtual do aplicativo de estudos. Você conhece o histórico do aluno "
+    "(erros recentes, domínio por tópico, tempo de estudo) e usa isso para personalizar a ajuda. "
+    "Tom: didático, paciente, direto, em português brasileiro. Explique passo a passo, dê exemplos "
+    "concretos e nunca invente dados do aluno — use apenas o contexto fornecido."
+)
+
+async def _teacher_context(user_id: str) -> str:
+    """Monta o contexto adaptativo do aluno para a persona do professor."""
+    try:
+        from backend.services.adaptive_store import adaptive_store
+
+        skills = await adaptive_store.list_skills(user_id)
+        errors = await adaptive_store.list_errors(user_id, resolved=False)
+        parts = []
+        if errors:
+            seen = set()
+            topics = []
+            for e in errors[:5]:
+                t = e.get("topic_name") or e.get("topic_id", "?")
+                if t not in seen:
+                    seen.add(t)
+                    topics.append(t)
+            if topics:
+                parts.append(f"- Erros recentes: {', '.join(topics)}")
+        weak = sorted([s for s in skills if (s.get("mastery") or 0) < 61], key=lambda s: s["mastery"])[:3]
+        if weak:
+            names = [s.get("topic_name", s["topic_id"]) for s in weak]
+            parts.append(f"- Tópicos fracos: {', '.join(names)}")
+        if skills:
+            avg = round(sum(s.get("mastery", 0) for s in skills) / len(skills), 1)
+            parts.append(f"- Domínio médio: {avg}%")
+        if not parts:
+            parts.append("- Aluno novo, sem histórico de estudos ainda.")
+        return "\n".join(parts)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Contexto do professor indisponível: %s", exc)
+        return "- Aluno novo, sem histórico de estudos ainda."
+
+@router.post("/chat/teacher", response_model=ChatResponse)
+async def chat_teacher(
+    message: ChatMessage,
+    x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Chat com a persona de Professor Virtual: usa o contexto adaptativo do aluno
+    (erros recentes, tópicos fracos, domínio) para personalizar as respostas.
+    """
+    return await _chat_with_teacher(user, message, x_custom_api_key)
+
+async def _chat_with_teacher(user, message: ChatMessage, x_custom_api_key: Optional[str]):
+    try:
+        provider_type = resolve_provider_type(message.provider.lower(), x_custom_api_key or message.custom_api_key)
+        api_key = x_custom_api_key or message.custom_api_key
+        user_id = user["email"] if isinstance(user, dict) else getattr(user, "email", "")
+
+        ctx = await _teacher_context(user_id)
+        system_prompt = (
+            TEACHER_SYSTEM_PROMPT
+            + "\n\nCONTEXTO DO ALUNO:\n" + ctx
+        )
+        if message.system_prompt:
+            system_prompt += "\n\nInstrução extra do aluno:\n" + message.system_prompt
+
+        result = await chat_service.chat(
+            message=message.message,
+            provider_type=provider_type,
+            model_key=message.model,
+            custom_api_key=api_key,
+            system_prompt=system_prompt,
+            temperature=message.temperature,
+            max_tokens=message.max_tokens,
+        )
+
+        now = datetime.now().isoformat()
+        user_message_obj = {
+            "id": str(int(datetime.now().timestamp() * 1000)),
+            "role": "user",
+            "content": message.message,
+            "provider": message.provider,
+            "model": message.model or "default",
+            "timestamp": now,
+        }
+        assistant_message_obj = {
+            "id": str(int(datetime.now().timestamp() * 1000) + 1),
+            "role": "assistant",
+            "content": result.get("content", ""),
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "usage": result.get("usage"),
+            "timestamp": now,
+        }
+        return ChatResponse(user_message=user_message_obj, assistant_message=assistant_message_obj)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in teacher chat endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao processar mensagem: {str(e)}")
 
 @router.get("/providers", response_model=ProvidersResponse)
 async def get_providers():

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 import logging
+from utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +68,33 @@ class StatsResponse(BaseModel):
     studyTime: int
 
 @router.get("/stats")
-async def get_study_stats():
+async def get_study_stats(user: dict = Depends(get_current_user)):
     """
-    Get study statistics
-    Returns mock data for now
+    Estatísticas reais do estudo: exercícios respondidos, tópicos tocados e tempo
+    total acumulado (sessões adaptativas concluídas). Fallback para mock vazio.
     """
     try:
+        from services.adaptive_store import adaptive_store
+
+        user_id = user["email"]
+        total = 0
+        completed = 0
+        study_time = 0
+
+        sessions = await adaptive_store.list_sessions(user_id)
+        for s in sessions:
+            stats = s.get("stats") or {}
+            total += stats.get("total", 0)
+            completed += stats.get("correct", 0)
+            study_time += s.get("duration_min") or 0
+
+        skills = await adaptive_store.list_skills(user_id)
+        total += sum((sk.get("attempts") or 0) for sk in skills)
+
         return StatsResponse(
-            totalExercises=150,
-            completedExercises=0,
-            studyTime=0
+            totalExercises=total,
+            completedExercises=completed,
+            studyTime=study_time,
         )
     except Exception as e:
         logger.error(f"Error getting stats: {e}")

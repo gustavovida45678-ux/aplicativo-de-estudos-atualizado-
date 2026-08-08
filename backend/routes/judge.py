@@ -1514,6 +1514,9 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
             raw = re.sub(r"^```\w*\n?", "", raw)
             raw = re.sub(r"\n?```$", "", raw)
         data = json.loads(raw)
+        if not isinstance(data, dict):
+            logger.error(f"generate_from_text: IA retornou JSON nao-objeto: {type(data).__name__}")
+            return None
         title = str(data.get("title") or "Exercicio Gerado")[:120]
         statement = str(data.get("statement") or "").strip()
         solution = str(data.get("solution") or "").strip()
@@ -1521,7 +1524,11 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
         if not statement or not solution:
             return None
         examples = data.get("examples") or []
+        if not isinstance(examples, list):
+            examples = []
         test_cases = data.get("test_cases") or []
+        if not isinstance(test_cases, list):
+            test_cases = []
         for ex in examples:
             if isinstance(ex, dict) and {"input", "output"} <= set(ex.keys()):
                 if not any(t.get("input") == ex["input"] for t in test_cases):
@@ -1542,7 +1549,8 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
             "solution": solution,
             "explanation": explanation,
         }
-    except (json.JSONDecodeError, ValueError):
+    except Exception as e:
+        logger.error(f"generate_from_text: parse da IA falhou ({type(e).__name__}): {str(e)[:200]}")
         return None
 
 
@@ -1560,7 +1568,11 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
     req.difficulty = max(1, min(5, req.difficulty or 1))
 
     topic = _detect_topic(description)
-    generated = _generate_from_text_ai(description, req.language, x_custom_api_key)
+    try:
+        generated = _generate_from_text_ai(description, req.language, x_custom_api_key)
+    except Exception:
+        logger.exception("generate_from_text: IA falhou com excecao; usando banco")
+        generated = None
 
     if generated:
         topic_meta = dict(topic)

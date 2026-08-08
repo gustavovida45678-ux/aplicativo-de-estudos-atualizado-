@@ -199,11 +199,10 @@ Retorne APENAS o JSON válido, sem markdown, sem texto adicional."""
         # Parse JSON response
         import json
         import re
-        
+
         # Extract JSON from response
-        json_match = re.search(r'\{[\s\S]*\}', response_text)
-        if json_match:
-            json_str = json_match.group(0)
+        json_str = _extract_json(response_text)
+        if json_str:
             result = json.loads(json_str)
             result["generated_with_ai"] = True
 
@@ -211,7 +210,7 @@ Retorne APENAS o JSON válido, sem markdown, sem texto adicional."""
             return result
         else:
             logger.error("❌ No JSON found in response")
-            return generate_mock_exercises(reference_text, number_of_exercises, mode)
+            return generate_bank_exercises(reference_text, number_of_exercises, mode)
         
     except Exception as e:
         logger.error(f"❌ Error generating exercises: {e}")
@@ -226,8 +225,139 @@ Retorne APENAS o JSON válido, sem markdown, sem texto adicional."""
                 detail="⚠️ Orçamento da chave API esgotado. Adicione créditos em Profile → Universal Key → Add Balance"
             )
         
-        # Return mock as fallback
-        return generate_mock_exercises(reference_text, number_of_exercises, mode)
+        # Return real exercises from the bank as fallback
+        return generate_bank_exercises(reference_text, number_of_exercises, mode)
+
+
+def _extract_json(text: str):
+    """Extrai o primeiro objeto JSON válido do texto, ignorando fences de markdown."""
+    import re
+    text = (text or "").strip()
+    # Remove code fences (```json ... ```)
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
+
+
+def _match_subject(reference_text: str):
+    """Descobre a disciplina mencionada no texto de referência."""
+    text = (reference_text or "").lower()
+    rules = [
+        ("calcnum", ["cálculo numérico", "calculo numerico", "calcnum", "calculo num"]),
+        ("ed", ["estrutura de dados", "programação estruturada", "programacao estruturada", "pilha", "fila", "lista", "árvore", "arvore", "grafo"]),
+        ("sd", ["sistemas digitais", "sistema digital", "flip-flop", "flip flop", "circuito", "lógica digital", "logica digital", "porta lógica"]),
+        ("calc2", ["cálculo 2", "calculo 2", "cálculo ii", "derivadas parciais", "funções de várias variáveis"]),
+        ("calc3", ["cálculo 3", "calculo 3", "cálculo iii", "integrais múltiplas", "teorema de green", "divergência", "rotacional"]),
+        ("calc", ["cálculo", "calculo", "limite", "derivada", "integral"]),
+    ]
+    for key, words in rules:
+        if any(w in text for w in words):
+            return key
+    return None
+
+
+def generate_bank_exercises(reference_text: str, count: int, mode: str):
+    """Fallback determinístico: usa exercícios REAIS do banco do app em vez de placeholders."""
+    from routes.exercises import EXERCISES_DB
+    from routes.extra_exercises import EXTRA_EXERCISES
+
+    bank = {}
+    for subj, qs in EXERCISES_DB.items():
+        for q in qs:
+            bank.setdefault(subj, []).append(q)
+    for qs in EXTRA_EXERCISES.values():
+        for q in qs:
+            tid = str(q.get("topic_id", ""))
+            subj = "ed" if tid.startswith("ed") else ("sd" if tid.startswith("sd") else "extra")
+            bank.setdefault(subj, []).append(q)
+
+    matched = _match_subject(reference_text)
+    if matched and bank.get(matched):
+        source = bank[matched]
+    else:
+        # Sem disciplina identificada: usa o banco inteiro, priorizando múltipla escolha
+        source = [q for qs in bank.values() for q in qs if q.get("options")]
+
+    logger.info(f"🎯 Fallback do banco: disciplina={matched or 'todas'}, disponíveis={len(source)}")
+
+    exercises = []
+    letters = ["A", "B", "C", "D"]
+    for i in range(count):
+        q = source[i % len(source)]
+        options = q.get("options") or ["Verdadeiro", "Falso"]
+        correct_idx = q.get("correct_answer")
+        if correct_idx is None:
+            correct_idx = q.get("answer")
+        correct_idx = correct_idx if isinstance(correct_idx, int) and 0 <= correct_idx < len(options) else 0
+        correct_letter = letters[correct_idx % len(letters)]
+        diff = q.get("difficulty", "Intermediário")
+        diff_label = "Fácil" if str(diff).lower().startswith("bas") else ("Difícil" if ("avan" in str(diff).lower() or "dif" in str(diff).lower()) else "Médio")
+        explanation = q.get("explanation") or "Resolva passo a passo e verifique a alternativa correta."
+
+        exercises.append({
+            "question": q["question"],
+            "options": options,
+            "correct_answer": correct_letter,
+            "solution": {
+                "steps": [
+                    {
+                        "title": "Passo 1: Análise do Enunciado",
+                        "content": "Leia atentamente o enunciado e identifique o que está sendo pedido e os dados fornecidos.",
+                        "calculation": None,
+                    },
+                    {
+                        "title": "Passo 2: Raciocínio",
+                        "content": explanation,
+                        "calculation": None,
+                    },
+                    {
+                        "title": "Passo 3: Verificação",
+                        "content": f"Aplique o raciocínio a cada alternativa e confirme qual corresponde ao resultado. Resposta correta: alternativa {correct_letter}.",
+                        "calculation": f"Resposta = (Alternativa {correct_letter})",
+                    },
+                ],
+                "prerequisites": [
+                    {
+                        "topic": q.get("topic", "Conceito base do tópico"),
+                        "description": "Revisar a teoria do tópico antes de resolver ajuda a aplicar o método correto.",
+                    },
+                ],
+                "final_answer": f"A resposta correta é a alternativa {correct_letter}: {options[correct_idx]}.",
+            },
+            "difficulty": diff_label,
+            "topic": q.get("topic") or f"Tópico {q.get('topic_id', '')}",
+        })
+
+    return {
+        "exercises": exercises,
+        "mode": mode,
+        "generated_with_ai": False,
+        "fallback": "banco_de_exercicios",
+    }
 
 
 def generate_mock_exercises(reference_text: str, count: int, mode: str):

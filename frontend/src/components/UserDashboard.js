@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Users, Calendar, BookOpen, LogOut, User, Mail, Clock, Activity, CheckCircle2, Zap, Brain, Globe, Shield, Code, Terminal, ExternalLink } from "lucide-react";
+import { Users, Calendar, BookOpen, LogOut, User, Mail, Clock, Activity, CheckCircle2, Zap, Brain, Globe, Shield, Code, Terminal, ExternalLink, Trash2, RefreshCw, MailCheck, MailX } from "lucide-react";
 import { BACKEND_URL } from "../lib/backendUrl";
 
 const API = `${BACKEND_URL}/api`;
@@ -133,7 +133,8 @@ export default function UserDashboard({ currentUser, onLogout }) {
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({
     totalUsers: 0,
-    todayUsers: 0
+    todayUsers: 0,
+    verifiedUsers: 0
   });
 
   useEffect(() => {
@@ -163,7 +164,8 @@ export default function UserDashboard({ currentUser, onLogout }) {
       
       setStats({
         totalUsers: response.data.length,
-        todayUsers: todayUsers
+        todayUsers: todayUsers,
+        verifiedUsers: response.data.filter(u => u.email_verified).length
       });
       
     } catch (error) {
@@ -175,6 +177,30 @@ export default function UserDashboard({ currentUser, onLogout }) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDeleteUser = async (user) => {
+    const isConfirmed = window.confirm(
+      `Excluir o usuário "${user.name}" (${user.email})?\n\nTodos os dados dele serão removidos (estudos adaptativos, cronograma e histórico). Esta ação não pode ser desfeita.`
+    );
+    if (!isConfirmed) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${API}/auth/users/${user.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success(`Usuário "${user.name}" excluído`);
+      await loadUsers();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      toast.error(error.response?.data?.detail || "Erro ao excluir usuário");
+    }
+  };
+
+  const handleRefresh = async () => {
+    await loadUsers();
+    toast.success("Informações atualizadas");
   };
 
   const handleLogout = () => {
@@ -266,6 +292,21 @@ export default function UserDashboard({ currentUser, onLogout }) {
             </div>
           </div>
 
+          <div className="stat-card stat-card-blue" data-testid="stat-verified">
+            <div className="stat-icon">
+              <MailCheck size={26} />
+            </div>
+            <div className="stat-info">
+              <p className="stat-label">Emails Verificados</p>
+              <p className="stat-value" data-testid="verified-users">
+                {stats.verifiedUsers}
+              </p>
+              <div className="stat-progress">
+                <div className="stat-progress-bar" style={{ width: `${stats.totalUsers ? Math.round((stats.verifiedUsers / stats.totalUsers) * 100) : 0}%` }} />
+              </div>
+            </div>
+          </div>
+
           <div className="stat-card stat-card-green" data-testid="stat-system">
             <div className="stat-icon">
               <Activity size={26} />
@@ -338,7 +379,17 @@ export default function UserDashboard({ currentUser, onLogout }) {
 
         {/* Users List */}
         <div className="users-section">
-          <h2 className="section-title">Usuários Cadastrados</h2>
+          <div className="users-section-header">
+            <h2 className="section-title">Usuários Cadastrados</h2>
+            <button
+              onClick={handleRefresh}
+              className="refresh-btn"
+              title="Atualizar informações"
+            >
+              <RefreshCw size={16} />
+              Atualizar
+            </button>
+          </div>
           
           {isLoading ? (
             <div className="loading-state">
@@ -359,6 +410,7 @@ export default function UserDashboard({ currentUser, onLogout }) {
                     <th>Email</th>
                     <th>Data de Cadastro</th>
                     <th>Status</th>
+                    <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -372,12 +424,33 @@ export default function UserDashboard({ currentUser, onLogout }) {
                           {user.name}
                         </div>
                       </td>
-                      <td>{user.email}</td>
+                      <td>
+                        <div className="user-email-cell">
+                          {user.email}
+                          {user.email_verified ? (
+                            <MailCheck size={14} className="mail-verified" title="Email verificado" />
+                          ) : (
+                            <MailX size={14} className="mail-unverified" title="Email não verificado" />
+                          )}
+                        </div>
+                      </td>
                       <td>{formatDate(user.created_at)}</td>
                       <td>
                         <span className={`status-badge ${user.is_active ? 'status-active' : 'status-inactive'}`}>
                           {user.is_active ? 'Ativo' : 'Inativo'}
                         </span>
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => handleDeleteUser(user)}
+                          className="delete-user-btn"
+                          title={`Excluir ${user.name}`}
+                          disabled={user.id === currentUser.id}
+                          data-testid={`delete-user-${index}`}
+                        >
+                          <Trash2 size={15} />
+                          Excluir
+                        </button>
                       </td>
                     </tr>
                   ))}

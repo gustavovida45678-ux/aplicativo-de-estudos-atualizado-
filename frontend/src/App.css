@@ -1207,6 +1207,81 @@ code, pre {
   margin-bottom: 2.5rem;
 }
 
+.users-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.15rem;
+}
+
+.users-section-header .section-title {
+  margin-bottom: 0;
+}
+
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.refresh-btn:hover {
+  border-color: var(--blue-primary);
+  color: var(--blue-light);
+  transform: translateY(-1px);
+}
+
+.delete-user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  color: #f87171;
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.delete-user-btn:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: #f87171;
+}
+
+.delete-user-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.user-email-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mail-verified {
+  color: #4ade80;
+  flex-shrink: 0;
+}
+
+.mail-unverified {
+  color: #94a3b8;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
 .subjects-section {
   margin-bottom: 2.5rem;
 }

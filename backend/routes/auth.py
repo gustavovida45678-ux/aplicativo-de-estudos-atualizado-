@@ -273,3 +273,52 @@ async def get_all_users(current_user: dict = Depends(get_current_active_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erro ao buscar usuários"
         )
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, current_user: dict = Depends(get_current_active_user)):
+    """Delete a user and all their data (admin dashboard)"""
+    try:
+        if user_id == current_user.get("id"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Você não pode excluir sua própria conta enquanto logado"
+            )
+
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuário não encontrado"
+            )
+
+        email = user["email"]
+
+        # Remove o usuário e todos os dados associados
+        await db.users.delete_one({"id": user_id})
+
+        # Coleções adaptativas são indexadas por email
+        for collection in (
+            "adaptive_skill_mastery",
+            "adaptive_attempts",
+            "adaptive_errors",
+            "adaptive_reviews",
+            "adaptive_sessions",
+        ):
+            await db[collection].delete_many({"user_id": email})
+
+        # Cronograma/agenda indexado pelo id do usuário
+        await db.subjects.delete_many({"user_id": user_id})
+        await db.tasks.delete_many({"user_id": user_id})
+
+        logger.info(f"User deleted: {email} (by {current_user['email']})")
+        return {"success": True, "message": "Usuário removido com todos os dados"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro ao excluir usuário"
+        )

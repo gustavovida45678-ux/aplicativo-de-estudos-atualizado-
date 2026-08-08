@@ -48,6 +48,8 @@ const JudgePanel = () => {
   const [createDifficulty, setCreateDifficulty] = useState(1);
   const [newExercise, setNewExercise] = useState(null);
   const [creatingExercise, setCreatingExercise] = useState(false);
+  const [createDescription, setCreateDescription] = useState('');
+  const [creatingFromText, setCreatingFromText] = useState(false);
 
   const [showExplanation, setShowExplanation] = useState(false);
   const [expandedStep, setExpandedStep] = useState(0);
@@ -65,6 +67,7 @@ const JudgePanel = () => {
   const [showNotesTab, setShowNotesTab] = useState(false);
   const [notes, setNotes] = useState('');
   const [notesSavedAt, setNotesSavedAt] = useState(null);
+  const [showAnswer, setShowAnswer] = useState(false);
   const [showReviewCalendar, setShowReviewCalendar] = useState(false);
   const [reviewSessions, setReviewSessions] = useState([]);
   const [generatedReport, setGeneratedReport] = useState(null);
@@ -143,6 +146,7 @@ const JudgePanel = () => {
     setCode(saved || STARTERS[language]);
     setResult(null);
     setShowExplanation(false);
+    setShowAnswer(false);
     setExpandedStep(0);
     setShowQuestionTab(false);
     setQuestionHistory([]);
@@ -217,6 +221,30 @@ const JudgePanel = () => {
       console.error(e);
       toast.error('Erro ao gerar exercicio.');
     } finally { setCreatingExercise(false); }
+  };
+
+  const generateFromText = async () => {
+    if (!createDescription.trim()) { toast.warning('Descreva o exercício que você quer criar'); return; }
+    setCreatingFromText(true);
+    setNewExercise(null);
+    setSelected(null);
+    try {
+      const res = await axios.post(`${API}/generate-from-text`, {
+        description: createDescription.trim(),
+        language,
+        difficulty: createDifficulty,
+      });
+      setNewExercise(res.data);
+      setCode(res.data.starter_code || STARTERS[language]);
+      setNotes(localStorage.getItem(notesKey(res.data.id)) || '');
+      setNotesSavedAt(null);
+      setShowNotesTab(false);
+      setShowAnswer(true);
+      toast.success(`Exercicio criado do texto! (${res.data.title})`);
+    } catch (e) {
+      console.error(e);
+      toast.error(e.response?.data?.detail || 'Erro ao criar exercicio a partir do texto.');
+    } finally { setCreatingFromText(false); }
   };
 
   const runWalkthrough = async () => {
@@ -428,7 +456,7 @@ const JudgePanel = () => {
     const explanation = result?.explanation;
     return (
       <div className="materials-judge">
-        <button className="materials-judge-back" onClick={() => { setSelected(null); setNewExercise(null); setResult(null); setShowExplanation(false); }}>
+        <button className="materials-judge-back" onClick={() => { setSelected(null); setNewExercise(null); setResult(null); setShowExplanation(false); setShowAnswer(false); }}>
           <ArrowLeft size={16} /> Voltar
         </button>
 
@@ -499,20 +527,30 @@ const JudgePanel = () => {
                <HelpCircle size={14} />
                Duvidas
              </button>
-             <button
-               onClick={() => setShowNotesTab(!showNotesTab)}
-               className={`materials-judge-notes-toggle ${showNotesTab ? 'active' : ''}`}
-               title="Bloco de anotacoes deste exercicio (salvo automaticamente)"
-             >
-               <NotebookPen size={14} />
-               Anotacoes
-             </button>
-             <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
-               {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
-               {running ? 'Executando...' : 'Enviar para o juiz'}
-             </button>
-           </div>
-         </div>
+              <button
+                onClick={() => setShowNotesTab(!showNotesTab)}
+                className={`materials-judge-notes-toggle ${showNotesTab ? 'active' : ''}`}
+                title="Bloco de anotacoes deste exercicio (salvo automaticamente)"
+              >
+                <NotebookPen size={14} />
+                Anotacoes
+              </button>
+              {activeExercise.solution && (
+                <button
+                  onClick={() => setShowAnswer(!showAnswer)}
+                  className={`materials-judge-answer-toggle ${showAnswer ? 'active' : ''}`}
+                  title="Ver a solucao de referencia e a explicacao"
+                >
+                  <Lightbulb size={14} />
+                  Gabarito
+                </button>
+              )}
+              <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
+                {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
+                {running ? 'Executando...' : 'Enviar para o juiz'}
+              </button>
+            </div>
+          </div>
 
          {showQuestionTab && (
            <div className="materials-judge-question-tab">
@@ -643,9 +681,39 @@ const JudgePanel = () => {
                <span>{notes.length} caracteres</span>
              </div>
            </div>
-         )}
+          )}
 
-         {showVismo && vismoPrompt && (
+          {showAnswer && (activeExercise.solution || newExercise?.solution) && (
+            <div className="materials-judge-answer-tab">
+              <div className="materials-judge-notes-head">
+                <Lightbulb size={18} color="#fbbf24" />
+                <b>Gabarito</b>
+                <span className="materials-judge-notes-sub">Solucao de referencia e explicacao</span>
+                <span style={{ flex: 1 }} />
+                <button
+                  onClick={() => setShowAnswer(false)}
+                  className="materials-judge-notes-clear"
+                  title="Fechar gabarito"
+                >
+                  <X size={14} /> Fechar
+                </button>
+              </div>
+              <div className="materials-judge-answer-body">
+                <div>
+                  <b>Solucao de referencia</b>
+                  <pre>{(activeExercise.solution || newExercise?.solution || 'Solucao nao disponivel para este exercicio.')}</pre>
+                </div>
+                {(activeExercise.explanation || newExercise?.explanation) && (
+                  <div>
+                    <b>Por que esta resposta?</b>
+                    <p>{activeExercise.explanation || newExercise?.explanation}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {showVismo && vismoPrompt && (
           <div style={{
             marginTop: 14, borderRadius: 12, overflow: 'hidden',
             border: '2px solid #dc2626', background: '#111',

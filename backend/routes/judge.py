@@ -1459,6 +1459,155 @@ def generate_exercise(req: ExerciseRequest):
     return _generate_new_exercise(req.topic, req.difficulty, req.language)
 
 
+class TextExerciseRequest(BaseModel):
+    description: str
+    language: str = "python"
+    difficulty: int = 1
+
+
+_TOPIC_KEYWORDS = {
+    "recursao": ["recursi", "potencia", "recursiva"],
+    "estruturas_dados": ["pilha", "fila", "parenteses", "lista encadeada", "arvore", "balancead"],
+    "arrays": ["vetor", "array", "lista", "elementos", "sequencia", "na ordem"],
+    "strings": ["string", "texto", "vogal", "palavra", "inverta", "maiuscula", "minuscula", "caractere"],
+    "loops": ["loop", "repeti", "tabuada", "fatorial", "fibonacci", "contar de", "de 1 a", "ate n"],
+    "condicionais": ["par", "impar", "positivo", "negativo", "maior", "menor", "condicao", "classifique", "compare", "se for"],
+    "variaveis": ["soma", "multiplica", "divisao", "resto", "media", "numero", "inteiro", "calcule", "calcular", "leia dois"],
+}
+
+
+def _detect_topic(description: str) -> str:
+    text = (description or "").lower()
+    for topic, kws in _TOPIC_KEYWORDS.items():
+        if any(kw in text for kw in kws):
+            return topic
+    return "variaveis"
+
+
+def _generate_from_text_ai(description: str, language: str, custom_key: Optional[str]) -> Optional[dict]:
+    """Tenta gerar o exercicio completo (com resposta) via IA."""
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python 3"}.get(language, language)
+    system_prompt = (
+        "Voce e um professor de programacao que cria exercicios no modelo de juiz online "
+        "(Beecrowd/URI). Responda APENAS com JSON valido (sem markdown, sem ```)."
+    )
+    user_prompt = (
+        f"Crie um exercicio de programacao em {lang_name} a partir desta solicitacao do aluno:\n\n"
+        f'"{description}"\n\n'
+        "Responda com JSON EXATAMENTE neste formato:\n"
+        '{"title": "titulo curto", '
+        '"statement": "enunciado completo do problema, como um juiz online", '
+        '"input_format": "descricao da entrada", '
+        '"output_format": "descricao da saida", '
+        '"examples": [{"input": "...", "output": "..."}], '
+        '"test_cases": [{"input": "...", "expected": "..."}], '
+        '"solution": "codigo COMPLETO e funcional da resposta em ' + lang_name + '", '
+        '"explanation": "explicacao didatica passo a passo da solucao"}'
+        "\n\nRegras: no minimo 2 test_cases; solution deve ler a entrada, calcular e imprimir "
+        "exatamente o que os test_cases esperam; statement em portugues."
+    )
+    raw = _call_ai(system_prompt, user_prompt, custom_key)
+    if not raw:
+        return None
+    try:
+        if raw.startswith("```"):
+            raw = re.sub(r"^```\w*\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+        data = json.loads(raw)
+        title = str(data.get("title") or "Exercicio Gerado")[:120]
+        statement = str(data.get("statement") or "").strip()
+        solution = str(data.get("solution") or "").strip()
+        explanation = str(data.get("explanation") or "").strip()
+        if not statement or not solution:
+            return None
+        examples = data.get("examples") or []
+        test_cases = data.get("test_cases") or []
+        for ex in examples:
+            if isinstance(ex, dict) and {"input", "output"} <= set(ex.keys()):
+                if not any(t.get("input") == ex["input"] for t in test_cases):
+                    test_cases.append({"input": str(ex["input"]), "expected": str(ex["output"])})
+        test_cases = [
+            {"input": str(t.get("input", "")), "expected": str(t.get("expected", ""))}
+            for t in test_cases if t.get("input") is not None
+        ][:6]
+        if not test_cases:
+            return None
+        return {
+            "title": title,
+            "statement": statement,
+            "input_format": str(data.get("input_format") or "Entrada conforme o enunciado"),
+            "output_format": str(data.get("output_format") or "Saida conforme o enunciado"),
+            "examples": examples[:3],
+            "test_cases": test_cases,
+            "solution": solution,
+            "explanation": explanation,
+        }
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+@router.post("/generate-from-text")
+def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    """Cria um exercicio no modelo do juiz a partir de um texto livre, com a resposta (gabarito).
+
+    Usa IA quando há chave configurada; caso contrário, cai em um banco real de
+    exercícios correspondente ao tema detectado.
+    """
+    description = (req.description or "").strip()
+    if len(description) < 10:
+        raise HTTPException(status_code=400, detail="Descreva o exercício com pelo menos 10 caracteres")
+    req.language = req.language if req.language in ("python", "c", "cpp") else "python"
+    req.difficulty = max(1, min(5, req.difficulty or 1))
+
+    topic = _detect_topic(description)
+    generated = _generate_from_text_ai(description, req.language, x_custom_api_key)
+
+    if generated:
+        topic_meta = dict(topic)
+        return {
+            "id": f"text_{abs(hash(description)) % 100000}",
+            "title": generated["title"],
+            "statement": generated["statement"],
+            "topic": topic_meta,
+            "difficulty": req.difficulty,
+            "inputFormat": generated["input_format"],
+            "outputFormat": generated["output_format"],
+            "examples": generated["examples"],
+            "test_cases": generated["test_cases"],
+            "starter_code": {
+                "python": "# seu codigo aqui\n",
+                "c": "#include <stdio.h>\n\nint main() {\n    // seu codigo aqui\n    return 0;\n}\n",
+                "cpp": "#include <iostream>\nusing namespace std;\n\nint main() {\n    // seu codigo aqui\n    return 0;\n}\n",
+            }.get(req.language, "# seu codigo aqui\n"),
+            "solution": generated["solution"],
+            "explanation": generated["explanation"],
+            "mode": "ia",
+        }
+
+    base = _generate_new_exercise(topic, req.difficulty, req.language)
+    explanation = (
+        f"O programa deve: (1) ler a entrada descrita em '{base['inputFormat']}'; "
+        f"(2) aplicar a logica do enunciado; (3) imprimir exatamente '{base['outputFormat']}'. "
+        "A solução abaixo já atende aos casos de teste do exercício. "
+        "Para fixar: execute, confira a saída esperada e tente reescrever do zero sem olhar."
+    )
+    return {
+        "id": f"text_{abs(hash(description)) % 100000}",
+        "title": base["title"],
+        "statement": base["statement"],
+        "topic": topic,
+        "difficulty": req.difficulty,
+        "inputFormat": base["inputFormat"],
+        "outputFormat": base["outputFormat"],
+        "examples": base["test_cases"][:2],
+        "test_cases": base["test_cases"],
+        "starter_code": base["starter_code"],
+        "solution": base["starter_code"],
+        "explanation": explanation,
+        "mode": "banco",
+    }
+
+
 @router.get("/topics")
 def get_topics():
     return {

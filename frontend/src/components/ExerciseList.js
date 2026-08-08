@@ -122,12 +122,12 @@ export default function ExerciseList({ onStatsUpdate }) {
   if (!selectedTopic) {
     return (
       <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-gray-900/95 to-black/95 backdrop-blur-xl border-white/20 p-8 shadow-2xl">
-          <h2 className="text-3xl font-bold text-white mb-3 tracking-tight">Escolha um Tópico para Praticar</h2>
-          <p className="text-gray-300 text-lg">Selecione um tópico para começar a resolver exercícios</p>
+        <Card className="bg-gradient-to-br from-gray-900/95 to-black/95 backdrop-blur-xl border-white/20 p-4 sm:p-8 shadow-2xl">
+          <h2 className="text-xl sm:text-3xl font-bold text-white mb-3 tracking-tight">Escolha um Tópico para Praticar</h2>
+          <p className="text-gray-300 text-sm sm:text-lg">Selecione um tópico para começar a resolver exercícios</p>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
           {Object.entries(topics).map(([subjectKey, subjectData]) => (
             <Card key={subjectKey} className="bg-gradient-to-br from-violet-900/40 to-purple-900/40 backdrop-blur-xl border-violet-400/30 p-6 hover:border-violet-400/60 transition-all duration-300 hover:scale-105 shadow-xl">
               <h3 className="text-xl font-bold text-white mb-5 tracking-tight">{subjectData.name}</h3>
@@ -197,7 +197,7 @@ export default function ExerciseList({ onStatsUpdate }) {
       </Card>
 
       {/* Question */}
-      <Card className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 border-blue-500/30 p-8">
+      <Card className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 border-blue-500/30 p-4 sm:p-8">
         <div className="flex items-start gap-4 mb-6">
           <div className="flex-shrink-0 w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-lg">
             {exercises.findIndex(e => e.id === currentExercise.id) + 1}

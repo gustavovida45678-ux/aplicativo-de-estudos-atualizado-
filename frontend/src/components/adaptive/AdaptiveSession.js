@@ -1,9 +1,9 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import {
   CheckCircle2, XCircle, HelpCircle, Lightbulb, ArrowRight,
-  Flag, Clock, Award, TrendingDown, TrendingUp, CalendarClock, Brain,
+  Flag, Clock, Award, TrendingDown, TrendingUp, CalendarClock, Brain, Maximize2, Minimize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "../ui/card";
@@ -62,6 +62,20 @@ export default function AdaptiveSession({ session, onFinish }) {
   const [summary, setSummary] = useState(null);
   const t0 = useRef(Date.now());
   const [classified, setClassified] = useState(null);
+  const [focusMode, setFocusMode] = useState(true);
+
+  useEffect(() => {
+    document.body.classList.add("study-focus-mode");
+    return () => document.body.classList.remove("study-focus-mode");
+  }, []);
+
+  const toggleFocus = () => {
+    setFocusMode((f) => {
+      const next = !f;
+      document.body.classList.toggle("study-focus-mode", next);
+      return next;
+    });
+  };
 
   const item = items[idx];
   if (!item) return null;
@@ -192,7 +206,18 @@ export default function AdaptiveSession({ session, onFinish }) {
       {/* progresso */}
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <Badge variant="secondary">Questão {idx + 1} de {items.length}</Badge>
-        <span className="flex items-center gap-1"><Clock size={14} /> {Math.max(1, Math.round((Date.now() - t0.current) / 1000))}s</span>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1"><Clock size={14} /> {Math.max(1, Math.round((Date.now() - t0.current) / 1000))}s</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleFocus}
+            title={focusMode ? "Sair do modo foco (mostrar navegação)" : "Modo foco — esconder navegação"}
+          >
+            {focusMode ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            <span className="ml-1 hidden sm:inline">{focusMode ? "Sair do foco" : "Modo foco"}</span>
+          </Button>
+        </div>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${((idx + 1) / items.length) * 100}%` }} />

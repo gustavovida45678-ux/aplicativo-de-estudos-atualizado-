@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { BrainCircuit, LayoutDashboard, XCircle, Map, Target } from "lucide-react";
+import { BrainCircuit, LayoutDashboard, XCircle, Map, Target, CalendarClock } from "lucide-react";
 import AdaptiveDashboard from "./AdaptiveDashboard";
 import AdaptiveSession from "./AdaptiveSession";
 import ErrorBook from "./ErrorBook";
 import DomainMap from "./DomainMap";
 import Recommend from "./Recommend";
+import ScheduleStudy from "./ScheduleStudy";
 import { BACKEND_URL } from "../../lib/backendUrl";
 
 const API = `${BACKEND_URL}/api/adaptive`;
@@ -14,6 +15,7 @@ const API = `${BACKEND_URL}/api/adaptive`;
 const VIEWS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "session", label: "Sessão", icon: BrainCircuit },
+  { id: "schedule", label: "Cronograma", icon: CalendarClock },
   { id: "errors", label: "Meus Erros", icon: XCircle },
   { id: "domain", label: "Domínio", icon: Map },
   { id: "recommend", label: "Recomendar", icon: Target },
@@ -72,6 +74,7 @@ export default function AdaptiveStudy({ autoStart = false, autoView = null, onAu
       {view === "session" && session && (
         <AdaptiveSession session={session} onFinish={() => { setSession(null); setView("dashboard"); }} />
       )}
+      {view === "schedule" && <ScheduleStudy onStartSession={startSession} />}
       {view === "errors" && <ErrorBook onBack={() => setView("dashboard")} />}
       {view === "domain" && <DomainMap onBack={() => setView("dashboard")} />}
       {view === "recommend" && <Recommend onBack={() => setView("dashboard")} onStartTopic={startSession} />}

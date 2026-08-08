@@ -69,10 +69,23 @@ ERROR_TYPE_LABELS = {
 POOL = []
 POOL_SEEDED = False
 
+# Mapeia disciplinas do cronograma (schedule) para as disciplinas do banco adaptativo
+SCHEDULE_SUBJECT_MAP = {
+    "calc2": "calculo2",
+    "calc3": "calculo3",
+    "calcnum": "calculonumerico",
+    "ed1": "estruturadedados",
+    "sdig": "sistemasdigitais",
+}
+
 
 # ------------------------------------------------------------------- models
 class SessionStartRequest(BaseModel):
     limit: int = 8
+    simulado: bool = False
+    subjects: Optional[list] = None
+    difficulty: Optional[int] = None
+    time_limit_min: Optional[int] = None
 
 
 class AnswerRequest(BaseModel):
@@ -253,6 +266,45 @@ def _question_pool_meta(pool: list) -> dict:
         m = meta.setdefault(q["topic_id"], {"subject": q.get("subject", ""), "topic_name": q.get("topic_name", ""), "count": 0})
         m["count"] += 1
     return meta
+
+
+async def _schedule_subjects() -> dict:
+    """Disciplinas pendentes do cronograma: {subject_id_schedule: {"name", "pending_topics"}}.
+
+    Considera disciplinas com tópicos não concluídos OU com tarefas pendentes.
+    Retorna {} quando o banco não está acessível (modo memória) — a sessão
+    simplesmente ignora o cronograma.
+    """
+    try:
+        if adaptive_store.db is None:
+            return {}
+        subs = await adaptive_store.db.subjects.find(
+            {"user_id": "default"}, {"_id": 0, "user_id": 0}
+        ).to_list(100)
+        tasks = await adaptive_store.db.tasks.find(
+            {"user_id": "default", "completed": False}, {"_id": 0, "user_id": 0}
+        ).to_list(1000)
+
+        result = {}
+        for s in subs:
+            sid = s.get("subject_id")
+            pending = [t for t in s.get("topics", []) if not t.get("completed")]
+            if not pending:
+                continue
+            result[sid] = {"name": s.get("name", sid), "pending_topics": len(pending)}
+        for t in tasks:
+            sid = t.get("subject")
+            if sid:
+                result.setdefault(sid, {"name": sid, "pending_topics": 0})
+        return result
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Cronograma indisponível: %s", exc)
+        return {}
+
+
+def _schedule_priority_subjects(schedule: dict) -> set:
+    """Mapeia disciplinas pendentes do cronograma para as disciplinas do pool adaptativo."""
+    return {SCHEDULE_SUBJECT_MAP.get(sid, sid) for sid in schedule}
 
 
 def _interleave(items: list) -> list:
@@ -465,6 +517,22 @@ async def session_start(req: SessionStartRequest, user: dict = Depends(get_curre
     pool_meta = _question_pool_meta(POOL)
     used_qids = set()
 
+    # Cronograma do aluno: disciplinas pendentes ganham prioridade na sessão
+    schedule = await _schedule_subjects()
+    priority_subjects = _schedule_priority_subjects(schedule)
+
+    # Filtro por disciplinas (simulado/cronograma: estudar só o que foi escolhido)
+    if req.subjects:
+        wanted = [s for s in req.subjects if s in {m.get("subject") for m in pool_meta.values()}]
+        pool_meta = {tid: m for tid, m in pool_meta.items() if m.get("subject") in wanted}
+        if not pool_meta:
+            raise HTTPException(
+                status_code=400,
+                detail="Nenhuma questão disponível para as disciplinas selecionadas",
+            )
+
+    simulado = bool(req.subjects) or req.simulado
+
     async def make_item(item_type: str, title: str, reason: str, topic_id: str, q: dict,
                         error_id: str = None, skill_id: str = None) -> dict:
         used_qids.add(q["id"])
@@ -483,6 +551,41 @@ async def session_start(req: SessionStartRequest, user: dict = Depends(get_curre
         }
 
     items = []
+
+    if simulado:
+        # Simulado: questões (aleatórias) das disciplinas escolhidas
+        for tid, m in pool_meta.items():
+            q = await _pick_question(tid, exclude_ids=list(used_qids), difficulty=req.difficulty)
+            if not q:
+                continue
+            items.append(await make_item(
+                "simulado", "Simulado", f"Questão de simulado — {m['topic_name']}",
+                tid, q, skill_id=tid,
+            ))
+        random.shuffle(items)
+        items = items[:limit]
+        if not items:
+            raise HTTPException(status_code=404, detail="Nenhuma questão disponível para o simulado")
+        session = await adaptive_store.add_session(user_id, {
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "mode": "simulado",
+            "time_limit_min": req.time_limit_min,
+            "subjects": req.subjects or [],
+            "items": items,
+            "stats": {"correct": 0, "wrong": 0, "dont_know": 0, "total": len(items)},
+        })
+        return {
+            "session_id": session["id"],
+            "created_at": session["created_at"],
+            "total": len(items),
+            "mode": "simulado",
+            "time_limit_min": req.time_limit_min,
+            "items": [
+                {**it,
+                 "question": _pub_question(await adaptive_store.get_question(it["question_id"]))}
+                for it in session["items"]
+            ],
+        }
 
     # 1) Recuperação de erros não corrigidos
     for e in errors[:3]:
@@ -529,10 +632,11 @@ async def session_start(req: SessionStartRequest, user: dict = Depends(get_curre
             s["topic_id"], q, skill_id=s["topic_id"],
         ))
 
-    # 4) Tópicos novos + preenchimento
+    # 4) Tópicos novos + preenchimento (disciplinas do cronograma primeiro)
     if len(items) < limit:
         unknown = [tid for tid in pool_meta if tid not in skills_map]
         random.shuffle(unknown)
+        unknown.sort(key=lambda tid: 0 if pool_meta[tid].get("subject") in priority_subjects else 1)
         for tid in unknown[:2]:
             if len(items) >= limit:
                 break
@@ -546,7 +650,11 @@ async def session_start(req: SessionStartRequest, user: dict = Depends(get_curre
             ))
         # preencher com questões extras (fracos/novos/qualquer tópico disponível)
         if len(items) < limit:
-            for tid, m in pool_meta.items():
+            ordered_topics = sorted(
+                pool_meta.items(),
+                key=lambda kv: 0 if kv[1].get("subject") in priority_subjects else 1,
+            )
+            for tid, m in ordered_topics:
                 if len(items) >= limit:
                     break
                 q = await _pick_question(tid, exclude_ids=list(used_qids))
@@ -567,6 +675,7 @@ async def session_start(req: SessionStartRequest, user: dict = Depends(get_curre
     items = _interleave(items)
     session = await adaptive_store.add_session(user_id, {
         "started_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "adaptive",
         "items": items,
         "stats": {"correct": 0, "wrong": 0, "dont_know": 0, "total": len(items)},
     })
@@ -575,6 +684,7 @@ async def session_start(req: SessionStartRequest, user: dict = Depends(get_curre
         "session_id": session["id"],
         "created_at": session["created_at"],
         "total": len(items),
+        "mode": "adaptive",
         "items": [
             {**it,
              "question": _pub_question(await adaptive_store.get_question(it["question_id"]))}
@@ -887,3 +997,68 @@ async def topics(user: dict = Depends(get_current_user)):
                        "subject": m["subject"], "count": m["count"]})
     topics.sort(key=lambda t: (t["subject"], t["topic_name"]))
     return {"topics": topics}
+
+
+# ------------------------------------------------------------------ schedule
+@router.get("/schedule")
+async def schedule(user: dict = Depends(get_current_user)):
+    """Cronograma de estudos do aluno enriquecido com dados adaptativos.
+
+    Para cada tópico do cronograma: existe questão no banco adaptativo?
+    Domínio atual? Próxima revisão? Tópico concluído?
+    """
+    await _ensure_seeded()
+    user_id = user["email"]
+    try:
+        if adaptive_store.db is None:
+            return {"subjects": [], "tasks": [], "available": False}
+
+        subs = await adaptive_store.db.subjects.find(
+            {"user_id": "default"}, {"_id": 0, "user_id": 0}
+        ).to_list(100)
+        tasks = await adaptive_store.db.tasks.find(
+            {"user_id": "default", "completed": False}, {"_id": 0, "user_id": 0}
+        ).to_list(1000)
+
+        skills = [(_decayed(s)) for s in await adaptive_store.list_skills(user_id)]
+        skills_map = {s["topic_id"]: s for s in skills}
+        pool_meta = _question_pool_meta(POOL)
+
+        by_topic_name = {}
+        for tid, m in pool_meta.items():
+            by_topic_name.setdefault((m.get("subject", ""), m.get("topic_name", "").strip().lower()), tid)
+
+        subjects_out = []
+        for s in subs:
+            sid = s.get("subject_id")
+            adaptive_subj = SCHEDULE_SUBJECT_MAP.get(sid, sid)
+            topics_out = []
+            for t in s.get("topics", []):
+                tname = (t.get("title") or "").strip()
+                tid = by_topic_name.get((adaptive_subj, tname.lower()))
+                skill = skills_map.get(tid) if tid else None
+                topics_out.append({
+                    "id": t.get("id"),
+                    "title": tname,
+                    "completed": bool(t.get("completed")),
+                    "adaptive_topic_id": tid,
+                    "has_questions": tid is not None,
+                    "mastery": round(skill.get("mastery", 0), 1) if skill else None,
+                    "next_review": skill.get("next_review") if skill else None,
+                })
+            subjects_out.append({
+                "subject_id": sid,
+                "name": s.get("name", sid),
+                "color": s.get("color"),
+                "icon": s.get("icon"),
+                "adaptive_subject": adaptive_subj,
+                "pending_topics": sum(1 for t in topics_out if not t["completed"]),
+                "topics": topics_out,
+            })
+        subjects_out.sort(key=lambda x: x["pending_topics"], reverse=True)
+        return {"subjects": subjects_out, "tasks": tasks, "available": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao ler cronograma: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao ler o cronograma")

@@ -959,6 +959,15 @@ code, pre {
   .nav-tab-text { display: none; }
 }
 
+/* --- Modo foco (sessão de estudo sem distrações) --- */
+body.study-focus-mode .nav-tabs-container {
+  display: none;
+}
+
+body.study-focus-mode #root > .App > div:not(.noise-overlay) {
+  filter: none;
+}
+
 .App > div:not(.noise-overlay) { padding-top: 5rem; }
 
 @media (max-width: 768px) { .App > div:not(.noise-overlay) { padding-top: 4rem; } }

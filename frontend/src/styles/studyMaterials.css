@@ -2310,6 +2310,78 @@
 }
 .materials-judge-card-status.solved { border-color: rgba(16, 185, 129, 0.5); color: #34d399; background: rgba(16, 185, 129, 0.1); }
 .materials-judge-card-status.tried { border-color: rgba(245, 158, 11, 0.5); color: #fbbf24; background: rgba(245, 158, 11, 0.08); }
+.materials-judge-card-notes {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #a78bfa;
+  color: #0f172a;
+  box-shadow: 0 0 0 2px #0d1117;
+}
+.materials-judge-card { position: relative; }
+.materials-judge-notes-toggle { background: rgba(167, 139, 250, 0.12); border: 1px solid rgba(167, 139, 250, 0.35); color: #c4b5fd; }
+.materials-judge-notes-toggle:hover { background: rgba(167, 139, 250, 0.22); }
+.materials-judge-notes-toggle.active { background: rgba(167, 139, 250, 0.3); box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.25); }
+.materials-judge-notes-tab {
+  margin-top: 14px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #8b5cf6;
+  background: #111;
+}
+.materials-judge-notes-head {
+  background: #17102b;
+  padding: 12px 16px;
+  border-bottom: 1px solid #8b5cf6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.materials-judge-notes-head b { font-size: 15px; color: #c4b5fd; }
+.materials-judge-notes-sub { font-size: 11px; color: #7c6ba3; }
+.materials-judge-notes-saved { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #34d399; }
+.materials-judge-notes-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.materials-judge-notes-clear:hover { background: rgba(239, 68, 68, 0.25); }
+.materials-judge-notes-area {
+  display: block;
+  width: 100%;
+  min-height: 130px;
+  resize: vertical;
+  background: #0d1117;
+  color: #e5e7eb;
+  border: none;
+  outline: none;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  font-family: inherit;
+}
+.materials-judge-notes-area::placeholder { color: #52525b; }
+.materials-judge-notes-foot {
+  padding: 6px 16px;
+  border-top: 1px solid #26222e;
+  font-size: 11px;
+  color: #7c6ba3;
+  text-align: right;
+}
 .materials-judge-hint {
   display: flex;
   align-items: flex-start;

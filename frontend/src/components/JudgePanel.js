@@ -7,6 +7,7 @@ import {
   Lightbulb, ChevronDown, ChevronUp, Wand2, BookOpen, AlertTriangle,
   Brain, ExternalLink, RefreshCw, StepBack, StepForward, Pause, X, ListChecks,
   HelpCircle, MessageSquare, Calendar as CalendarIcon, TrendingUp,
+  NotebookPen, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
@@ -61,6 +62,9 @@ const JudgePanel = () => {
   const [questionInput, setQuestionInput] = useState('');
   const [questionLoading, setQuestionLoading] = useState(false);
   const [questionHistory, setQuestionHistory] = useState([]);
+  const [showNotesTab, setShowNotesTab] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [notesSavedAt, setNotesSavedAt] = useState(null);
   const [showReviewCalendar, setShowReviewCalendar] = useState(false);
   const [reviewSessions, setReviewSessions] = useState([]);
   const [generatedReport, setGeneratedReport] = useState(null);
@@ -81,6 +85,24 @@ const JudgePanel = () => {
   }, [walkPlay, walk]);
 
   const saveCode = (id, lang, c) => { localStorage.setItem(`judge_code_${id}_${lang}`, c); };
+
+  const notesKey = (id) => `judge_notes_${id || 'custom'}`;
+
+  const hasNotes = (id) => {
+    try { return !!(localStorage.getItem(notesKey(id)) || '').trim(); } catch { return false; }
+  };
+
+  const saveNotes = (id, text) => {
+    localStorage.setItem(notesKey(id), text);
+    setNotesSavedAt(new Date());
+  };
+
+  const clearNotes = (id) => {
+    localStorage.removeItem(notesKey(id));
+    setNotes('');
+    setNotesSavedAt(null);
+    toast.success('Anotacoes apagadas');
+  };
 
   const recordAttempt = (exercise, accepted) => {
     const topicKey = exercise?.topic || 'default';
@@ -124,6 +146,8 @@ const JudgePanel = () => {
     setExpandedStep(0);
     setShowQuestionTab(false);
     setQuestionHistory([]);
+    setNotes(localStorage.getItem(notesKey(p.id)) || '');
+    setNotesSavedAt(null);
     setGeneratedReport(null);
     setShowReviewCalendar(false);
   };
@@ -185,6 +209,9 @@ const JudgePanel = () => {
       const res = await axios.post(`${API}/generate-exercise`, { topic: createTopic, difficulty: createDifficulty, language });
       setNewExercise(res.data);
       setCode(res.data.starter_code || STARTERS[language]);
+      setNotes(localStorage.getItem(notesKey(res.data.id)) || '');
+      setNotesSavedAt(null);
+      setShowNotesTab(false);
       toast.success('Novo exercicio gerado!');
     } catch (e) {
       console.error(e);
@@ -228,6 +255,9 @@ const JudgePanel = () => {
       setSelected(null);
       setNewExercise(res.data);
       setCode(res.data.starter_code || STARTERS[language]);
+      setNotes(localStorage.getItem(notesKey(res.data.id)) || '');
+      setNotesSavedAt(null);
+      setShowNotesTab(false);
       setResult(null);
       setShowExplanation(false);
       setExpandedStep(0);
@@ -469,6 +499,14 @@ const JudgePanel = () => {
                <HelpCircle size={14} />
                Duvidas
              </button>
+             <button
+               onClick={() => setShowNotesTab(!showNotesTab)}
+               className={`materials-judge-notes-toggle ${showNotesTab ? 'active' : ''}`}
+               title="Bloco de anotacoes deste exercicio (salvo automaticamente)"
+             >
+               <NotebookPen size={14} />
+               Anotacoes
+             </button>
              <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
                {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
                {running ? 'Executando...' : 'Enviar para o juiz'}
@@ -568,6 +606,41 @@ const JudgePanel = () => {
                    Enviar
                  </button>
                </div>
+             </div>
+           </div>
+         )}
+
+         {showNotesTab && (
+           <div className="materials-judge-notes-tab">
+             <div className="materials-judge-notes-head">
+               <NotebookPen size={18} color="#a78bfa" />
+               <b>Bloco de Anotacoes</b>
+               <span className="materials-judge-notes-sub">Salvas automaticamente neste dispositivo</span>
+               <span style={{ flex: 1 }} />
+               {notesSavedAt && (
+                 <span className="materials-judge-notes-saved">
+                   <CheckCircle2 size={12} /> Salvo {notesSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                 </span>
+               )}
+               <button
+                 onClick={() => clearNotes(activeExercise.id)}
+                 className="materials-judge-notes-clear"
+                 title="Apagar anotacoes deste exercicio"
+               >
+                 <Trash2 size={14} /> Limpar
+               </button>
+             </div>
+             <textarea
+               className="materials-judge-notes-area"
+               placeholder={'Anote aqui: raciocinio, erros cometidos, como o juiz espera a saida, dicas...'}
+               value={notes}
+               onChange={(e) => {
+                 setNotes(e.target.value);
+                 saveNotes(activeExercise.id, e.target.value);
+               }}
+             />
+             <div className="materials-judge-notes-foot">
+               <span>{notes.length} caracteres</span>
              </div>
            </div>
          )}
@@ -1285,6 +1358,7 @@ const JudgePanel = () => {
           return (
             <button className={`materials-judge-card ${solved ? 'solved' : ''}`} key={p.id} onClick={() => openProblem(p)}>
               <span className="materials-judge-card-icon">{solved ? <CheckCircle2 size={17} /> : <FileCode2 size={17} />}</span>
+              {hasNotes(p.id) && <span className="materials-judge-card-notes" title="Tem anotacoes"><NotebookPen size={13} /></span>}
               <div className="materials-judge-card-body"><b>{p.title}</b><small>{p.topic}</small></div>
               <div className="materials-judge-card-diff">{[1,2,3,4,5].map(i => <Star key={i} size={12} className={i <= p.difficulty ? 'filled' : ''} />)}</div>
               <span className={`materials-judge-card-status ${solved ? 'solved' : st ? 'tried' : ''}`}>{solved ? 'Resolvido' : st ? 'Tentado' : 'Novo'}</span>

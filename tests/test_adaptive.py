@@ -155,5 +155,42 @@ async def test_flow():
     print("\nTODOS OS TESTES PASSARAM")
 
 
+async def test_schedule_filter():
+    """Com cronograma, a sessão e a recomendação NÃO podem trazer tópicos
+    de disciplinas fora do planejamento."""
+    from backend.routes.adaptive import _schedule_subjects as original
+
+    pool = build_question_pool()
+    await adaptive_store.seed_questions(pool)
+    subjects_in_pool = {q["subject"] for q in pool}
+    assert len(subjects_in_pool) >= 2
+
+    # cronograma fictício: apenas UMA disciplina do pool
+    planned = sorted(subjects_in_pool)[0]
+    fake_schedule = {planned: {"name": planned, "pending_topics": 3}}
+    fresh_user = {"email": "filtro@exemplo.com"}
+
+    async def fake():
+        return fake_schedule
+
+    adaptive_route._schedule_subjects = fake
+    try:
+        # recomendação: tópico novo só da disciplina planejada
+        rec = await adaptive_route.build_recommendation(fresh_user["email"], [], [])
+        assert rec["has_recommendation"], rec
+        assert rec["subject"] == planned, rec
+
+        # sessão: todos os itens da disciplina planejada
+        req = adaptive_route.SessionStartRequest(limit=8)
+        sess = await adaptive_route.session_start(req, fresh_user)
+        assert sess["total"] >= 1, sess
+        subs = {it["subject"] for it in sess["items"]}
+        assert subs == {planned}, f"vazou disciplina fora do planejamento: {subs}"
+        print(f"filtro de planejamento OK: tudo de '{planned}' ({len(subs)} disciplina, {sess['total']} itens)")
+    finally:
+        adaptive_route._schedule_subjects = original
+
+
 asyncio.run(test_srs())
 asyncio.run(test_flow())
+asyncio.run(test_schedule_filter())

@@ -387,9 +387,10 @@ async def dashboard(user: dict = Depends(get_current_user)):
         if (s.get("mastery") or 0) < 41 or (s.get("next_review") and s["next_review"] <= today.isoformat())
     ]
     weak_ids = [s["topic_id"] for s in skills if (s.get("mastery") or 0) < 61]
+    scheduled = _schedule_priority_subjects(await _schedule_subjects())
     weak_ids += [m["topic_id"] for m in await adaptive_store.list_topics() if not any(
         s["topic_id"] == m["topic_id"] for s in skills
-    )]
+    ) and (not scheduled or m.get("subject") in scheduled)]
     recommended_count = 0
     for tid in set(weak_ids):
         recommended_count += await adaptive_store.count_questions(topic_id=tid)
@@ -429,10 +430,16 @@ async def dashboard(user: dict = Depends(get_current_user)):
 
 
 async def build_recommendation(user_id: str, skills: list, errors: list) -> dict:
-    """Motor de recomendação: prioridade -> erros recentes, revisão vencida, tópico fraco, novo."""
+    """Motor de recomendação: prioridade -> erros recentes, revisão vencida, tópico fraco, novo.
+
+    Tópicos novos só são recomendados se a disciplina estiver no cronograma
+    do aluno (planejamento). Sem cronograma, considera o banco completo.
+    """
     today = _today()
     reasons = []
     chosen = None
+
+    scheduled = _schedule_priority_subjects(await _schedule_subjects())
 
     if errors:
         e = errors[0]
@@ -472,6 +479,10 @@ async def build_recommendation(user_id: str, skills: list, errors: list) -> dict
 
     if not chosen:
         pool_meta = _question_pool_meta(POOL)
+        # Só recomenda tópico novo se a disciplina estiver no planejamento
+        if scheduled:
+            pool_meta = {tid: m for tid, m in pool_meta.items()
+                         if m.get("subject") in scheduled}
         for tid, m in pool_meta.items():
             if not any(s["topic_id"] == tid for s in skills):
                 chosen = {"topic_id": tid, "topic_name": m["topic_name"], "subject": m["subject"]}
@@ -480,6 +491,11 @@ async def build_recommendation(user_id: str, skills: list, errors: list) -> dict
                 break
 
     if not chosen:
+        if scheduled:
+            return {"has_recommendation": False,
+                    "title": "Nenhum tópico pendente no seu planejamento",
+                    "reasons": ["Marque novos tópicos no Cronograma para receber recomendações "
+                                "ou complete os tópicos atuais."], "minutes": 0}
         return {"has_recommendation": False, "title": "Você já domina o material disponível",
                 "reasons": ["Explore um novo tópico no mapa de domínio ou gere novos exercícios."], "minutes": 0}
     return {
@@ -530,6 +546,14 @@ async def session_start(req: SessionStartRequest, user: dict = Depends(get_curre
                 status_code=400,
                 detail="Nenhuma questão disponível para as disciplinas selecionadas",
             )
+    elif priority_subjects:
+        # Sem filtro explícito e com cronograma: restringe às disciplinas planejadas
+        full_pool_meta = pool_meta
+        pool_meta = {tid: m for tid, m in pool_meta.items()
+                     if m.get("subject") in priority_subjects}
+        if not pool_meta:
+            # Fallback honesto: planejamento sem questões disponíveis, usa o banco completo
+            pool_meta = full_pool_meta
 
     simulado = bool(req.subjects) or req.simulado
 

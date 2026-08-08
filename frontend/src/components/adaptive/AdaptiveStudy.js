@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { toast } from "sonner";
 import { BrainCircuit, LayoutDashboard, XCircle, Map, Target } from "lucide-react";
 import AdaptiveDashboard from "./AdaptiveDashboard";
 import AdaptiveSession from "./AdaptiveSession";
 import ErrorBook from "./ErrorBook";
 import DomainMap from "./DomainMap";
 import Recommend from "./Recommend";
+import { BACKEND_URL } from "../../lib/backendUrl";
+
+const API = `${BACKEND_URL}/api/adaptive`;
 
 const VIEWS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -14,9 +19,30 @@ const VIEWS = [
   { id: "recommend", label: "Recomendar", icon: Target },
 ];
 
-export default function AdaptiveStudy() {
-  const [view, setView] = useState("dashboard");
+export default function AdaptiveStudy({ autoStart = false, autoView = null, onAutoConsumed = () => {} }) {
+  const [view, setView] = useState(autoView || "dashboard");
   const [session, setSession] = useState(null);
+
+  useEffect(() => {
+    if (!autoStart) return;
+    let cancelled = false;
+    const start = async () => {
+      try {
+        const { data } = await axios.post(`${API}/session/start`, { limit: 8 });
+        if (cancelled) return;
+        setSession(data);
+        setView("session");
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(error.response?.data?.detail || "Não foi possível iniciar a sessão de estudo");
+        setView("dashboard");
+      } finally {
+        if (!cancelled) onAutoConsumed();
+      }
+    };
+    start();
+    return () => { cancelled = true; };
+  }, [autoStart]);
 
   const startSession = (s) => {
     setSession(s);

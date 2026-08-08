@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -15,6 +15,7 @@ import ApiKeySettings, { getCustomApiKey } from "./components/ApiKeySettings";
 import StudyMaterials from "./components/StudyMaterials";
 import LoginPage from "./components/LoginPage";
 import UserDashboard from "./components/UserDashboard";
+import SmartDashboard from "./components/SmartDashboard";
 import FeedbackForm from "./components/FeedbackForm";
 import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
 // import DebugPanel from "./components/DebugPanel"; // Removed
@@ -52,6 +53,8 @@ function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [adaptiveStart, setAdaptiveStart] = useState(false);
+  const [adaptiveView, setAdaptiveView] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -132,6 +135,26 @@ function App() {
     setIsAuthenticated(false);
     setCurrentUser(null);
     setActiveTab("dashboard");
+    setAdaptiveStart(false);
+    setAdaptiveView(null);
+  };
+
+  const openStudy = () => {
+    setAdaptiveStart(false);
+    setAdaptiveView(null);
+    setActiveTab("adaptive");
+  };
+
+  const startStudyNow = () => {
+    setAdaptiveStart(true);
+    setAdaptiveView(null);
+    setActiveTab("adaptive");
+  };
+
+  const openAdaptiveView = (view) => {
+    setAdaptiveStart(false);
+    setAdaptiveView(view);
+    setActiveTab("adaptive");
   };
 
 
@@ -424,68 +447,103 @@ function App() {
 
           {/* Navigation Tabs */}
           <div className="nav-tabs-container">
-            <button
-              onClick={() => setActiveTab("dashboard")}
-              className={`nav-tab ${activeTab === "dashboard" ? "active" : ""}`}
-              data-testid="tab-dashboard"
-            >
-              <LayoutDashboard size={18} />
-              <span className="nav-tab-text">Dashboard</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("adaptive")}
-              className={`nav-tab ${activeTab === "adaptive" ? "active" : ""}`}
-              data-testid="tab-adaptive"
-            >
-              <BrainCircuit size={18} />
-              <span className="nav-tab-text">Estudo</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("chat")}
-              className={`nav-tab ${activeTab === "chat" ? "active" : ""}`}
-              data-testid="tab-chat"
-            >
-              <MessageSquare size={18} />
-              <span className="nav-tab-text">Chat</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("math")}
-              className={`nav-tab ${activeTab === "math" ? "active" : ""}`}
-              data-testid="tab-math"
-            >
-              <BookOpen size={18} />
-              <span className="nav-tab-text">Matemática</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("exercises")}
-              className={`nav-tab exercises ${activeTab === "exercises" ? "active" : ""}`}
-              data-testid="tab-exercises"
-            >
-              <GraduationCap size={18} />
-              <span className="nav-tab-text">Exercícios</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("materials")}
-              className={`nav-tab materials ${activeTab === "materials" ? "active" : ""}`}
-              data-testid="tab-materials"
-            >
-              <Library size={18} />
-              <span className="nav-tab-text">Materiais</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("feedback")}
-              className={`nav-tab feedback ${activeTab === "feedback" ? "active" : ""}`}
-              data-testid="tab-feedback"
-            >
-              <Lightbulb size={18} />
-              <span className="nav-tab-text">Sugestões</span>
-            </button>
+            <div className="nav-group">
+              <span className="nav-group-label">Início</span>
+              <button
+                onClick={() => setActiveTab("dashboard")}
+                className={`nav-tab ${activeTab === "dashboard" ? "active" : ""}`}
+                data-testid="tab-dashboard"
+              >
+                <LayoutDashboard size={18} />
+                <span className="nav-tab-text">Início</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
+              <span className="nav-group-label">Estudar</span>
+              <button
+                onClick={() => setActiveTab("adaptive")}
+                className={`nav-tab ${activeTab === "adaptive" ? "active" : ""}`}
+                data-testid="tab-adaptive"
+              >
+                <BrainCircuit size={18} />
+                <span className="nav-tab-text">Estudo</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("exercises")}
+                className={`nav-tab exercises ${activeTab === "exercises" ? "active" : ""}`}
+                data-testid="tab-exercises"
+              >
+                <GraduationCap size={18} />
+                <span className="nav-tab-text">Exercícios</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("math")}
+                className={`nav-tab ${activeTab === "math" ? "active" : ""}`}
+                data-testid="tab-math"
+              >
+                <BookOpen size={18} />
+                <span className="nav-tab-text">Matemática</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("materials")}
+                className={`nav-tab materials ${activeTab === "materials" ? "active" : ""}`}
+                data-testid="tab-materials"
+              >
+                <Library size={18} />
+                <span className="nav-tab-text">Materiais</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
+              <span className="nav-group-label">IA</span>
+              <button
+                onClick={() => setActiveTab("chat")}
+                className={`nav-tab ${activeTab === "chat" ? "active" : ""}`}
+                data-testid="tab-chat"
+              >
+                <MessageSquare size={18} />
+                <span className="nav-tab-text">Chat</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
+              <span className="nav-group-label">Conta</span>
+              <button
+                onClick={() => setActiveTab("feedback")}
+                className={`nav-tab feedback ${activeTab === "feedback" ? "active" : ""}`}
+                data-testid="tab-feedback"
+              >
+                <Lightbulb size={18} />
+                <span className="nav-tab-text">Sugestões</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={`nav-tab ${activeTab === "settings" ? "active" : ""}`}
+                data-testid="tab-settings"
+              >
+                <Settings size={18} />
+                <span className="nav-tab-text">Conta</span>
+              </button>
+            </div>
           </div>
 
 {activeTab === "dashboard" ? (
-            <UserDashboard currentUser={currentUser} onLogout={handleLogout} />
+            <SmartDashboard
+              currentUser={currentUser}
+              onStartStudy={startStudyNow}
+              onOpenErrors={() => openAdaptiveView("errors")}
+              onOpenDomain={() => openAdaptiveView("domain")}
+              onOpenStudy={openStudy}
+            />
           ) : activeTab === "adaptive" ? (
-            <AdaptiveStudy />
+            <AdaptiveStudy
+              autoStart={adaptiveStart}
+              autoView={adaptiveView}
+              onAutoConsumed={() => setAdaptiveStart(false)}
+            />
+          ) : activeTab === "settings" ? (
+            <UserDashboard currentUser={currentUser} onLogout={handleLogout} />
           ) : activeTab === "feedback" ? (
             <FeedbackForm currentUser={currentUser} />
           ) : activeTab === "materials" ? (

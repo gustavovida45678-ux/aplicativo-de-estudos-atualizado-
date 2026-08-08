@@ -13,8 +13,8 @@ import { roadmapInfo as info110, phases as phases110, typeConfig as typeConfig11
 import { roadmapInfo as info16, phases as phases16, typeConfig as typeConfig16, disciplineConfig } from '../data/roadmap16Weeks';
 import axios from 'axios';
 import { Toaster, toast } from 'sonner';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = BACKEND_URL ? `${BACKEND_URL}/api/schedule` : null;
 
 const scheduleApi = API ? axios.create({ baseURL: API, timeout: 10000 }) : null;

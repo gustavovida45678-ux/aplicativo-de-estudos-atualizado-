@@ -32,6 +32,12 @@ class UserLogin(BaseModel):
     password: str
 
 
+class GuestAccess(BaseModel):
+    """Schema for guest access (name + email, no password)"""
+    email: EmailStr
+    name: str
+
+
 class UserResponse(BaseModel):
     """Schema for user response (without password)"""
     id: str

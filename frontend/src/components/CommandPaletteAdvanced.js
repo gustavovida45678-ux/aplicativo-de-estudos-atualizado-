@@ -5,8 +5,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 export default function CommandPaletteAdvanced({ onNavigate, onThemeChange }) {
@@ -187,7 +187,7 @@ export default function CommandPaletteAdvanced({ onNavigate, onThemeChange }) {
         };
         tasks.push(newTask);
         
-        fetch(`${process.env.REACT_APP_BACKEND_URL}/api/schedule/tasks`, {
+        fetch(`${BACKEND_URL}/api/schedule/tasks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newTask)
@@ -224,7 +224,7 @@ export default function CommandPaletteAdvanced({ onNavigate, onThemeChange }) {
       tasks.push(newTask);
       localStorage.setItem('studyTasks', JSON.stringify(tasks));
       
-      fetch(`${process.env.REACT_APP_BACKEND_URL}/api/schedule/tasks`, {
+      fetch(`${BACKEND_URL}/api/schedule/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTask)

@@ -11,27 +11,12 @@ import base64
 from datetime import datetime
 
 from backend.services.chat_service import chat_service
-from backend.services.providers import ProviderType, get_all_providers_info
+from backend.services.providers import ProviderType, get_all_providers_info, AUTO_PRIORITY
 
 logger = logging.getLogger(__name__)
 
 # Providers that never work without a real API key (local-only)
 _LOCAL_ONLY = {ProviderType.OLLAMA, ProviderType.HUGGINGCHAT, ProviderType.META_AI, ProviderType.COPILOT}
-# Preferred order for auto-detection (Claude first, as requested)
-_AUTO_PRIORITY = [
-    ProviderType.CLAUDE,
-    ProviderType.GEMINI,
-    ProviderType.GROQ,
-    ProviderType.DEEPSEEK,
-    ProviderType.OPENROUTER,
-    ProviderType.FREE_AI,
-    ProviderType.PERPLEXITY,
-    ProviderType.XAI,
-    ProviderType.COHERE,
-    ProviderType.TOGETHER,
-    ProviderType.FIREWORKS,
-    ProviderType.HUGGINGFACE,
-]
 
 
 def resolve_provider_type(requested: str, custom_key: Optional[str] = None) -> ProviderType:
@@ -46,12 +31,12 @@ def resolve_provider_type(requested: str, custom_key: Optional[str] = None) -> P
     from backend.services.providers import get_provider_config
 
     def _first_available() -> ProviderType:
-        for ptype in _AUTO_PRIORITY:
+        for ptype in AUTO_PRIORITY:
             config = get_provider_config(ptype)
             if config and os.environ.get(config.env_var):
                 return ptype
         if custom_key:
-            return _AUTO_PRIORITY[0]
+            return AUTO_PRIORITY[0]
         return None
 
     requested = (requested or "auto").strip().lower()

@@ -33,6 +33,8 @@ from routes.exercise_generator import router as exercise_generator_router
 from routes.feedback import router as feedback_router
 from routes.moodle import router as moodle_router
 from routes.judge import router as judge_router
+from routes.adaptive import router as adaptive_router
+from services.adaptive_store import configure_store
 
 load_dotenv(ROOT_DIR / '.env')
 
@@ -53,6 +55,9 @@ logger.info(
 )
 client = AsyncIOMotorClient(mongo_url) if mongo_url else None
 db = client[db_name] if client else None
+
+# Persistência do sistema adaptativo (fallback em memória quando sem Mongo)
+configure_store(db)
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -123,6 +128,7 @@ api_router.include_router(math_router, prefix="/math", tags=["math"])
 api_router.include_router(feedback_router, prefix="/feedback", tags=["feedback"])
 api_router.include_router(moodle_router, tags=["moodle"])
 api_router.include_router(judge_router, tags=["judge"])
+api_router.include_router(adaptive_router, prefix="/adaptive", tags=["adaptive"])
 app.include_router(api_router)
 
 # Include schedule router with /api/schedule prefix

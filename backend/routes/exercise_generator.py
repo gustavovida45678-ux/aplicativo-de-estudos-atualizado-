@@ -28,14 +28,7 @@ async def generate_exercises(
         logger.info(f"📄 Reference text: {reference_text[:100]}...")
         logger.info(f"📷 Image: {image.filename if image else 'None'}")
         
-        # Check if we have Emergent key for AI
-        emergent_key = os.environ.get('EMERGENT_LLM_KEY')
-        if not emergent_key:
-            logger.warning("⚠️ No EMERGENT_LLM_KEY found - using mock response")
-            return generate_mock_exercises(reference_text, number_of_exercises, mode)
-        
         # Process image if provided
-        image_data = None
         extracted_text = ""
         
         if image:
@@ -56,12 +49,6 @@ async def generate_exercises(
                 logger.info(f"📝 OCR extracted: {extracted_text[:200]}...")
             except Exception as ocr_error:
                 logger.warning(f"⚠️ OCR failed: {ocr_error}")
-            
-            # Convert to base64 for AI
-            image_data = base64.b64encode(contents).decode('utf-8')
-        
-        # Generate exercises using AI
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
         
         # Build prompt based on mode
         if mode == "similar":
@@ -70,7 +57,7 @@ Sua tarefa é gerar exercícios SEMELHANTES ao exemplo fornecido, mas com VALORE
 
 REGRAS OBRIGATÓRIAS:
 1. Mantenha o MESMO NÍVEL DE DIFICULDADE do exemplo
-2. Mantenha o MESMO FORMATO (múltipla escolha, dissertativo, etc.)
+2. Mantenha o MESMO FORMATO (múltipla escolha, etc.)
 3. VARIE os números, nomes, contextos - mas mantenha o mesmo TIPO DE RACIOCÍNIO
 4. Forneça resolução EXTREMAMENTE DETALHADA com TODOS os passos intermediários
 5. Mostre TODOS os cálculos - como se estivesse resolvendo na lousa para um aluno
@@ -78,7 +65,7 @@ REGRAS OBRIGATÓRIAS:
 7. Use linguagem clara e didática, como se estivesse ensinando presencialmente
 """
             
-            if image_data and extracted_text:
+            if extracted_text:
                 user_prompt = f"""EXERCÍCIO DE REFERÊNCIA (extraído da imagem):
 "{extracted_text}"
 
@@ -96,7 +83,6 @@ IMPORTANTE: Analise o exercício da imagem com cuidado e:
 "{reference_text}"
 
 Gere {number_of_exercises} exercícios SEMELHANTES (mas diferentes) baseados neste exemplo."""
-        
         else:  # create mode
             system_prompt = """Você é um professor expert em criar exercícios educacionais originais de altíssima qualidade.
 Sua tarefa é criar NOVOS EXERCÍCIOS baseados na descrição ou tema fornecido.
@@ -111,7 +97,7 @@ REGRAS OBRIGATÓRIAS:
 7. Use linguagem clara e didática
 """
             
-            if image_data and extracted_text:
+            if extracted_text:
                 user_prompt = f"""TEMA/DESCRIÇÃO (da imagem):
 "{extracted_text}"
 
@@ -195,40 +181,33 @@ REGRAS CRÍTICAS PARA RESOLUÇÃO DETALHADA:
 
 Retorne APENAS o JSON válido, sem markdown, sem texto adicional."""
         
-        # Initialize AI chat
-        chat_instance = LlmChat(
-            api_key=emergent_key,
-            session_id=f"exercise-gen-{int(datetime.now().timestamp())}",
-            system_message=system_prompt
+        # Generate exercises using AI (litellm - mesmos provedores do chat)
+        from backend.services.chat_service import chat_service
+        from backend.services.providers import ProviderType
+
+        logger.info("🤖 Enviando requisicao para IA (gerador de exercicios)...")
+        response = await chat_service.chat(
+            message=user_prompt,
+            provider_type=ProviderType.GROQ,
+            system_prompt=system_prompt,
+            temperature=0.4,
+            max_tokens=4096,
         )
-        
-        chat_instance.with_model("openai", "gpt-4o-mini")
-        
-        # Create message
-        if image_data:
-            user_msg = UserMessage(
-                text=user_prompt,
-                file_contents=[ImageContent(image_base64=image_data)]
-            )
-        else:
-            user_msg = UserMessage(text=user_prompt)
-        
-        # Get response
-        logger.info("🤖 Sending request to AI...")
-        response = await chat_instance.send_message(user_msg)
-        logger.info(f"✅ AI response received: {len(response)} chars")
+        response_text = response.get("content", "")
+        logger.info(f"✅ IA respondeu: {len(response_text)} chars")
         
         # Parse JSON response
         import json
         import re
         
         # Extract JSON from response
-        json_match = re.search(r'\{[\s\S]*\}', response)
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
         if json_match:
             json_str = json_match.group(0)
             result = json.loads(json_str)
-            
-            logger.info(f"✅ Generated {len(result.get('exercises', []))} exercises")
+            result["generated_with_ai"] = True
+
+            logger.info(f"✅ Gerou {len(result.get('exercises', []))} exercicios")
             return result
         else:
             logger.error("❌ No JSON found in response")

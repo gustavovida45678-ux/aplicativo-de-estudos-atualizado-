@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import requests
@@ -25,6 +25,91 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = "anthropic/claude-haiku-4.5"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.3-70b-versatile"
+
+# Provedores OpenAI-compatible usados pelo juiz (IA de explicacao/passo a passo).
+# A chave personalizada (X-Custom-API-Key do frontend) tem prioridade.
+AI_PROVIDERS = [
+    {
+        "name": "Groq",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "env": "GROQ_API_KEY",
+        "model": "llama-3.3-70b-versatile",
+        "headers": {},
+    },
+    {
+        "name": "OpenRouter",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "env": "OPENROUTER_API_KEY",
+        "model": "anthropic/claude-haiku-4.5",
+        "headers": {
+            "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
+            "X-Title": "StudyApp Judge",
+        },
+    },
+    {
+        "name": "Gemini",
+        "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "env": "GEMINI_API_KEY",
+        "model": "gemini-2.0-flash",
+        "headers": {},
+    },
+    {
+        "name": "DeepSeek",
+        "url": "https://api.deepseek.com/v1/chat/completions",
+        "env": "DEEPSEEK_API_KEY",
+        "model": "deepseek-chat",
+        "headers": {},
+    },
+    {
+        "name": "Emergent",
+        "url": (os.environ.get("EMERGENT_BASE_URL", "https://api.emergent.sh/v1") + "/chat/completions"),
+        "env": "EMERGENT_LLM_KEY",
+        "model": "gpt-4o-mini",
+        "headers": {},
+    },
+    {
+        "name": "OpenAI",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "env": "OPENAI_API_KEY",
+        "model": "gpt-4o-mini",
+        "headers": {},
+    },
+]
+
+
+# Dicionario Inteligente de Expressoes (pesquisa por expressao/objetivo)
+try:
+    from data.expression_dictionary import EXPRESSIONS, OBJECTIVES, PATTERNS
+except ImportError:
+    from backend.data.expression_dictionary import EXPRESSIONS, OBJECTIVES, PATTERNS
+
+# Rotacao de chaves gratuitas (GROQ_API_KEY, GROQ_API_KEY_2, ...)
+try:
+    from services.providers import get_env_key_list
+except ImportError:
+    from backend.services.providers import get_env_key_list
+
+
+# Regras pedagogicas do Juiz Virtual (Professor + Juiz + Dicionario).
+# Exigem que a IA explique o PORQUE de cada expressao, nunca apenas o "o que".
+PEDAGOGY_RULES = """REGRAS PEDAGOGICAS OBRIGATORIAS (Juiz Virtual de Programacao):
+Voce e um PROFESSOR, nao apenas um corretor. Para cada expressao importante (funcoes, operadores, estruturas, variaveis) presente no codigo, explique:
+1. O QUE E: definicao simples da expressao.
+2. O QUE SIGNIFICA: significado dentro da linguagem.
+3. PARA QUE SERVE: finalidade geral.
+4. POR QUE FOI UTILIZADA AQUI: qual problema daquele exercicio especifico ela resolve (a parte MAIS importante).
+5. O QUE ACONTECERIA SE FOSSE REMOVIDA: erro ou mudanca de comportamento.
+6. ALTERNATIVAS: outras formas de fazer o mesmo (e quando nao usar).
+7. QUANDO USAR NOVAMENTE: regra pratica para reconhecer situacoes semelhantes.
+8. COMO IDENTIFICAR NO ENUNCIADO: palavras do problema que indicam a necessidade dela.
+NUNCA explique apenas sintaxe ("for e um loop"). Sempre responda "POR QUE essa expressao esta aqui neste exercicio".
+No final, para cada expressao, use o formato:
+EXPRESSAO: <nome>
+POR QUE: <uso no exercicio>
+SEM ELA: <o que aconteceria>
+QUANDO USAR: <regra pratica>
+COMO IDENTIFICAR: <palavras do enunciado>
+ALTERNATIVAS: <opcoes>"""
 
 
 class TestCase(BaseModel):
@@ -311,19 +396,21 @@ def _local_walkthrough(code: str, language: str, stdin: str) -> list:
     return steps
 
 
-def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False):
+def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False, custom_key: Optional[str] = None):
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
     if is_template:
         system_prompt = f"""Voce e um professor de {lang_name} muito didatico. O aluno enviou um CODIGO VAZIO (apenas o esqueleto com '// seu codigo aqui').
 
 Sua tarefa: PREENCHER AUTOMATICAMENTE a solucao completa do problema abaixo e simular a execucao dela passo a passo, linha por linha, com os valores concretos da ENTRADA do teste.
 
+{PEDAGOGY_RULES}
+
 Responda APENAS com JSON (sem markdown, sem ```), com esta estrutura exata:
 {{
   "template": true,
   "corrected_code": "codigo completo corrigido em {lang_name} que resolve o problema",
   "steps": [
-    {{"line": 1, "code": "texto exato da linha do corrected_code", "explanation": "explicacao didatica em portugues do que esta linha faz, com valores concretos", "variables": {{"A": 2}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel no programa", "why": "por que foi usado esse tipo e esse nome", "used_in": "onde essa variavel e usada (linhas/frases)"}}], "output": "saida acumulada ate aqui"}}
+    {{"line": 1, "code": "texto exato da linha do corrected_code", "explanation": "explicacao didatica em portugues do que esta linha faz, com valores concretos", "variables": {{"A": 2}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel no programa", "why": "por que foi usado esse tipo e esse nome", "used_in": "onde essa variavel e usada (linhas/frases)"}}], "expressions": [{{"expression": "input()", "why": "por que foi usada nesta linha deste exercicio", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "regra pratica", "alternatives": "outras formas"}}], "output": "saida acumulada ate aqui"}}
   ]
 }}
 
@@ -335,15 +422,18 @@ REGRAS:
   * purpose: o que essa variavel guarda e para que ela serve no programa
   * why: por que escolhemos esse tipo (int para inteiros, float/double para decimais) e por que ela precisa existir
   * used_in: onde essa variavel sera usada nas proximas linhas
+- IMPORTANTE: em TODO passo que envolver expressoes importantes (input, scanf, print, if, for, operadores, variaveis), preencha `expressions` seguindo o PEDAGOGY_RULES (por que, o que aconteceria sem ela, quando usar, alternativas)
 - Seja MUITO didatico, como aula particular para alguem que nunca programou
 - No maximo 40 passos"""
     else:
         system_prompt = f"""Voce e um professor de {lang_name} que explica como o codigo executa passo a passo, linha por linha, como se o aluno nunca tivesse programado.
 
+{PEDAGOGY_RULES}
+
 Dado o CODIGO e a ENTRADA, simule a execucao e gere um passo para CADA linha executada (declarar variaveis, ler da entrada, calcular, imprimir, fechar chaves quando encerrar). Pule linhas vazias e comentarios. NUNCA invente linhas que nao existem no codigo.
 
 Responda APENAS com JSON (sem markdown, sem ```), um array de objetos:
-[{{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel", "why": "por que foi usado esse tipo e por que ela existe", "used_in": "onde e usada nas proximas linhas"}}], "output": "saida acumulada ate este passo"}}]
+[{{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel", "why": "por que foi usado esse tipo e por que ela existe", "used_in": "onde e usada nas proximas linhas"}}], "expressions": [{{"expression": "input()", "why": "por que foi usada nesta linha", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "quando usar novamente", "alternatives": "alternativas possiveis"}}], "output": "saida acumulada ate este passo"}}]
 
 REGRAS:
 - Use os valores REAIS da execucao (ex: A=2, B=3, soma=5)
@@ -352,6 +442,7 @@ REGRAS:
   * purpose: o que essa variavel guarda e para que ela serve no programa
   * why: por que o tipo foi escolhido (int para inteiros, float/double para decimais, char para um caractere) e por que a variavel precisa existir em vez de usar o valor direto
   * used_in: onde essa variavel sera usada (calculos, impressoes, condicoes)
+- IMPORTANTE: em TODO passo com expressao importante, preencha `expressions` (por que usada aqui, o que aconteceria sem ela, quando usar de novo, alternativas)
 - Quando a linha imprimir, mostre em output a saida acumulada usando \\n
 - Seja MUITO didatico, como aula particular
 - No maximo 40 passos"""
@@ -365,7 +456,7 @@ REGRAS:
     context_parts.append(f"CODIGO:\n```{language}\n{code}\n```")
     context = "\n\n".join(context_parts)
 
-    raw = _call_ai(system_prompt, context)
+    raw = _call_ai(system_prompt, context, custom_key)
     if not raw:
         return None, None
     try:
@@ -394,6 +485,7 @@ REGRAS:
                 "explanation": s.get("explanation") or s.get("detail") or "",
                 "variables": s.get("variables") or {},
                 "variable_details": var_details if isinstance(var_details, list) else [],
+                "expressions": s.get("expressions") if isinstance(s.get("expressions"), list) else [],
                 "output": s.get("output") or "",
             })
         return (steps if steps else None), corrected_code
@@ -512,12 +604,15 @@ def _run(lang: str, code: str, stdin: str) -> dict:
     return _run_piston(conf, code, stdin)
 
 
-def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
-    def _call_openai_compat(url: str, api_key: str, model: str) -> Optional[str]:
+def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = None) -> Optional[str]:
+    def _call_openai_compat(url: str, api_key: str, model: str, extra_headers: dict = None) -> Optional[str]:
         try:
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            if extra_headers:
+                headers.update(extra_headers)
             resp = requests.post(
                 url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers=headers,
                 json={
                     "model": model,
                     "messages": [
@@ -543,64 +638,32 @@ def _call_ai(system_prompt: str, user_prompt: str) -> Optional[str]:
             logger.error(f"IA falha em {model}: {e}")
             return None
 
-    # Mesmo provedor do chat: Groq primeiro (llama-3.3-70b-versatile)
-    if GROQ_API_KEY:
-        content = _call_openai_compat(
-            "https://api.groq.com/openai/v1/chat/completions",
-            GROQ_API_KEY,
-            GROQ_MODEL,
-        )
+    # 1) Chave personalizada do frontend (X-Custom-API-Key) tem prioridade.
+    if custom_key:
+        for provider in AI_PROVIDERS[:3]:
+            content = _call_openai_compat(provider["url"], custom_key, provider["model"], provider["headers"])
+            if content:
+                return content
+
+    # 2) Depois tenta todas as chaves configuradas no servidor, em ordem.
+    for provider in AI_PROVIDERS:
+        key = os.environ.get(provider["env"])
+        if not key:
+            continue
+        content = _call_openai_compat(provider["url"], key, provider["model"], provider["headers"])
         if content:
             return content
 
-    # Fallback: OpenRouter (Claude Haiku 4.5)
-    if OPENROUTER_API_KEY:
-        try:
-            logger.info(f"Calling OpenRouter API with model {OPENROUTER_MODEL}")
-            resp = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
-                    "X-Title": "StudyApp Judge",
-                },
-                json={
-                    "model": OPENROUTER_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 3000,
-                },
-                timeout=30,
-            )
-
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                if content:
-                    logger.info(f"OpenRouter responded OK ({len(content)} chars)")
-                    return content
-                else:
-                    logger.error("OpenRouter returned empty content")
-                    return None
-            else:
-                logger.error(f"OpenRouter API error {resp.status_code}: {resp.text[:500]}")
-                return None
-        except Exception as e:
-            logger.error(f"OpenRouter API failed: {e}")
-            return None
-
-    logger.warning("Nenhuma chave de IA configurada (GROQ_API_KEY / OPENROUTER_API_KEY)")
+    logger.warning("Nenhuma chave de IA configurada ou todas falharam")
     return None
 
 
-def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool) -> Optional[dict]:
+def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool, custom_key: Optional[str] = None) -> Optional[dict]:
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
 
     system_prompt = f"""Voce e um professor de programacao {lang_name} expert e detalhista. Analise o codigo do aluno, identifique TODOS os erros e explique passo a passo de forma MUITO detalhada e didatica.
+
+{PEDAGOGY_RULES}
 
 REGRAS OBRIGATORIAS:
 - Responda APENAS com JSON valido (sem markdown, sem ```)
@@ -612,6 +675,7 @@ REGRAS OBRIGATORIAS:
   * QUEM usa esse recurso e POR QUE ele existe na linguagem
   * QUAL e a diferenca entre o que o aluno fez e o correto
   * COMO o compilador/interpretador entende esse codigo
+  * Se o passo envolve uma expressao/conceito, adicione "expressions": [{{"expression": "...", "why": "por que existe na linguagem e neste codigo", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "regra pratica", "alternatives": "outras formas"}}]
 - Use portugues simples, didatico, como se fosse aula particular
 - Se o codigo usa if, for, while, variaveis, funcoes, arrays, etc., explique O QUE cada um serve e POR QUE e necessario naquele contexto
 - NUNCA assuma que o aluno sabe o basico - explique tudo como se fosse a primeira aula sobre aquele conceito
@@ -627,6 +691,7 @@ ESTRUTURA DO JSON:
       "detail": "explicacao MUITO completa e detalhada. Inclua: o que aconteceu, por que aconteceu, como a linguagem funciona nesse aspecto, e como o aluno deve pensar para nao errar de novo. Minimo 3-4 frases explicativas.",
       "code_hint": "exemplo de codigo correto e completo ou null",
       "concept": "conceito fundamental que o aluno precisa aprender",
+      "expressions": [{{"expression": "input()", "why": "por que foi usada aqui", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "quando usar", "alternatives": "alternativas"}}],
       "youtube_search": "termo de busca especifico para video aula sobre ESSE conceito especifico"
     }}
   ],
@@ -707,7 +772,7 @@ IMPORTANTE: Analise o erro detalhadamente:
 4. Explique o conceito envolvido
 5. Adicione um campo "youtube_search" com termos para encontrar video sobre esse erro"""
 
-    raw = _call_ai(system_prompt, context)
+    raw = _call_ai(system_prompt, context, custom_key)
     if not raw:
         return None
 
@@ -1038,7 +1103,7 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
 
 
 @router.post("/submit")
-async def judge_submit(req: SubmitRequest):
+async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
     if not req.code.strip():
         raise HTTPException(status_code=400, detail="Codigo vazio.")
     if not req.test_cases:
@@ -1048,9 +1113,10 @@ async def judge_submit(req: SubmitRequest):
 
     if first_result.get("compile") and first_result["compile"].get("code") is not None and first_result["compile"].get("code") != 0:
         compile_stderr = first_result["compile"].get("stderr", "")
-        ai_explanation = _ai_explain(req.code, req.language, compile_stderr, "", "", True)
+        ai_explanation = _ai_explain(req.code, req.language, compile_stderr, "", "", True, x_custom_api_key)
         if not ai_explanation:
             ai_explanation = _fallback_explanation(req.code, req.language, compile_stderr, "", "", True)
+        _enrich_explanation(ai_explanation, req.language)
         ai_explanation["youtube_videos"] = _get_youtube_videos("compilacao", req.language, req.code)
         return {
             "compile": {"ok": False, "stderr": compile_stderr},
@@ -1061,9 +1127,10 @@ async def judge_submit(req: SubmitRequest):
 
     if not first_result.get("run") or (first_result.get("run") and first_result["run"].get("stdout") is None and first_result["run"].get("code") != 0):
         stderr_val = (first_result.get("compile") or {}).get("stderr", "") or ((first_result.get("run") or {}).get("stderr", ""))
-        ai_explanation = _ai_explain(req.code, req.language, stderr_val, "", "", True)
+        ai_explanation = _ai_explain(req.code, req.language, stderr_val, "", "", True, x_custom_api_key)
         if not ai_explanation:
             ai_explanation = _fallback_explanation(req.code, req.language, stderr_val, "", "", True)
+        _enrich_explanation(ai_explanation, req.language)
         ai_explanation["youtube_videos"] = _get_youtube_videos("execucao", req.language, req.code)
         return {
             "compile": {"ok": True, "stderr": ""},
@@ -1105,7 +1172,7 @@ async def judge_submit(req: SubmitRequest):
         ai_explanation = _ai_explain(
             req.code, req.language,
             first_fail["stderr"], first_fail["output"],
-            first_fail["expected"], False
+            first_fail["expected"], False, x_custom_api_key
         )
         if not ai_explanation:
             ai_explanation = _fallback_explanation(
@@ -1113,6 +1180,7 @@ async def judge_submit(req: SubmitRequest):
                 first_fail["stderr"], first_fail["output"],
                 first_fail["expected"], False
             )
+        _enrich_explanation(ai_explanation, req.language)
         ai_explanation["youtube_videos"] = _get_youtube_videos("saida incorreta", req.language, req.code)
         explanation = ai_explanation
 
@@ -1129,7 +1197,7 @@ async def judge_submit(req: SubmitRequest):
 
 
 @router.post("/explain")
-async def explain_error(req: SubmitRequest):
+async def explain_error(req: SubmitRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
     if not req.code.strip():
         raise HTTPException(status_code=400, detail="Codigo vazio.")
 
@@ -1143,21 +1211,22 @@ async def explain_error(req: SubmitRequest):
     elif result.get("run"):
         error_text = (result.get("run") or {}).get("stderr", "")
 
-    ai_explanation = _ai_explain(req.code, req.language, error_text, "", "", compile_error)
+    ai_explanation = _ai_explain(req.code, req.language, error_text, "", "", compile_error, x_custom_api_key)
     if not ai_explanation:
         ai_explanation = _fallback_explanation(req.code, req.language, error_text, "", "", compile_error)
+    _enrich_explanation(ai_explanation, req.language)
     ai_explanation["youtube_videos"] = _get_youtube_videos("erro", req.language, req.code)
     return ai_explanation
 
 
 @router.post("/walkthrough")
-def judge_walkthrough(req: WalkthroughRequest):
+def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
     if not req.code.strip():
         raise HTTPException(status_code=400, detail="Codigo vazio.")
     stdin = req.input or (req.test_cases[0].input if req.test_cases else "")
     expected = req.expected or (req.test_cases[0].expected if req.test_cases else "")
     is_template = _is_template(req.code, req.language)
-    steps, corrected_code = _walkthrough_ai(req.code, req.language, stdin, req.statement, expected, is_template)
+    steps, corrected_code = _walkthrough_ai(req.code, req.language, stdin, req.statement, expected, is_template, x_custom_api_key)
     if not steps:
         if is_template:
             steps = [{
@@ -1169,6 +1238,8 @@ def judge_walkthrough(req: WalkthroughRequest):
             }]
         else:
             steps = _local_walkthrough(req.code, req.language, stdin)
+    # Garante que cada passo detalhe TODAS as expressoes do dicionario presentes na linha
+    _enrich_steps(steps, req.language)
     return {
         "steps": steps,
         "total": len(steps),
@@ -1176,6 +1247,86 @@ def judge_walkthrough(req: WalkthroughRequest):
         "stdin": stdin,
         "template": is_template,
         "corrected_code": corrected_code,
+    }
+
+
+class VismoPromptRequest(BaseModel):
+    language: str = "python"
+    code: str = ""
+    statement: str = ""
+    title: str = ""
+    input: str = ""
+
+
+@router.post("/vismo-prompt")
+def vismo_prompt(req: VismoPromptRequest):
+    """
+    Gera um prompt pronto para o Vismo Studio (https://vismo.studio/create),
+    com narracao passo a passo da construcao do codigo, o por que de cada
+    variavel e o por que de cada expressao usada.
+    """
+    if not req.code.strip():
+        raise HTTPException(status_code=400, detail="Codigo vazio.")
+
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python 3"}.get(req.language, req.language)
+    steps = _local_walkthrough(req.code, req.language, req.input or "")
+    _enrich_steps(steps, req.language)
+
+    title = req.title.strip() or f"Construindo um codigo em {lang_name} passo a passo"
+    lines = []
+    lines.append(f"TITULO DO VIDEO: {title}")
+    lines.append("")
+    lines.append(
+        f"ESTILO: Video educativo de programacao em {lang_name}, em formato de aula particular, "
+        "tela limpa e escura, o codigo aparecendo linha por linha enquanto uma voz didatica narra "
+        "por que cada linha e cada variavel existe."
+    )
+    lines.append("")
+    if req.statement.strip():
+        lines.append(f"ENUNCIADO DO EXERCICIO: {req.statement.strip()}")
+        lines.append("")
+    lines.append("NARRACAO PASSO A PASSO DA CONSTRUCAO DO CODIGO:")
+    lines.append("")
+
+    seen_vars = set()
+    for i, step in enumerate(steps, 1):
+        code_line = step.get("code") or ""
+        expl = step.get("explanation") or ""
+        lines.append(f"Cena {i}:")
+        lines.append(f"  - Mostrar na tela a linha: {code_line}")
+        lines.append(f"  - Narrar: {expl}")
+
+        var_details = step.get("variable_details") or []
+        if var_details:
+            lines.append("  - POR QUE DAS VARIAVEIS desta cena:")
+            for v in var_details:
+                name = v.get("name")
+                if not name or name in seen_vars:
+                    continue
+                seen_vars.add(name)
+                purpose = v.get("purpose") or ""
+                why = v.get("why") or ""
+                lines.append(f"      * '{name}': {why} {purpose}".rstrip())
+        exprs = step.get("expressions") or []
+        for ex in exprs:
+            if isinstance(ex, dict) and ex.get("expression"):
+                why = ex.get("why") or ex.get("why_used") or ""
+                lines.append(f"  - CONCEITO '{ex['expression']}': {why}".rstrip())
+        lines.append("")
+
+    lines.append(
+        "CENA FINAL: Resuma o que foi construido: 'Pronto! O codigo resolve o exercicio: "
+        "le a entrada, calcula o resultado e imprime a saida exata que o juiz espera.'"
+    )
+    lines.append("")
+    lines.append("Observacao: use linguagem simples, de preferencia em portugues, e destaque "
+                 "na tela cada variavel com seu valor conforme a execucao avanca.")
+    prompt = "\n".join(lines)
+    return {
+        "prompt": prompt,
+        "total": len(steps),
+        "language": req.language,
+        "ok": True,
     }
 
 
@@ -1232,11 +1383,63 @@ def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
     import random
     ex = random.choice(possible)
 
-    starter_codes = {
-        "python": f"# {ex['title']}\n# {ex['statement']}\n\nvalores = input().split()\nA = int(valores[0])\nB = int(valores[1])\nprint(A + B)\n",
-        "c": f"/* {ex['title']} */\n#include <stdio.h>\n\nint main() {{\n    int A, B;\n    scanf(\"%d %d\", &A, &B);\n    printf(\"%d\\n\", A + B);\n    return 0;\n}}\n",
-        "cpp": f"// {ex['title']}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int A, B;\n    cin >> A >> B;\n    cout << A + B << endl;\n    return 0;\n}}\n",
+    starters = {
+        "Soma de Dois Numeros": {
+            "python": "# {t}\n# {s}\n\nvalores = input().split()\nA = int(valores[0])\nB = int(valores[1])\nprint(A + B)\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int A, B;\n    scanf(\"%d %d\", &A, &B);\n    printf(\"%d\\n\", A + B);\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int A, B;\n    cin >> A >> B;\n    cout << A + B << endl;\n    return 0;\n}}\n",
+        },
+        "Troca de Valores": {
+            "python": "# {t}\n# {s}\n\nvalores = input().split()\nA = int(valores[0])\nB = int(valores[1])\nprint(B, A)\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int A, B;\n    scanf(\"%d %d\", &A, &B);\n    printf(\"%d %d\\n\", B, A);\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int A, B;\n    cin >> A >> B;\n    cout << B << \" \" << A << endl;\n    return 0;\n}}\n",
+        },
+        "Par ou Impar": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nif N % 2 == 0:\n    print(\"PAR\")\nelse:\n    print(\"IMPAR\")\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N;\n    scanf(\"%d\", &N);\n    if (N % 2 == 0) {{\n        printf(\"PAR\\n\");\n    }} else {{\n        printf(\"IMPAR\\n\");\n    }}\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int N;\n    cin >> N;\n    if (N % 2 == 0) {{\n        cout << \"PAR\" << endl;\n    }} else {{\n        cout << \"IMPAR\" << endl;\n    }}\n    return 0;\n}}\n",
+        },
+        "Maior de Tres": {
+            "python": "# {t}\n# {s}\n\nvalores = input().split()\nA = int(valores[0])\nB = int(valores[1])\nC = int(valores[2])\nprint(max(A, B, C))\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int A, B, C, maior;\n    scanf(\"%d %d %d\", &A, &B, &C);\n    maior = A;\n    if (B > maior) maior = B;\n    if (C > maior) maior = C;\n    printf(\"%d\\n\", maior);\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int A, B, C, maior;\n    cin >> A >> B >> C;\n    maior = A;\n    if (B > maior) maior = B;\n    if (C > maior) maior = C;\n    cout << maior << endl;\n    return 0;\n}}\n",
+        },
+        "Fatorial": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nfat = 1\nfor i in range(2, N + 1):\n    fat = fat * i\nprint(fat)\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, i;\n    long long fat = 1;\n    scanf(\"%d\", &N);\n    for (i = 2; i <= N; i++) {{\n        fat = fat * i;\n    }}\n    printf(\"%lld\\n\", fat);\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int N;\n    long long fat = 1;\n    cin >> N;\n    for (int i = 2; i <= N; i++) {{\n        fat = fat * i;\n    }}\n    cout << fat << endl;\n    return 0;\n}}\n",
+        },
+        "Fibonacci": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nseq = []\na, b = 0, 1\nfor _ in range(N):\n    seq.append(a)\n    a, b = b, a + b\nprint(\" \".join(map(str, seq)))\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, i, a = 0, b = 1, temp;\n    scanf(\"%d\", &N);\n    for (i = 0; i < N; i++) {{\n        printf(\"%d%c\", a, (i < N - 1) ? ' ' : '\\n');\n        temp = a + b;\n        a = b;\n        b = temp;\n    }}\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int N, a = 0, b = 1;\n    cin >> N;\n    for (int i = 0; i < N; i++) {{\n        cout << a << (i < N - 1 ? \" \" : \"\\n\");\n        int temp = a + b;\n        a = b;\n        b = temp;\n    }}\n    return 0;\n}}\n",
+        },
+        "Inverter String": {
+            "python": "# {t}\n# {s}\n\nS = input()\nprint(S[::-1])\n",
+            "c": "/* {t} */\n#include <stdio.h>\n#include <string.h>\n\nint main() {{\n    char S[1000];\n    int i, len;\n    scanf(\"%s\", S);\n    len = strlen(S);\n    for (i = len - 1; i >= 0; i--) {{\n        printf(\"%c\", S[i]);\n    }}\n    printf(\"\\n\");\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\n#include <string>\n#include <algorithm>\nusing namespace std;\n\nint main() {{\n    string S;\n    cin >> S;\n    reverse(S.begin(), S.end());\n    cout << S << endl;\n    return 0;\n}}\n",
+        },
+        "Soma dos Elementos": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nvalores = input().split()\nsoma = 0\nfor v in valores:\n    soma = soma + int(v)\nprint(soma)\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, i, v, soma = 0;\n    scanf(\"%d\", &N);\n    for (i = 0; i < N; i++) {{\n        scanf(\"%d\", &v);\n        soma = soma + v;\n    }}\n    printf(\"%d\\n\", soma);\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int N, v, soma = 0;\n    cin >> N;\n    for (int i = 0; i < N; i++) {{\n        cin >> v;\n        soma = soma + v;\n    }}\n    cout << soma << endl;\n    return 0;\n}}\n",
+        },
+        "Verificacao de Parenteses": {
+            "python": "# {t}\n# {s}\n\nexpr = input()\npilha = 0\nok = True\nfor ch in expr:\n    if ch == \"(\":\n        pilha += 1\n    elif ch == \")\":\n        pilha -= 1\n        if pilha < 0:\n            ok = False\nif pilha != 0:\n    ok = False\nprint(\"SIM\" if ok else \"NAO\")\n",
+            "c": "/* {t} */\n#include <stdio.h>\n#include <string.h>\n\nint main() {{\n    char expr[1000];\n    int i, len, pilha = 0, ok = 1;\n    scanf(\"%s\", expr);\n    len = strlen(expr);\n    for (i = 0; i < len; i++) {{\n        if (expr[i] == '(') {{\n            pilha++;\n        }} else if (expr[i] == ')') {{\n            pilha--;\n            if (pilha < 0) ok = 0;\n        }}\n    }}\n    if (pilha != 0) ok = 0;\n    printf(\"%s\\n\", ok ? \"SIM\" : \"NAO\");\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\n#include <string>\nusing namespace std;\n\nint main() {{\n    string expr;\n    int pilha = 0;\n    bool ok = true;\n    cin >> expr;\n    for (char ch : expr) {{\n        if (ch == '(') {{\n            pilha++;\n        }} else if (ch == ')') {{\n            pilha--;\n            if (pilha < 0) ok = false;\n        }}\n    }}\n    if (pilha != 0) ok = false;\n    cout << (ok ? \"SIM\" : \"NAO\") << endl;\n    return 0;\n}}\n",
+        },
+        "Potencia Recursiva": {
+            "python": "# {t}\n# {s}\n\ndef potencia(x, n):\n    if n == 0:\n        return 1\n    return x * potencia(x, n - 1)\n\nvalores = input().split()\nX = int(valores[0])\nN = int(valores[1])\nprint(potencia(X, N))\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nlong long potencia(int x, int n) {{\n    if (n == 0) return 1;\n    return x * potencia(x, n - 1);\n}}\n\nint main() {{\n    int X, N;\n    scanf(\"%d %d\", &X, &N);\n    printf(\"%lld\\n\", potencia(X, N));\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nlong long potencia(int x, int n) {{\n    if (n == 0) return 1;\n    return x * potencia(x, n - 1);\n}}\n\nint main() {{\n    int X, N;\n    cin >> X >> N;\n    cout << potencia(X, N) << endl;\n    return 0;\n}}\n",
+        },
     }
+
+    def starter_code() -> str:
+        chosen = starters.get(ex["title"], starters["Soma de Dois Numeros"])
+        code = chosen.get(language, chosen["python"])
+        return code.format(t=ex["title"], s=ex["statement"])
 
     return {
         "id": f"custom_{topic_lower}",
@@ -1247,7 +1450,7 @@ def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
         "inputFormat": ex["inputFormat"],
         "outputFormat": ex["outputFormat"],
         "test_cases": ex["test_cases"],
-        "starter_code": starter_codes.get(language, starter_codes["python"]),
+        "starter_code": starter_code(),
     }
 
 
@@ -1383,7 +1586,7 @@ class QuestionRequest(BaseModel):
 
 
 @router.post("/question")
-def ask_question(req: QuestionRequest):
+def ask_question(req: QuestionRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Pergunta vazia.")
 
@@ -1392,7 +1595,18 @@ def ask_question(req: QuestionRequest):
     system_prompt = f"""Voce e um professor de programacao {lang_name} expert e paciente. 
 O aluno esta resolvendo um exercicio do juiz online e tem uma duvida.
 Responda de forma clara, didatica e em portugues. Seja objetivo mas completo.
-Se for relevante, referenciom codigos ou conceitos do exercicio."""
+Se for relevante, referenciom codigos ou conceitos do exercicio.
+
+{PEDAGOGY_RULES}
+
+Se a duvida for sobre uma expressao/conceito especifico, use o formato:
+EXPRESSAO: <nome>
+O QUE E: <definicao>
+POR QUE: <uso neste exercicio>
+SEM ELA: <o que aconteceria>
+QUANDO USAR: <regra pratica>
+COMO IDENTIFICAR NO ENUNCIADO: <palavras que indicam>
+ALTERNATIVAS: <outras formas>"""
 
     code_section = f"\n\nCODIGO DO ALUNO ({lang_name}):\n```{req.language}\n{req.code}\n```" if req.code.strip() else ""
     ctx_parts = []
@@ -1411,13 +1625,386 @@ Se for relevante, referenciom codigos ou conceitos do exercicio."""
 CONTEXTO DO EXERCICIO:
 {context}"""
 
-    raw = _call_ai(system_prompt, user_prompt)
+    raw = _call_ai(system_prompt, user_prompt, x_custom_api_key)
     if raw:
         return {"answer": raw, "ok": True}
 
     return {
         "answer": "Desculpe, nao consegui processar sua duvida agora. Tente reformular a pergunta ou verifique se a API de IA esta configurada.",
         "ok": False,
+    }
+
+
+class DictionarySearchRequest(BaseModel):
+    query: str
+    language: str = ""
+
+
+def _normalize_query(q: str) -> str:
+    return (q or "").lower().strip()
+
+
+def _search_expressions(query: str, language: str = "") -> list:
+    """Pesquisa no dicionario por nome de expressao, categoria, objetivo ou descricao."""
+    q = _normalize_query(query)
+    if not q:
+        return []
+    lang = language.lower()
+    results = []
+    for e in EXPRESSIONS:
+        if lang and e["language"] != lang:
+            continue
+        haystack = _normalize_query(
+            e["expression"] + " " + e["category"] + " " + e["purpose"] + " "
+            + e["what_is"] + " " + e["how_to_identify"] + " " + e["when_to_use"]
+            + " " + " ".join(e.get("keywords", [])) + " " + " ".join(e.get("related", []))
+        )
+        # Busca por fragmento do nome da expressao (ex: "split" acha "split()")
+        expr = e["expression"].lower().replace("()", "").replace("(", "").replace(")", "")
+        matched = False
+        for token in q.split():
+            if token in haystack or token in expr or token in e["expression"].lower():
+                matched = True
+                break
+        if matched:
+            results.append(e)
+    return results
+
+
+def _search_objectives(query: str, language: str = "") -> list:
+    """Pesquisa reversa: o aluno diz o OBJETIVO e o sistema recomenda expressoes."""
+    q = _normalize_query(query)
+    if not q:
+        return []
+    lang = language.lower()
+    results = []
+    for o in OBJECTIVES:
+        if lang and o.get("language") and o["language"] != lang:
+            continue
+        haystack = _normalize_query(o["objective"] + " " + " ".join(o["keywords"]))
+        if any(tok in haystack for tok in q.split()):
+            results.append(o)
+    return results
+
+
+def _search_patterns(query: str, language: str = "") -> list:
+    q = _normalize_query(query)
+    if not q:
+        return []
+    lang = language.lower()
+    results = []
+    for p in PATTERNS:
+        if lang and p.get("language") and p["language"] != lang:
+            continue
+        haystack = _normalize_query(p["name"] + " " + p["explanation"] + " " + " ".join(p["expressions"]))
+        if any(tok in haystack for tok in q.split()):
+            results.append(p)
+    return results
+
+
+@router.post("/dictionary/search")
+def dictionary_search(req: DictionarySearchRequest):
+    """Pesquisa por expressao, objetivo ou problema no Dicionario Inteligente."""
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Pesquisa vazia.")
+    return {
+        "query": req.query,
+        "language": req.language,
+        "expressions": _search_expressions(req.query, req.language),
+        "objectives": _search_objectives(req.query, req.language),
+        "patterns": _search_patterns(req.query, req.language),
+    }
+
+
+@router.post("/dictionary/objective")
+def dictionary_objective(req: DictionarySearchRequest):
+    """Pesquisa reversa: informa o OBJETIVO e devolve as expressoes recomendadas."""
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Objetivo vazio.")
+    objectives = _search_objectives(req.query, req.language)
+    if not objectives:
+        # fallback: busca ampla no dicionario e agrupa por categoria
+        expressions = _search_expressions(req.query, req.language)
+        return {
+            "query": req.query,
+            "language": req.language,
+            "objectives": [],
+            "expressions": expressions,
+            "message": "Nenhum objetivo exato encontrado; mostrando expressoes relacionadas.",
+        }
+    recommended = {}
+    for o in objectives:
+        for expr in o["expressions"]:
+            entries = [e for e in EXPRESSIONS if e["expression"] == expr]
+            if entries:
+                recommended[expr] = entries[0]
+    return {
+        "query": req.query,
+        "language": req.language,
+        "objectives": objectives,
+        "recommended": list(recommended.values()),
+    }
+
+
+@router.get("/dictionary")
+def dictionary_all(language: str = ""):
+    """Lista todo o dicionario (filtro opcional por linguagem: python, c, cpp)."""
+    lang = language.lower()
+    entries = [e for e in EXPRESSIONS if not lang or e["language"] == lang]
+    categories = {}
+    for e in entries:
+        categories.setdefault(e["category"], []).append(e["expression"])
+    return {
+        "total": len(entries),
+        "categories": categories,
+        "expressions": entries,
+    }
+
+
+class ExplainSolutionRequest(BaseModel):
+    language: str
+    code: str
+    statement: str = ""
+    input: str = ""
+    expected: str = ""
+    test_cases: List[TestCase] = []
+
+
+def _expr_match_keys(expr: str) -> list:
+    """
+    Gera chaves de busca para casar uma expressao do dicionario com codigo.
+    - 'input()' -> ['input', 'input()']
+    - 'if / elif / else' -> 'if', 'elif', 'else'
+    - 'for ... in range()' -> 'for', 'range', 'range()'
+    """
+    keys = set()
+    e = expr.strip().lower()
+    for part in e.split("/"):
+        part = part.strip()
+        if not part:
+            continue
+        if part.endswith("()"):
+            keys.add(part[:-2])
+        keys.add(part)
+        for tok in re.findall(r"[a-z_][a-z0-9_]*", part):
+            keys.add(tok)
+    return [k for k in keys if k]
+
+
+def _line_matches_expr(line: str, entry: dict) -> bool:
+    """Verifica se uma linha de codigo contem a expressao do dicionario."""
+    low = line.lower()
+    expr = entry["expression"].lower()
+    # Normaliza sufixos tipo "(cpp)", "(resto / modulo)", "(vetor/array)"
+    expr_norm = re.sub(r"\s*\([^)]*\)\s*$", "", expr)
+
+    # Operadores e construcoes especiais (nao sao identificadores simples)
+    special = {
+        "=": r"(?<![=!<>+\-*/%])=(?!=)",
+        "+": r"(?<![+\-*/%])[+](?![+\-*/])",
+        "-": r"(?<![\+\-*/])-(?![\+\-*/])",
+        "*": r"(?<![+\-*/])[*](?![+\-*/])",
+        "/": r"(?<![/])/(?![/])",
+        "==": r"(?<![=!<>+\-*/])==(?!=)",
+        "!=": r"!=",
+        "+=": r"(?<![=!<>+\-*/%])\+=(?!=)",
+        ">": r"(?:[\w\d]|\]|\))\s+>\s+[\w\d(]",
+        "<": r"(?<!include )(?:[\w\d]|\]|\))\s+<\s+[\w\d(]",
+        ">= / <=": r">=|<=",
+        "&& / || / !": r"&&|\|\||(?<![\w=!])!(?!=)",
+        "%": r"\s%\s",
+        "% (resto / modulo)": r"\s%\s",
+        "list / [ ]": r"(?:\blist\b|\[)",
+        "f-string": r"f[\"']",
+        "int main() { }": r"\bmain\s*\(",
+        "vector<int>": r"\bvector\b",
+        "int / float / double / char": r"\b(?:int|float|double|char)\s+(?!main\s*\()\w+",
+        "int v[n];": r"\bint\s+\w+\s*\[",
+        "for (int i = 0; ... )": r"\bfor\s*\(",
+        "#include <iostream>": r"#include\s*<\s*(?:iostream|bits/stdc\+\+\.h)\s*>",
+        "#include <vector>": r"#include\s*<\s*vector\s*>",
+        "#include <stdio.h>": r"#include\s*<\s*stdio\.h\s*>",
+        "#include <string.h>": r"#include\s*<\s*string\.h\s*>",
+        "&": r"&[A-Za-z_]",
+        "string": r"\bstring\b",
+    }
+    if expr in special:
+        return bool(re.search(special[expr], line))
+    if expr_norm in special:
+        return bool(re.search(special[expr_norm], line))
+
+    for k in _expr_match_keys(expr):
+        if re.search(r"\b" + re.escape(k) + r"\b", low):
+            return True
+    return False
+
+
+def _extract_expressions_from_code(code: str, language: str) -> list:
+    """Identifica expressoes conhecidas presentes no codigo, a partir do dicionario."""
+    found = []
+    for e in EXPRESSIONS:
+        if e["language"] != language:
+            continue
+        for raw_line in code.split("\n"):
+            if _line_matches_expr(raw_line, e):
+                found.append(e)
+                break
+    return found
+
+
+def _enrich_step_expressions(step: dict, language: str) -> dict:
+    """
+    Garante que o passo detalhe TODAS as expressoes do dicionario presentes
+    na linha, mesmo que a IA nao tenha retornado o campo `expressions`.
+    """
+    code_line = step.get("code") or ""
+    dict_hits = [e for e in EXPRESSIONS if e["language"] == language and _line_matches_expr(code_line, e)]
+
+    ai_exprs = step.get("expressions") if isinstance(step.get("expressions"), list) else []
+    merged = []
+    seen = set()
+
+    def norm(name: str) -> str:
+        return (name or "").lower().replace("()", "").replace("(", "").replace(")", "").strip()
+
+    for x in ai_exprs:
+        if isinstance(x, dict) and x.get("expression"):
+            name = x["expression"]
+            if norm(name) not in seen:
+                seen.add(norm(name))
+                merged.append(x)
+
+    for e in dict_hits:
+        if norm(e["expression"]) in seen:
+            continue
+        seen.add(norm(e["expression"]))
+        merged.append({k: v for k, v in e.items()})
+
+    step["expressions"] = merged
+    return step
+
+
+def _enrich_steps(steps: list, language: str) -> list:
+    """Aplica o enriquecimento de expressoes a todos os passos."""
+    for step in steps:
+        if isinstance(step, dict):
+            _enrich_step_expressions(step, language)
+    return steps
+
+
+def _enrich_explanation(explanation: dict, language: str) -> dict:
+    """Enriquece os passos de uma explicacao (IA ou fallback) com as expressoes do dicionario."""
+    if explanation and isinstance(explanation.get("step_by_step"), list):
+        _enrich_steps(explanation["step_by_step"], language)
+    return explanation
+
+
+@router.post("/explain-solution")
+def explain_solution(req: ExplainSolutionRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    """
+    Analise pedagogica COMPLETA de uma solucao (especificacao secao 20):
+    o que o problema pede, estrategia, codigo, linha por linha, POR QUE cada
+    expressao foi usada, como reconhecer em outros exercicios, alternativas,
+    dicionario, testes reais, complexidade e veredito do juiz.
+    """
+    if not req.code.strip():
+        raise HTTPException(status_code=400, detail="Codigo vazio.")
+
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(req.language, req.language)
+
+    # 1) Execucao REAL de cada caso de teste (nunca inventar resultados)
+    stdin = req.input or (req.test_cases[0].input if req.test_cases else "")
+    test_results = []
+    total = len(req.test_cases)
+    passed = 0
+    run_error = None
+    for i, tc in enumerate(req.test_cases):
+        try:
+            res = _run(req.language, req.code, tc.input)
+            run = res.get("run") or {}
+            compile_err = (res.get("compile") or {}).get("code") or 0
+            if compile_err:
+                test_results.append({
+                    "index": i + 1, "input": tc.input, "expected": tc.expected,
+                    "actual": "", "passed": False, "error": (res.get("compile") or {}).get("stderr", "")[:300],
+                })
+                continue
+            output = _normalize(run.get("stdout", ""))
+            expected_norm = _normalize(tc.expected)
+            ok = output == expected_norm
+            if ok:
+                passed += 1
+            test_results.append({
+                "index": i + 1, "input": tc.input, "expected": tc.expected,
+                "actual": run.get("stdout", ""), "passed": ok,
+                "error": (run.get("stderr", "") or "")[:300],
+            })
+        except Exception as e:
+            run_error = str(e)
+            test_results.append({
+                "index": i + 1, "input": tc.input, "expected": tc.expected,
+                "actual": "", "passed": False, "error": str(e)[:300],
+            })
+
+    verdict = "ACEITO" if passed == total and total > 0 else "ERRO"
+    known_expressions = _extract_expressions_from_code(req.code, req.language)
+
+    system_prompt = f"""Voce e um professor de programacao {lang_name} e produz analises pedagogicas completas de solucoes de exercicios, exatamente no formato do Juiz Virtual (Professor + Juiz + Dicionario Inteligente).
+
+{PEDAGOGY_RULES}
+
+Responda APENAS com JSON valido (sem markdown, sem ```), com esta estrutura exata:
+{{
+  "summary": "1. O QUE O PROBLEMA PEDE: resumo claro do enunciado",
+  "strategy": "2. ESTRATEGIA: como o codigo resolve o problema (ideia geral, em passos)",
+  "line_by_line": [
+    {{"line": 1, "code": "texto da linha", "explanation": "o que esta linha faz", "why": "por que esta linha existe neste exercicio", "would_happen_without": "o que aconteceria sem ela", "alternatives": "outras formas de fazer"}}
+  ],
+  "expressions": [
+    {{"expression": "input()", "why": "por que foi usada NESTE codigo", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "quando usar novamente", "how_to_identify": "como identificar no enunciado", "alternatives": "alternativas possiveis"}}
+  ],
+  "recognition_pattern": "6. COMO RECONHECER ESTE PADRAO EM OUTROS EXERCICIOS: dica para o aluno reconhecer quando precisara dessas expressoes de novo",
+  "complexity": {{"time": "complexidade de tempo (Big-O)", "memory": "complexidade de memoria (Big-O)"}},
+  "verdict_comment": "comentario didatico sobre o veredito do juiz (por que passou ou falhou)"
+}}
+
+REGRAS:
+- A analise e SEMPRE baseada no codigo real do aluno e nos resultados de execucao fornecidos; NUNCA invente execucoes
+- `line_by_line` deve cobrir TODAS as linhas importantes, uma por objeto
+- `expressions` deve cobrir TODAS as expressoes importantes do codigo (funcoes, operadores, estruturas, variaveis)
+- Use portugues didatico, como aula particular"""
+
+    context_parts = [f"LINGUAGEM: {lang_name}"]
+    if req.statement:
+        context_parts.append(f"ENUNCIADO:\n{req.statement}")
+    context_parts.append(f"CODIGO:\n```{req.language}\n{req.code}\n```")
+    if req.test_cases:
+        context_parts.append(f"RESULTADOS REAIS DOS TESTES (executados de verdade):\n{json.dumps(test_results, ensure_ascii=False, indent=2)}")
+    context_parts.append(f"VEREDITO: {verdict} ({passed}/{total} testes passaram)")
+    if run_error:
+        context_parts.append(f"ERRO DE EXECUCAO: {run_error}")
+    context = "\n\n".join(context_parts)
+
+    ai_result = None
+    raw = _call_ai(system_prompt, context, x_custom_api_key)
+    if raw:
+        try:
+            cleaned = re.sub(r"^```\w*\n?", "", raw.strip())
+            cleaned = re.sub(r"\n?```$", "", cleaned)
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                ai_result = parsed
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.error(f"Falha ao parsear explain-solution da IA: {e}: {raw[:300]}")
+
+    return {
+        "language": req.language,
+        "statement": req.statement,
+        "tests": test_results,
+        "summary": {"passed": passed, "total": total, "accepted": passed == total and total > 0, "verdict": verdict},
+        "dictionary_entries": known_expressions,
+        "pedagogical": ai_result,
+        "note": "Resultados de testes obtidos por execucao real do codigo."
     }
 
 

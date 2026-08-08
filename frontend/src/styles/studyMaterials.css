@@ -2523,6 +2523,22 @@
 }
 .materials-judge-similar:hover { background: rgba(132, 82, 255, 0.28); }
 .materials-judge-similar:disabled { opacity: 0.6; cursor: not-allowed; }
+.materials-judge-vismo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(220, 38, 38, 0.5);
+  background: rgba(220, 38, 38, 0.14);
+  color: #fca5a5;
+  transition: all 0.2s;
+}
+.materials-judge-vismo:hover { background: rgba(220, 38, 38, 0.28); }
+.materials-judge-vismo:disabled { opacity: 0.6; cursor: not-allowed; }
 .materials-judge-question {
   display: inline-flex;
   align-items: center;

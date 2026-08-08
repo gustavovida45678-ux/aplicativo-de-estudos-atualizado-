@@ -4,8 +4,8 @@ import { Button } from './ui/button';
 import { Send, MessageSquare, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 export default function FeedbackForm({ currentUser }) {

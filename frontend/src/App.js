@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -16,9 +16,10 @@ import StudyMaterials from "./components/StudyMaterials";
 import LoginPage from "./components/LoginPage";
 import UserDashboard from "./components/UserDashboard";
 import FeedbackForm from "./components/FeedbackForm";
+import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
 // import DebugPanel from "./components/DebugPanel"; // Removed
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+import { BACKEND_URL } from "./lib/backendUrl";
 const API = `${BACKEND_URL}/api`;
 
 // Configure axios interceptor more safely
@@ -432,6 +433,14 @@ function App() {
               <span className="nav-tab-text">Dashboard</span>
             </button>
             <button
+              onClick={() => setActiveTab("adaptive")}
+              className={`nav-tab ${activeTab === "adaptive" ? "active" : ""}`}
+              data-testid="tab-adaptive"
+            >
+              <BrainCircuit size={18} />
+              <span className="nav-tab-text">Estudo</span>
+            </button>
+            <button
               onClick={() => setActiveTab("chat")}
               className={`nav-tab ${activeTab === "chat" ? "active" : ""}`}
               data-testid="tab-chat"
@@ -475,6 +484,8 @@ function App() {
 
 {activeTab === "dashboard" ? (
             <UserDashboard currentUser={currentUser} onLogout={handleLogout} />
+          ) : activeTab === "adaptive" ? (
+            <AdaptiveStudy />
           ) : activeTab === "feedback" ? (
             <FeedbackForm currentUser={currentUser} />
           ) : activeTab === "materials" ? (

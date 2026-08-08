@@ -25,6 +25,8 @@ class ProviderType(str, Enum):
     TOGETHER = "together"
     FIREWORKS = "fireworks"
     HUGGINGFACE = "huggingface"
+    OPENAI = "openai"
+    EMERGENT = "emergent"
 
 @dataclass
 class ModelConfig:
@@ -422,6 +424,65 @@ ProviderType.OLLAMA: ProviderConfig(
         website="https://huggingface.co/settings/tokens",
         icon="huggingface"
     ),
+    ProviderType.OPENAI: ProviderConfig(
+        type=ProviderType.OPENAI,
+        name="OpenAI",
+        category="Raciocínio",
+        models={
+            "gpt-4o-mini": ModelConfig(
+                model_id="openai/gpt-4o-mini",
+                display_name="GPT-4o Mini (rápido/barato)",
+                supports_vision=True,
+                context_window=128000
+            ),
+            "gpt-4o": ModelConfig(
+                model_id="openai/gpt-4o",
+                display_name="GPT-4o",
+                supports_vision=True,
+                context_window=128000
+            ),
+            "gpt-4.1-mini": ModelConfig(
+                model_id="openai/gpt-4.1-mini",
+                display_name="GPT-4.1 Mini",
+                supports_vision=True,
+                context_window=1000000
+            ),
+        },
+        env_var="OPENAI_API_KEY",
+        free_tier_description="Pago - use com moderação (GPT-4o Mini é barato)",
+        website="https://platform.openai.com/api-keys",
+        icon="sparkles"
+    ),
+    ProviderType.EMERGENT: ProviderConfig(
+        type=ProviderType.EMERGENT,
+        name="Emergent Universal",
+        category="Agregador Universal",
+        models={
+            "gpt-4o-mini": ModelConfig(
+                model_id="openai/gpt-4o-mini",
+                display_name="GPT-4o Mini (via Emergent)",
+                supports_vision=True,
+                context_window=128000
+            ),
+            "gpt-4o": ModelConfig(
+                model_id="openai/gpt-4o",
+                display_name="GPT-4o (via Emergent)",
+                supports_vision=True,
+                context_window=128000
+            ),
+            "claude-3-5-sonnet": ModelConfig(
+                model_id="openai/claude-3-5-sonnet",
+                display_name="Claude 3.5 Sonnet (via Emergent)",
+                supports_vision=True,
+                context_window=200000
+            ),
+        },
+        env_var="EMERGENT_LLM_KEY",
+        base_url=os.environ.get("EMERGENT_BASE_URL", "https://api.emergent.sh/v1"),
+        free_tier_description="Universal - uma chave para OpenAI, Anthropic e Google",
+        website="https://emergent.sh",
+        icon="key"
+    ),
 }
 
 # Default model per provider (first one listed)
@@ -434,18 +495,63 @@ DEFAULT_MODELS = {
     ProviderType.OPENROUTER: "claude-3-5-sonnet",
     ProviderType.FREE_AI: "qwen-2.5-72b",
     ProviderType.OLLAMA: "gemma4-12b",
+    ProviderType.OPENAI: "gpt-4o-mini",
+    ProviderType.EMERGENT: "gpt-4o-mini",
 }
+
+# Preferred order for auto-detection and fallback
+AUTO_PRIORITY = [
+    ProviderType.CLAUDE,
+    ProviderType.GEMINI,
+    ProviderType.GROQ,
+    ProviderType.DEEPSEEK,
+    ProviderType.OPENROUTER,
+    ProviderType.FREE_AI,
+    ProviderType.PERPLEXITY,
+    ProviderType.XAI,
+    ProviderType.COHERE,
+    ProviderType.TOGETHER,
+    ProviderType.FIREWORKS,
+    ProviderType.HUGGINGFACE,
+    ProviderType.OPENAI,
+    ProviderType.EMERGENT,
+]
 
 def get_provider_config(provider_type: ProviderType) -> Optional[ProviderConfig]:
     """Get provider configuration by type"""
     return PROVIDERS.get(provider_type)
 
+
+def get_env_key_list(env_var: str) -> List[str]:
+    """
+    Retorna TODAS as chaves configuradas para um provider, incluindo variantes
+    numeradas: ENV_VAR, ENV_VAR_2, ENV_VAR_3... (rotacao de chaves gratuitas).
+    Ex: GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3.
+    """
+    keys: List[str] = []
+    primary = os.environ.get(env_var)
+    if primary:
+        keys.append(primary)
+    i = 2
+    while True:
+        variant = os.environ.get(f"{env_var}_{i}")
+        if not variant:
+            break
+        keys.append(variant)
+        i += 1
+    return keys
+
+
+def get_provider_key_count(env_var: str) -> int:
+    """Numero de chaves configuradas (para rotacao)."""
+    return len(get_env_key_list(env_var))
+
 def get_available_providers() -> List[Dict[str, Any]]:
     """Get list of providers that have API keys configured"""
     available = []
     for provider_type, config in PROVIDERS.items():
-        api_key = os.environ.get(config.env_var)
-        if api_key or not config.requires_api_key:
+        api_keys = get_env_key_list(config.env_var)
+        if api_keys or not config.requires_api_key:
             models = []
             for model_key, model_config in config.models.items():
                 models.append({
@@ -464,7 +570,8 @@ def get_available_providers() -> List[Dict[str, Any]]:
                 "free_tier": config.free_tier_description,
                 "website": config.website,
                 "icon": config.icon,
-                "has_key": bool(api_key),
+                "has_key": bool(api_keys),
+                "key_count": len(api_keys),
             })
     return available
 
@@ -472,7 +579,7 @@ def get_all_providers_info() -> List[Dict[str, Any]]:
     """Get info for all providers (including those without keys)"""
     all_providers = []
     for provider_type, config in PROVIDERS.items():
-        api_key = os.environ.get(config.env_var)
+        api_keys = get_env_key_list(config.env_var)
         models = []
         for model_key, model_config in config.models.items():
             models.append({
@@ -491,7 +598,8 @@ def get_all_providers_info() -> List[Dict[str, Any]]:
             "free_tier": config.free_tier_description,
             "website": config.website,
             "icon": config.icon,
-            "has_key": bool(api_key),
+            "has_key": bool(api_keys),
+            "key_count": len(api_keys),
             "env_var": config.env_var,
         })
     return all_providers

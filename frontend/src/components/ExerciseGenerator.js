@@ -5,8 +5,8 @@ import { Badge } from './ui/badge';
 import { Upload, Image as ImageIcon, X, Sparkles, FileText, BookOpen, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 export default function ExerciseGenerator() {

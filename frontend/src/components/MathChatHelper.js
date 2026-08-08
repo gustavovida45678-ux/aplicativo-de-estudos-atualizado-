@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Send, X, MessageCircle, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = BACKEND_URL;
 
 const MathChatHelper = ({ step, explanation, questionText, isOpen, onClose }) => {
   const [userQuestion, setUserQuestion] = useState('');

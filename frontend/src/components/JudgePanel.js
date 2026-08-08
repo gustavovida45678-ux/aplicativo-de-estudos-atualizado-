@@ -11,8 +11,8 @@ import {
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
 import '../styles/studyMaterials.css';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/judge`;
 
 const STARTERS = {
@@ -64,6 +64,10 @@ const JudgePanel = () => {
   const [showReviewCalendar, setShowReviewCalendar] = useState(false);
   const [reviewSessions, setReviewSessions] = useState([]);
   const [generatedReport, setGeneratedReport] = useState(null);
+
+  const [vismoPrompt, setVismoPrompt] = useState('');
+  const [vismoLoading, setVismoLoading] = useState(false);
+  const [showVismo, setShowVismo] = useState(false);
 
   useEffect(() => {
     if (!walkPlay || !walk) return;
@@ -232,6 +236,38 @@ const JudgePanel = () => {
       console.error(e);
       toast.error('Erro ao gerar exercicio parecido.');
     } finally { setGeneratingSimilar(false); }
+  };
+
+  const generateVismoPrompt = async () => {
+    if (!code.trim()) { toast.warning('Escreva seu codigo primeiro.'); return; }
+    setVismoLoading(true);
+    try {
+      const tc = (selected || newExercise)?.test_cases || [];
+      const stmt = (selected || newExercise)?.statement || '';
+      const res = await axios.post(`${API}/vismo-prompt`, {
+        language,
+        code,
+        statement: stmt,
+        title: (selected || newExercise)?.title || '',
+        input: tc[0]?.input || '',
+      });
+      if (!res.data.prompt) {
+        toast.error('Nao foi possivel gerar o prompt.');
+        return;
+      }
+      setVismoPrompt(res.data.prompt);
+      setShowVismo(true);
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao gerar o prompt do Vismo.');
+    } finally { setVismoLoading(false); }
+  };
+
+  const copyVismoPrompt = () => {
+    navigator.clipboard?.writeText(vismoPrompt).then(
+      () => toast.success('Prompt copiado! Cole no vismo.studio/create'),
+      () => toast.error('Nao foi possivel copiar.')
+    );
   };
 
   const askQuestion = async () => {
@@ -408,6 +444,15 @@ const JudgePanel = () => {
                Passo a Passo
              </button>
              <button
+               onClick={generateVismoPrompt}
+               disabled={vismoLoading}
+               className="materials-judge-vismo"
+               title="Gerar prompt de video no Vismo Studio (explica passo a passo e o por que de cada variavel)"
+             >
+               {vismoLoading ? <Loader2 size={14} className="materials-spin" /> : <Youtube size={14} />}
+               Video (Vismo)
+             </button>
+             <button
                onClick={generateSimilar}
                disabled={generatingSimilar}
                className="materials-judge-similar"
@@ -525,6 +570,57 @@ const JudgePanel = () => {
                </div>
              </div>
            </div>
+         )}
+
+         {showVismo && vismoPrompt && (
+          <div style={{
+            marginTop: 14, borderRadius: 12, overflow: 'hidden',
+            border: '2px solid #dc2626', background: '#111',
+          }}>
+            <div style={{
+              background: '#1f0b0b', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
+              borderBottom: '1px solid #dc2626',
+            }}>
+              <Youtube size={18} color="#f87171" />
+              <b style={{ fontSize: 15, color: '#f87171' }}>Prompt para Video no Vismo Studio</b>
+              <span style={{ flex: 1 }} />
+              <a
+                href="https://vismo.studio/create"
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  fontSize: 12, color: '#f87171', textDecoration: 'none',
+                  border: '1px solid #dc2626', padding: '5px 10px', borderRadius: 8,
+                  display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600,
+                }}
+              >
+                <ExternalLink size={13} /> Abrir vismo.studio/create
+              </a>
+              <button
+                onClick={copyVismoPrompt}
+                style={{
+                  fontSize: 12, color: '#fff', background: '#dc2626', border: 'none',
+                  padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <FileCode2 size={13} /> Copiar prompt
+              </button>
+              <button onClick={() => setShowVismo(false)} style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', display: 'flex', padding: 2 }}>
+                <X size={16} />
+              </button>
+            </div>
+            <textarea
+              readOnly
+              value={vismoPrompt}
+              onFocus={(e) => e.target.select()}
+              spellCheck="false"
+              style={{
+                width: '100%', minHeight: 260, background: '#0a0a0a', color: '#fca5a5',
+                border: 'none', padding: 14, fontSize: 12.5, fontFamily: 'Menlo, Consolas, monospace',
+                resize: 'vertical', outline: 'none', lineHeight: 1.6,
+              }}
+            />
+          </div>
          )}
 
          {walk && walk.steps.length > 0 && (

@@ -4,6 +4,7 @@ Unified Chat Service using LiteLLM for multiple free AI providers.
 
 import os
 import logging
+import itertools
 from typing import Optional, List, Dict, Any, AsyncGenerator
 from datetime import datetime
 import json
@@ -17,10 +18,16 @@ from backend.services.providers import (
     get_default_model,
     get_available_providers,
     get_all_providers_info,
+    get_env_key_list,
+    AUTO_PRIORITY,
     ProviderType,
 )
 
 logger = logging.getLogger(__name__)
+
+# Contador round-robin para distribuir as requisicoes entre multiplas chaves
+# (ex: GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3).
+_key_rotation_counter = itertools.count()
 
 # Configure LiteLLM
 litellm.set_verbose = False
@@ -42,17 +49,17 @@ class ChatService:
     """Unified chat service supporting multiple AI providers via LiteLLM"""
     
     def __init__(self):
-        self.provider_keys: Dict[ProviderType, str] = {}
+        self.provider_keys: Dict[ProviderType, List[str]] = {}
         self._load_api_keys()
     
     def _load_api_keys(self):
-        """Load API keys from environment variables"""
+        """Load API keys from environment variables (inclui variantes numeradas para rotacao)"""
         for provider_info in get_all_providers_info():
             ptype = ProviderType(provider_info["type"])
-            api_key = os.environ.get(provider_info["env_var"])
-            if api_key:
-                self.provider_keys[ptype] = api_key
-                logger.info(f"Loaded API key for {provider_info['name']}")
+            keys = get_env_key_list(provider_info["env_var"])
+            if keys:
+                self.provider_keys[ptype] = keys
+                logger.info(f"Loaded {len(keys)} key(s) for {provider_info['name']}")
     
     def get_available_providers(self) -> List[Dict[str, Any]]:
         """Get providers that have API keys configured"""
@@ -62,12 +69,36 @@ class ChatService:
         """Get all providers info"""
         return get_all_providers_info()
     
-    def _get_api_key(self, provider_type: ProviderType, custom_key: Optional[str] = None) -> Optional[str]:
-        """Get API key for a provider (custom > env)"""
+    def _get_api_keys(self, provider_type: ProviderType, custom_key: Optional[str] = None) -> List[str]:
+        """Get ALL API keys for a provider (custom > env). Suporta rotacao."""
         if custom_key:
-            return custom_key
-        return self.provider_keys.get(provider_type)
-    
+            return [custom_key]
+        return self.provider_keys.get(provider_type, [])
+
+    @staticmethod
+    def _is_rate_limited(error: Exception) -> bool:
+        """Detecta rate limit (429) para trocar de chave em vez de provedor."""
+        msg = str(error).lower()
+        return "429" in str(error) or "rate limit" in msg or "rate_limit" in msg or "too many requests" in msg
+
+    def _ordered_providers(self, primary: ProviderType, custom_key: Optional[str] = None) -> List[ProviderType]:
+        """Providers disponiveis (com chave), primary primeiro, depois por prioridade."""
+        available = [
+            p for p in AUTO_PRIORITY
+            if get_provider_config(p) and (self.provider_keys.get(p) or (p == primary and custom_key))
+        ]
+        if primary not in available and get_provider_config(primary) and (self.provider_keys.get(primary) or custom_key):
+            available.insert(0, primary)
+        return available
+
+    def _rotated_keys(self, provider_type: ProviderType, custom_key: Optional[str] = None) -> List[str]:
+        """Lista de chaves do provider em ordem round-robin (distribui a carga)."""
+        keys = self._get_api_keys(provider_type, custom_key)
+        if not keys:
+            return []
+        offset = next(_key_rotation_counter) % len(keys)
+        return keys[offset:] + keys[:offset]
+
     async def chat(
         self,
         message: str,
@@ -81,7 +112,67 @@ class ChatService:
     ) -> Dict[str, Any]:
         """
         Send a chat message to the specified provider/model.
-        
+
+        Se o provedor principal falhar, tenta automaticamente os demais
+        provedores configurados (fallback) para nunca deixar o chat sem resposta.
+        """
+        if custom_api_key:
+            self.provider_keys[provider_type] = [custom_api_key]
+
+        candidates = self._ordered_providers(provider_type, custom_api_key)
+        if not candidates:
+            configured = [f"{p['name']} ({p.get('env_var', '')})" for p in self.get_available_providers() if p.get("has_key")]
+            hint = f" Chaves disponíveis: {', '.join(configured)}." if configured else ""
+            raise ValueError(
+                "Nenhuma chave API de IA configurada. "
+                "Adicione uma chave no Render (ex: GROQ_API_KEY, GEMINI_API_KEY, "
+                "ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, EMERGENT_LLM_KEY) "
+                f"ou envie uma chave personalizada no campo custom_api_key.{hint}"
+            )
+
+        last_error: Optional[Exception] = None
+        for ptype in candidates:
+            # Rotacao de chaves: se uma chave estiver em rate limit, tenta a proxima
+            keys = self._rotated_keys(ptype, custom_api_key if ptype == provider_type else None)
+            if not keys:
+                continue
+            for key_index, api_key in enumerate(keys):
+                try:
+                    return await self._chat_once(
+                        message=message,
+                        provider_type=ptype,
+                        model_key=model_key if ptype == provider_type else None,
+                        api_key=api_key,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        stream=stream,
+                    )
+                except Exception as e:
+                    last_error = e
+                    if self._is_rate_limited(e) and key_index < len(keys) - 1:
+                        logger.warning(f"Provider {ptype.value} (chave {key_index + 1}/{len(keys)}) em rate limit; trocando de chave...")
+                        continue
+                    logger.warning(f"Provider {ptype.value} falhou ({e}); tentando proximo provedor...")
+                    break
+
+        logger.error(f"Todos os provedores falharam. Ultimo erro: {last_error}")
+        raise last_error or ValueError("Nenhum provedor de IA respondeu")
+
+    async def _chat_once(
+        self,
+        message: str,
+        provider_type: ProviderType,
+        model_key: Optional[str] = None,
+        api_key: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        stream: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Send a chat message to the specified provider/model.
+
         Returns dict with response content and metadata.
         """
         # Get provider config
@@ -97,7 +188,9 @@ class ChatService:
             raise ValueError(f"Model {model_key} not found for provider {provider_type}")
         
         # Get API key
-        api_key = self._get_api_key(provider_type, custom_api_key)
+        if not api_key:
+            api_keys = self._get_api_keys(provider_type)
+            api_key = api_keys[0] if api_keys else None
         if not api_key and provider_config.requires_api_key:
             available = self.get_available_providers()
             key_names = [f"{p['name']} ({p.get('env_var', '')})" for p in available if p.get('has_key')]
@@ -208,6 +301,59 @@ class ChatService:
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ) -> Dict[str, Any]:
+        """Chat with image support (vision models only), com fallback entre provedores e rotacao de chaves."""
+        if custom_api_key:
+            self.provider_keys[provider_type] = [custom_api_key]
+
+        candidates = [p for p in self._ordered_providers(provider_type, custom_api_key)
+                      if self._provider_supports_vision(p)]
+
+        last_error: Optional[Exception] = None
+        for ptype in candidates:
+            keys = self._rotated_keys(ptype, custom_api_key if ptype == provider_type else None)
+            if not keys:
+                continue
+            for key_index, api_key in enumerate(keys):
+                try:
+                    return await self._chat_once_with_image(
+                        message=message,
+                        image_base64=image_base64,
+                        provider_type=ptype,
+                        model_key=model_key if ptype == provider_type else None,
+                        api_key=api_key,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                except Exception as e:
+                    last_error = e
+                    if self._is_rate_limited(e) and key_index < len(keys) - 1:
+                        logger.warning(f"Vision provider {ptype.value} (chave {key_index + 1}/{len(keys)}) em rate limit; trocando de chave...")
+                        continue
+                    logger.warning(f"Vision provider {ptype.value} falhou ({e}); tentando proximo...")
+                    break
+
+        raise last_error or ValueError("Nenhum provedor com suporte a imagem respondeu")
+
+    def _provider_supports_vision(self, provider_type: ProviderType) -> bool:
+        config = get_provider_config(provider_type)
+        if not config:
+            return False
+        model_key = get_default_model(provider_type)
+        model_config = config.models.get(model_key)
+        return bool(model_config and model_config.supports_vision)
+
+    async def _chat_once_with_image(
+        self,
+        message: str,
+        image_base64: str,
+        provider_type: ProviderType,
+        model_key: Optional[str] = None,
+        api_key: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> Dict[str, Any]:
         """Chat with image support (vision models only)"""
         provider_config = get_provider_config(provider_type)
         if not provider_config:
@@ -224,7 +370,9 @@ class ChatService:
         if not model_config or not model_config.supports_vision:
             raise ValueError(f"Model {model_config.display_name if model_config else model_key} does not support vision")
         
-        api_key = self._get_api_key(provider_type, custom_api_key)
+        if not api_key:
+            api_keys = self._get_api_keys(provider_type)
+            api_key = api_keys[0] if api_keys else None
         if not api_key and provider_config.requires_api_key:
             raise ValueError(f"API key required for {provider_config.name}")
         

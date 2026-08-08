@@ -1,0 +1,889 @@
+"""
+API do sistema adaptativo de aprendizagem.
+
+Fluxo:
+  GET  /adaptive/dashboard   -> estado do dia (revisões, erros, domínio, recomendação)
+  GET  /adaptive/recommend   -> "o que devo estudar agora" + motivos
+  POST /adaptive/session/start -> monta a sessão inteligente (intercalada)
+  POST /adaptive/session/{id}/answer -> processa resposta: domínio, intervalo SRS,
+                                        caderno de erros, análise e questão de recuperação
+  POST /adaptive/session/{id}/end  -> encerra sessão e devolve resumo
+  GET  /adaptive/errors      -> caderno de erros
+  POST /adaptive/errors/{id}/classify -> classificação do erro pelo aluno
+  POST /adaptive/errors/{id}/resolve  -> marca erro corrigido
+  GET  /adaptive/domain      -> mapa de domínio (disciplina -> tópicos)
+  GET  /adaptive/topics      -> tópicos disponíveis no banco de questões
+"""
+
+import json
+import logging
+import random
+import re
+from datetime import date, datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+
+from services.srs import (
+    apply_result,
+    decay_mastery,
+    initial_skill,
+    mastery_label,
+    mastery_state,
+    result_grade,
+)
+from services.adaptive_store import adaptive_store
+from services.adaptive_seed import build_question_pool
+from utils.auth import get_current_user
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+ERROR_TYPES = [
+    "nao_sabia",
+    "esqueci_formula",
+    "nao_entendi_enunciado",
+    "estrategia_errada",
+    "erro_calculo",
+    "distracao",
+    "nao_sabia_por_onde_comecar",
+    "confundi_conceitos",
+    "interpretei_errado",
+    "outro",
+]
+
+ERROR_TYPE_LABELS = {
+    "nao_sabia": "Não sabia o conteúdo",
+    "esqueci_formula": "Esqueci a fórmula",
+    "nao_entendi_enunciado": "Não entendi o enunciado",
+    "estrategia_errada": "Escolhi a estratégia errada",
+    "erro_calculo": "Errei o cálculo",
+    "distracao": "Errei por distração",
+    "nao_sabia_por_onde_comecar": "Não sabia por onde começar",
+    "confundi_conceitos": "Confundi dois conceitos",
+    "interpretei_errado": "Interpretei errado",
+    "outro": "Outro",
+}
+
+POOL = []
+POOL_SEEDED = False
+
+
+# ------------------------------------------------------------------- models
+class SessionStartRequest(BaseModel):
+    limit: int = 8
+
+
+class AnswerRequest(BaseModel):
+    item_id: str
+    answer: Optional[int] = None
+    answer_text: str = ""
+    confidence: int = 50
+    dont_know: bool = False
+    time_spent_sec: int = 0
+    hints_used: int = 0
+    classification: str = ""
+
+
+class SessionEndRequest(BaseModel):
+    stats: dict = {}
+
+
+class ErrorClassifyRequest(BaseModel):
+    error_type: str
+    note: str = ""
+
+
+class ErrorResolveRequest(BaseModel):
+    correction: str = ""
+
+
+# ------------------------------------------------------------------- helpers
+def _today() -> date:
+    return date.today()
+
+
+async def _ensure_seeded():
+    global POOL, POOL_SEEDED
+    if not POOL:
+        POOL = build_question_pool()
+    if not POOL_SEEDED:
+        await adaptive_store.seed_questions(POOL)
+        POOL_SEEDED = True
+
+
+def _pub_question(q: dict) -> dict:
+    """Questão pública (sem resposta) para o frontend."""
+    if q is None:
+        return None
+    pub = dict(q)
+    pub.pop("correct_answer", None)
+    pub.pop("answer", None)
+    return pub
+
+
+def _skill_for_topic(skill, topic_meta: dict) -> dict:
+    if skill:
+        return skill
+    return initial_skill(
+        topic_meta["topic_id"], topic_meta.get("subject", ""), topic_meta.get("topic_name", "")
+    )
+
+
+def _decayed(skill: dict) -> dict:
+    """Aplica decaimento por esquecimento na exibição (sem gravar)."""
+    if not skill or not skill.get("next_review"):
+        return skill
+    nxt = date.fromisoformat(skill["next_review"])
+    overdue = (_today() - nxt).days
+    if overdue > 0 and skill.get("mastery"):
+        s = dict(skill)
+        s["mastery"] = decay_mastery(s["mastery"], overdue)
+        return s
+    return skill
+
+
+async def _classify_error_ai(question: dict, student_answer, dont_know: bool) -> Optional[str]:
+    """Sugestão automática do tipo de erro via IA (fallback silencioso)."""
+    if dont_know:
+        return "nao_sabia"
+    try:
+        from backend.services.chat_service import chat_service
+        from backend.services.providers import ProviderType
+
+        q_text = (question.get("question") or "")[:500]
+        prompt = (
+            "Classifique o ERRO de um aluno nesta questão de múltipla escolha.\n"
+            f"QUESTÃO: {q_text}\n"
+            f"RESPOSTA DO ALUNO (índice): {student_answer}\n\n"
+            f"Responda APENAS com uma das opções (sem aspas, sem texto extra): "
+            f"{', '.join(ERROR_TYPES)}"
+        )
+        resp = await chat_service.chat(
+            message=prompt,
+            provider_type=ProviderType.GROQ,
+            system_prompt="Você é um especialista em análise pedagógica de erros.",
+            temperature=0.2,
+            max_tokens=60,
+        )
+        text = (resp.get("content") or "").strip().lower()
+        for t in ERROR_TYPES:
+            if t in text:
+                return t
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Classificação IA indisponível: %s", exc)
+    return None
+
+
+def _classify_error_heuristic(student_answer, correct_answer, dont_know, question) -> str:
+    if dont_know:
+        return "nao_sabia"
+    if student_answer is None and not question.get("options"):
+        return "nao_sabia_por_onde_comecar"
+    if isinstance(student_answer, int) and isinstance(correct_answer, int):
+        if abs(student_answer - correct_answer) == 1:
+            return "erro_calculo"
+    return "interpretei_errado"
+
+
+def _analysis_for_error(error_type: str, question: dict, topic_name: str) -> dict:
+    """Análise inteligente do erro (o que fez / o que deveria perceber / como evitar)."""
+    explanation = question.get("explanation") or ""
+    q_text = (question.get("question") or "").strip().split("\n")[0][:160]
+    guidance = {
+        "nao_sabia": {
+            "fez": "Você não conseguiu recuperar o conteúdo exigido pela questão.",
+            "perceber": f"Esta questão testa {topic_name}. O conceito central é:\n{explanation[:240]}",
+            "evitar": "Estude o conceito, feche o material e tente explicar com suas palavras antes de praticar.",
+        },
+        "esqueci_formula": {
+            "fez": "Você reconheceu o assunto, mas não lembrou da fórmula ou propriedade necessária.",
+            "perceber": "A ideia-chave desta questão está em: " + (explanation[:240] or topic_name),
+            "evitar": "Na revisão, anote as fórmulas do tópico e reescreva-as de memória (active recall).",
+        },
+        "nao_entendi_enunciado": {
+            "fez": "A resposta mostra que o comando do problema foi mal interpretado.",
+            "perceber": "O enunciado pedia: {}. Identifique o verbo do comando (calcule, mostre, compare...).".format(q_text),
+            "evitar": "Sublinhe o que a questão pede ANTES de tentar resolver.",
+        },
+        "estrategia_errada": {
+            "fez": "Você usou uma estratégia que não se aplicava a esta questão.",
+            "perceber": "A forma correta de atacar é: " + (explanation[:240] or "refletir sobre qual método o tópico exige"),
+            "evitar": "Antes de calcular, pergunte: qual método deste tópico eu já usei em questões parecidas?",
+        },
+        "erro_calculo": {
+            "fez": "A estratégia estava certa, mas o cálculo saiu errado no meio do caminho.",
+            "perceber": "Confira o passo a passo: " + (explanation[:240] or ""),
+            "evitar": "Refaça a conta devagar e confira o resultado final em relação ao enunciado.",
+        },
+        "distracao": {
+            "fez": "A resposta parece ter sido escolhida por leitura rápida ou pressa.",
+            "perceber": "Revise a pergunta uma segunda vez antes de responder.",
+            "evitar": "Leia todas as alternativas até o fim e elimine as claramente falsas.",
+        },
+        "nao_sabia_por_onde_comecar": {
+            "fez": "Você não encontrou um ponto de partida para a questão.",
+            "perceber": "Comece identificando os dados do enunciado e o que é pedido: " + q_text,
+            "evitar": "Escreva os dados, a incógnita e o método antes de qualquer cálculo.",
+        },
+        "confundi_conceitos": {
+            "fez": "Dois conceitos parecidos foram trocados na sua resposta.",
+            "perceber": "A distinção central está em: " + (explanation[:240] or topic_name),
+            "evitar": "Faça uma tabela comparando os dois conceitos que você costuma confundir.",
+        },
+        "interpretei_errado": {
+            "fez": "O resultado mostra que o enunciado foi interpretado de outra forma.",
+            "perceber": "O que a questão realmente pedia: " + (explanation[:240] or q_text),
+            "evitar": "Reescreva o enunciado com suas palavras antes de resolver.",
+        },
+        "outro": {
+            "fez": "O erro aconteceu por um motivo específico seu.",
+            "perceber": "Identifique o passo exato em que a resposta divergiu.",
+            "evitar": "Registre a causa para reconhecê-la nas próximas questões.",
+        },
+    }
+    return guidance.get(error_type, guidance["outro"])
+
+
+def _question_pool_meta(pool: list) -> dict:
+    """topic_id -> {subject, topic_name, count} a partir do pool."""
+    meta = {}
+    for q in pool:
+        m = meta.setdefault(q["topic_id"], {"subject": q.get("subject", ""), "topic_name": q.get("topic_name", ""), "count": 0})
+        m["count"] += 1
+    return meta
+
+
+def _interleave(items: list) -> list:
+    """Reordena para intercalar assuntos (sem dois iguais seguidos quando possível)."""
+    if len(items) <= 2:
+        return items
+    by_subject = {}
+    order = []
+    for it in items:
+        subj = it.get("subject", "")
+        by_subject.setdefault(subj, []).append(it)
+        if subj not in order:
+            order.append(subj)
+    result = []
+    idx = {s: 0 for s in order}
+    total = len(items)
+    rounds = 0
+    while len(result) < total and rounds < 50:
+        rounds += 1
+        advanced = False
+        for s in order:
+            if idx[s] < len(by_subject[s]) and len(result) < total:
+                result.append(by_subject[s][idx[s]])
+                idx[s] += 1
+                advanced = True
+        if not advanced:
+            break
+    # sobras
+    for s in order:
+        result.extend(by_subject[s][idx[s]:])
+    return result
+
+
+async def _pick_question(topic_id: str, exclude_ids: list = None, difficulty: int = None) -> Optional[dict]:
+    exclude_ids = exclude_ids or []
+    qs = await adaptive_store.find_questions(
+        topic_id=topic_id, exclude_ids=exclude_ids, limit=8, difficulty=difficulty
+    )
+    if not qs and difficulty:
+        qs = await adaptive_store.find_questions(topic_id=topic_id, exclude_ids=exclude_ids, limit=8)
+    if not qs and exclude_ids:
+        qs = await adaptive_store.find_questions(topic_id=topic_id, limit=1)
+    if qs:
+        return qs[0]
+    return None
+
+
+async def _build_recovery_question(topic_id: str, failed_question_id: str) -> Optional[dict]:
+    """Nova questão que testa a MESMA habilidade (nunca a mesma questão).
+
+    Se o tópico só tiver a questão que falhou, devolve None — o frontend
+    sugere repetir depois (o erro fica no caderno para revisão).
+    """
+    qs = await adaptive_store.find_questions(
+        topic_id=topic_id, exclude_ids=[failed_question_id], limit=8
+    )
+    return qs[0] if qs else None
+
+
+async def _question_for_skill(skill: dict, exclude_ids: list = None) -> Optional[dict]:
+    q = await _pick_question(skill["topic_id"], exclude_ids=exclude_ids)
+    return q
+
+
+# ----------------------------------------------------------------- dashboard
+@router.get("/dashboard")
+async def dashboard(user: dict = Depends(get_current_user)):
+    await _ensure_seeded()
+    user_id = user["email"]
+    today = _today()
+    skills = [(_decayed(s)) for s in await adaptive_store.list_skills(user_id)]
+    errors = await adaptive_store.list_errors(user_id, resolved=False)
+    sessions = await adaptive_store.list_sessions_today(user_id, today.isoformat())
+
+    overall = round(sum(s.get("mastery", 0) for s in skills) / len(skills), 1) if skills else None
+    due = [s for s in skills if s.get("next_review") and s["next_review"] <= today.isoformat()]
+    due.sort(key=lambda s: s["next_review"])
+    at_risk = [
+        s for s in skills
+        if (s.get("mastery") or 0) < 41 or (s.get("next_review") and s["next_review"] <= today.isoformat())
+    ]
+    weak_ids = [s["topic_id"] for s in skills if (s.get("mastery") or 0) < 61]
+    weak_ids += [m["topic_id"] for m in await adaptive_store.list_topics() if not any(
+        s["topic_id"] == m["topic_id"] for s in skills
+    )]
+    recommended_count = 0
+    for tid in set(weak_ids):
+        recommended_count += await adaptive_store.count_questions(topic_id=tid)
+    recommended_count = min(recommended_count, 30)
+
+    time_today_min = 0
+    for s in sessions:
+        dur = s.get("duration_min")
+        if not dur and s.get("ended_at") and s.get("created_at"):
+            try:
+                a = datetime.fromisoformat(s["created_at"])
+                b = datetime.fromisoformat(s["ended_at"])
+                dur = int((b - a).total_seconds() // 60)
+            except Exception:
+                dur = 0
+        time_today_min += dur or 0
+
+    recommendation = await build_recommendation(user_id, skills, errors)
+
+    return {
+        "today": today.isoformat(),
+        "due_reviews": len(due),
+        "recommended_questions": recommended_count,
+        "errors_to_review": len(errors),
+        "at_risk_topics": len(at_risk),
+        "overall_mastery": overall,
+        "overall_label": mastery_label(overall) if overall is not None else None,
+        "time_studied_min": time_today_min,
+        "recommendation": recommendation,
+        "streak_topics": sorted(
+            [{"topic_id": s["topic_id"], "topic_name": s.get("topic_name", s["topic_id"]),
+              "days_left": (date.fromisoformat(s["next_review"]) - today).days}
+             for s in due if s.get("next_review")],
+            key=lambda x: x["days_left"],
+        )[:10],
+    }
+
+
+async def build_recommendation(user_id: str, skills: list, errors: list) -> dict:
+    """Motor de recomendação: prioridade -> erros recentes, revisão vencida, tópico fraco, novo."""
+    today = _today()
+    reasons = []
+    chosen = None
+
+    if errors:
+        e = errors[0]
+        chosen = {"topic_id": e["topic_id"], "topic_name": e.get("topic_name", e["topic_id"]),
+                  "subject": e.get("subject", "")}
+        reasons = [
+            f"Você errou esta questão recentemente: {str(e.get('question', ''))[:90]}",
+            "Corrigir o erro com uma questão de recuperação reforça a mesma habilidade",
+        ]
+        minutes = 15
+
+    if not chosen:
+        due = [s for s in skills if s.get("next_review") and s["next_review"] <= today.isoformat()]
+        if due:
+            due.sort(key=lambda s: s["next_review"])
+            s = due[0]
+            chosen = {"topic_id": s["topic_id"], "topic_name": s.get("topic_name", s["topic_id"]),
+                      "subject": s.get("subject", "")}
+            days = (today - date.fromisoformat(s["next_review"])).days
+            reasons = [
+                f"Revisão vencida há {days} dia(s) — o domínio de {s.get('topic_name', '')} está em risco de esquecimento",
+                f"Domínio atual: {s.get('mastery', 0)}% ({mastery_label(s.get('mastery', 0))})",
+            ]
+            minutes = 20
+
+    if not chosen:
+        weak = sorted([s for s in skills if (s.get("mastery") or 0) < 41], key=lambda s: s["mastery"])
+        if weak:
+            s = weak[0]
+            chosen = {"topic_id": s["topic_id"], "topic_name": s.get("topic_name", s["topic_id"]),
+                      "subject": s.get("subject", "")}
+            reasons = [
+                f"Domínio atual: {s.get('mastery', 0)}% — {mastery_label(s.get('mastery', 0))}",
+                "Conteúdo com desempenho baixo precisa de prática focada",
+            ]
+            minutes = 25
+
+    if not chosen:
+        pool_meta = _question_pool_meta(POOL)
+        for tid, m in pool_meta.items():
+            if not any(s["topic_id"] == tid for s in skills):
+                chosen = {"topic_id": tid, "topic_name": m["topic_name"], "subject": m["subject"]}
+                reasons = ["Tópico ainda não estudado — comece com questões básicas para mapear o domínio"]
+                minutes = 20
+                break
+
+    if not chosen:
+        return {"has_recommendation": False, "title": "Você já domina o material disponível",
+                "reasons": ["Explore um novo tópico no mapa de domínio ou gere novos exercícios."], "minutes": 0}
+    return {
+        "has_recommendation": True,
+        "title": f"Estude {chosen['topic_name']} por {minutes} minutos",
+        "topic_id": chosen["topic_id"],
+        "topic_name": chosen["topic_name"],
+        "subject": chosen["subject"],
+        "minutes": minutes,
+        "reasons": reasons,
+    }
+
+
+@router.get("/recommend")
+async def recommend(user: dict = Depends(get_current_user)):
+    await _ensure_seeded()
+    user_id = user["email"]
+    skills = [(_decayed(s)) for s in await adaptive_store.list_skills(user_id)]
+    errors = await adaptive_store.list_errors(user_id, resolved=False)
+    rec = await build_recommendation(user_id, skills, errors)
+    return rec
+
+
+# ------------------------------------------------------------- session start
+@router.post("/session/start")
+async def session_start(req: SessionStartRequest, user: dict = Depends(get_current_user)):
+    await _ensure_seeded()
+    user_id = user["email"]
+    today = _today()
+    limit = max(3, min(20, req.limit or 8))
+
+    skills = await adaptive_store.list_skills(user_id)
+    skills_map = {s["topic_id"]: _decayed(s) for s in skills}
+    errors = await adaptive_store.list_errors(user_id, resolved=False)
+    pool_meta = _question_pool_meta(POOL)
+    used_qids = set()
+
+    async def make_item(item_type: str, title: str, reason: str, topic_id: str, q: dict,
+                        error_id: str = None, skill_id: str = None) -> dict:
+        used_qids.add(q["id"])
+        return {
+            "item_id": adaptive_store._new_id("it_"),
+            "type": item_type,
+            "title": title,
+            "reason": reason,
+            "subject": q.get("subject", ""),
+            "topic_id": topic_id,
+            "topic_name": q.get("topic_name", topic_id),
+            "skill_id": skill_id,
+            "error_id": error_id,
+            "question_id": q["id"],
+            "status": "pending",
+        }
+
+    items = []
+
+    # 1) Recuperação de erros não corrigidos
+    for e in errors[:3]:
+        if len(items) >= limit:
+            break
+        q = await _pick_question(e["topic_id"], exclude_ids=[e.get("question_id")])
+        if not q:
+            q = await adaptive_store.get_question(e.get("question_id"))
+        if not q or q["id"] in used_qids:
+            continue
+        items.append(await make_item(
+            "recuperacao", "Questão de recuperação",
+            f"Você errou isso antes ({e.get('error_type_label') or 'erro'}) — reteste a mesma habilidade",
+            e["topic_id"], q, error_id=e["id"],
+        ))
+
+    # 2) Revisões vencidas (esquecimento)
+    due = [s for s in skills if s.get("next_review") and s["next_review"] <= today.isoformat()]
+    due.sort(key=lambda s: s["next_review"])
+    for s in due[:2]:
+        if len(items) >= limit:
+            break
+        q = await _question_for_skill(s, exclude_ids=list(used_qids))
+        if not q:
+            continue
+        days = (today - date.fromisoformat(s["next_review"])).days
+        items.append(await make_item(
+            "revisao", "Revisão crítica",
+            f"Revisão vencida há {days} dia(s) — recuperar antes de esquecer",
+            s["topic_id"], q, skill_id=s["topic_id"],
+        ))
+
+    # 3) Tópicos fracos
+    weak = sorted([s for s in skills if (s.get("mastery") or 0) < 61], key=lambda s: s["mastery"])
+    for s in weak[:2]:
+        if len(items) >= limit:
+            break
+        q = await _question_for_skill(s, exclude_ids=list(used_qids))
+        if not q:
+            continue
+        items.append(await make_item(
+            "fraco", "Conteúdo fraco",
+            f"Domínio atual {s.get('mastery', 0)}% — {mastery_label(s.get('mastery', 0))}",
+            s["topic_id"], q, skill_id=s["topic_id"],
+        ))
+
+    # 4) Tópicos novos + preenchimento
+    if len(items) < limit:
+        unknown = [tid for tid in pool_meta if tid not in skills_map]
+        random.shuffle(unknown)
+        for tid in unknown[:2]:
+            if len(items) >= limit:
+                break
+            q = await _pick_question(tid, exclude_ids=list(used_qids))
+            if not q:
+                continue
+            items.append(await make_item(
+                "novo", "Questão nova",
+                "Tópico ainda não estudado — primeira avaliação do domínio",
+                tid, q,
+            ))
+        # preencher com questões extras (fracos/novos/qualquer tópico disponível)
+        if len(items) < limit:
+            for tid, m in pool_meta.items():
+                if len(items) >= limit:
+                    break
+                q = await _pick_question(tid, exclude_ids=list(used_qids))
+                if not q:
+                    continue
+                skill = skills_map.get(tid)
+                if skill and (skill.get("mastery") or 0) >= 76:
+                    continue
+                items.append(await make_item(
+                    "intercalado", "Mini teste",
+                    "Intercalar assuntos treina escolher a estratégia certa",
+                    tid, q, skill_id=tid,
+                ))
+
+    if not items:
+        raise HTTPException(status_code=404, detail="Nenhuma questão disponível. Gere exercícios primeiro.")
+
+    items = _interleave(items)
+    session = await adaptive_store.add_session(user_id, {
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "items": items,
+        "stats": {"correct": 0, "wrong": 0, "dont_know": 0, "total": len(items)},
+    })
+
+    return {
+        "session_id": session["id"],
+        "created_at": session["created_at"],
+        "total": len(items),
+        "items": [
+            {**it,
+             "question": _pub_question(await adaptive_store.get_question(it["question_id"]))}
+            for it in session["items"]
+        ],
+    }
+
+
+# ----------------------------------------------------------- session answer
+@router.post("/session/{session_id}/answer")
+async def session_answer(session_id: str, req: AnswerRequest, user: dict = Depends(get_current_user)):
+    await _ensure_seeded()
+    user_id = user["email"]
+    session = await adaptive_store.get_session(user_id, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+
+    item = next((it for it in session.get("items", []) if it["item_id"] == req.item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item não encontrado na sessão")
+
+    question = await adaptive_store.get_question(item["question_id"])
+    if not question:
+        raise HTTPException(status_code=404, detail="Questão não encontrada")
+
+    dont_know = bool(req.dont_know)
+    if dont_know:
+        correct = False
+        result = "dont_know"
+    else:
+        if question.get("options"):
+            correct = req.answer == question.get("correct_answer")
+        else:
+            expected = (question.get("answer") or "").strip().lower()
+            given = (req.answer_text or "").strip().lower()
+            correct = bool(expected) and given == expected
+        result = "correct" if correct else "wrong"
+
+    confidence = max(0, min(100, req.confidence or 50))
+    difficulty = question.get("difficulty") or 2
+
+    # ---- atualiza domínio do tópico (skill)
+    topic_id = item["topic_id"]
+    skill = await adaptive_store.get_skill(user_id, topic_id)
+    if not skill:
+        skill = initial_skill(topic_id, item.get("subject", ""), item.get("topic_name", topic_id))
+    old_mastery = _decayed(skill).get("mastery", 0) if skill.get("mastery") else 0
+    new_skill = apply_result(skill, result, confidence, difficulty, _today())
+    await adaptive_store.upsert_skill(user_id, new_skill)
+    await adaptive_store.add_review(user_id, {
+        "topic_id": topic_id,
+        "topic_name": item.get("topic_name", topic_id),
+        "result": result,
+        "confidence": confidence,
+        "interval_days": new_skill["interval_days"],
+        "next_review": new_skill["next_review"],
+        "question_id": question["id"],
+    })
+    await adaptive_store.add_attempt(user_id, {
+        "question_id": question["id"],
+        "session_id": session_id,
+        "item_id": req.item_id,
+        "topic_id": topic_id,
+        "topic_name": item.get("topic_name", topic_id),
+        "subject": item.get("subject", ""),
+        "correct": correct,
+        "result": result,
+        "confidence": confidence,
+        "time_spent_sec": req.time_spent_sec,
+        "hints_used": req.hints_used,
+        "difficulty": difficulty,
+    })
+
+    # ---- caderno de erros + análise + recuperação
+    analysis = None
+    recovery_question = None
+    error_id = None
+    suggested_type = None
+
+    if not correct:
+        suggested_type = await _classify_error_ai(question, req.answer, dont_know)
+        if not suggested_type:
+            suggested_type = _classify_error_heuristic(req.answer, question.get("correct_answer"), dont_know, question)
+        error = await adaptive_store.add_error(user_id, {
+            "question_id": question["id"],
+            "question": question.get("question", ""),
+            "student_answer": req.answer_text or req.answer,
+            "correct_answer": question.get("correct_answer"),
+            "subject": item.get("subject", ""),
+            "topic_id": topic_id,
+            "topic_name": item.get("topic_name", topic_id),
+            "difficulty": difficulty,
+            "error_type": suggested_type,
+            "error_type_label": ERROR_TYPE_LABELS.get(suggested_type, suggested_type),
+            "explanation": question.get("explanation", ""),
+            "confidence": confidence,
+            "repetitions": 0,
+        })
+        error_id = error["id"]
+        analysis = {
+            "error_type": suggested_type,
+            "error_type_label": ERROR_TYPE_LABELS.get(suggested_type, suggested_type),
+            **(_analysis_for_error(suggested_type, question, item.get("topic_name", topic_id))),
+            "explanation": question.get("explanation", ""),
+        }
+        recovery = await _build_recovery_question(topic_id, question["id"])
+        if recovery:
+            recovery_question = {
+                "question": _pub_question(recovery),
+                "error_id": error_id,
+            }
+
+    # ---- insere a questão de recuperação na sessão (logo após este item)
+    answered_pos = next(
+        (i for i, it in enumerate(session.get("items", [])) if it["item_id"] == req.item_id), -1
+    )
+    if recovery_question and answered_pos >= 0:
+        rec_item = {
+            "item_id": adaptive_store._new_id("it_"),
+            "type": "recuperacao",
+            "title": "Questão de recuperação",
+            "reason": f"Você errou em {item.get('topic_name', topic_id)} — teste novamente a mesma habilidade",
+            "subject": item.get("subject", ""),
+            "topic_id": topic_id,
+            "topic_name": item.get("topic_name", topic_id),
+            "skill_id": topic_id,
+            "error_id": error_id,
+            "question_id": recovery["id"],
+            "status": "pending",
+        }
+        session["items"].insert(answered_pos + 1, rec_item)
+
+    # ---- atualiza sessão
+    stats = dict(session.get("stats", {}))
+    stats[result] = stats.get(result, 0) + 1
+    stats["total"] = len(session["items"])
+    for it in session["items"]:
+        if it["item_id"] == req.item_id:
+            it["status"] = "answered"
+            it["result"] = result
+    await adaptive_store.update_session(user_id, session_id, {
+        "stats": stats,
+        "items": session["items"],
+        "answered_count": sum(1 for it in session["items"] if it["status"] == "answered"),
+    })
+
+    return {
+        "correct": correct,
+        "result": result,
+        "explanation": question.get("explanation", ""),
+        "mastery_now": new_skill["mastery"],
+        "mastery_old": round(old_mastery, 1),
+        "mastery_label": mastery_label(new_skill["mastery"]),
+        "next_review": new_skill["next_review"],
+        "interval_days": new_skill["interval_days"],
+        "error_id": error_id,
+        "analysis": analysis,
+        "recovery_question": recovery_question,
+        "session_stats": stats,
+        "remaining": sum(1 for it in session["items"] if it["status"] == "pending"),
+        "items": session["items"],
+    }
+
+
+# ------------------------------------------------------------ session end
+@router.post("/session/{session_id}/end")
+async def session_end(session_id: str, req: SessionEndRequest, user: dict = Depends(get_current_user)):
+    user_id = user["email"]
+    session = await adaptive_store.get_session(user_id, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+
+    now = datetime.now(timezone.utc)
+    started = session.get("started_at") or session.get("created_at")
+    duration_min = 0
+    if started:
+        try:
+            duration_min = int((now - datetime.fromisoformat(started)).total_seconds() // 60) or 1
+        except Exception:
+            duration_min = req.stats.get("duration_min", 0) or 1
+
+    stats = dict(session.get("stats", {}))
+    stats.update({k: v for k, v in req.stats.items() if k in ("correct", "wrong", "dont_know", "total")})
+    total = stats.get("total") or sum(1 for it in session["items"] if it.get("result"))
+    correct = stats.get("correct", 0)
+    wrong = stats.get("wrong", 0)
+    dont_know = stats.get("dont_know", 0)
+
+    answered = [it for it in session["items"] if it.get("result")]
+    topic_rows = {}
+    for it in answered:
+        row = topic_rows.setdefault(it["topic_id"], {
+            "topic_id": it["topic_id"], "topic_name": it.get("topic_name", it["topic_id"]),
+            "subject": it.get("subject", ""), "correct": 0, "wrong": 0,
+        })
+        row["correct" if it["result"] == "correct" else "wrong"] += 1
+
+    await adaptive_store.update_session(user_id, session_id, {
+        "status": "finished",
+        "ended_at": now.isoformat(),
+        "duration_min": duration_min,
+        "stats": stats,
+    })
+
+    return {
+        "session_id": session_id,
+        "duration_min": duration_min,
+        "stats": stats,
+        "score": round(correct / total * 100, 1) if total else 0,
+        "strong_topics": sorted(
+            [r for r in topic_rows.values() if r["correct"] > r["wrong"]],
+            key=lambda r: r["correct"], reverse=True,
+        )[:3],
+        "weak_topics": sorted(
+            [r for r in topic_rows.values() if r["wrong"] >= r["correct"]],
+            key=lambda r: r["wrong"], reverse=True,
+        )[:3],
+    }
+
+
+# ------------------------------------------------------------------- errors
+@router.get("/errors")
+async def errors_list(subject: str = "", topic_id: str = "", resolved: Optional[bool] = None,
+                      user: dict = Depends(get_current_user)):
+    user_id = user["email"]
+    items = await adaptive_store.list_errors(
+        user_id, subject=subject or None, topic_id=topic_id or None, resolved=resolved
+    )
+    return {"errors": items, "error_types": ERROR_TYPE_LABELS}
+
+
+@router.post("/errors/{error_id}/classify")
+async def errors_classify(error_id: str, req: ErrorClassifyRequest, user: dict = Depends(get_current_user)):
+    user_id = user["email"]
+    if req.error_type not in ERROR_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de erro inválido")
+    updated = await adaptive_store.update_error(user_id, error_id, {
+        "error_type": req.error_type,
+        "error_type_label": ERROR_TYPE_LABELS[req.error_type],
+        "classified_by_student": True,
+        "note": req.note,
+    })
+    if not updated:
+        raise HTTPException(status_code=404, detail="Erro não encontrado")
+    return {"ok": True, "error": updated}
+
+
+@router.post("/errors/{error_id}/resolve")
+async def errors_resolve(error_id: str, req: ErrorResolveRequest, user: dict = Depends(get_current_user)):
+    user_id = user["email"]
+    error = await adaptive_store.get_error(user_id, error_id)
+    if not error:
+        raise HTTPException(status_code=404, detail="Erro não encontrado")
+    updated = await adaptive_store.update_error(user_id, error_id, {
+        "resolved": True,
+        "resolved_at": datetime.now(timezone.utc).isoformat(),
+        "correction": req.correction or error.get("correction", ""),
+        "repetitions": (error.get("repetitions") or 0) + 1,
+    })
+    return {"ok": True, "error": updated}
+
+
+# ------------------------------------------------------------------- domain
+@router.get("/domain")
+async def domain(user: dict = Depends(get_current_user)):
+    await _ensure_seeded()
+    user_id = user["email"]
+    skills = [_decayed(s) for s in await adaptive_store.list_skills(user_id)]
+    today = _today().isoformat()
+
+    by_subject = {}
+    for s in skills:
+        subj = by_subject.setdefault(s.get("subject", "outros"), {
+            "subject": s.get("subject", "outros"),
+            "topics": [],
+        })
+        mastery = s.get("mastery") or 0
+        subj["topics"].append({
+            "topic_id": s["topic_id"],
+            "topic_name": s.get("topic_name", s["topic_id"]),
+            "mastery": mastery,
+            "label": mastery_label(mastery),
+            "state": mastery_state(mastery),
+            "reviews_count": s.get("reviews_count", 0),
+            "correct_count": s.get("correct_count", 0),
+            "wrong_count": s.get("wrong_count", 0),
+            "next_review": s.get("next_review"),
+            "overdue": bool(s.get("next_review") and s["next_review"] <= today),
+            "interval_days": s.get("interval_days", 0),
+            "streak": s.get("streak", 0),
+            "confidence": int((s.get("confidence_sum") or 0) / max(1, s.get("reviews_count", 0))) if s.get("reviews_count") else 0,
+        })
+
+    result = []
+    for subj in by_subject.values():
+        subj["topics"].sort(key=lambda t: t["mastery"])
+        subj["mastery"] = round(sum(t["mastery"] for t in subj["topics"]) / len(subj["topics"]), 1) if subj["topics"] else None
+        result.append(subj)
+    result.sort(key=lambda s: s["mastery"] if s["mastery"] is not None else -1)
+    return {"subjects": result}
+
+
+@router.get("/topics")
+async def topics(user: dict = Depends(get_current_user)):
+    await _ensure_seeded()
+    pool_meta = _question_pool_meta(POOL)
+    topics = []
+    for tid, m in pool_meta.items():
+        topics.append({"topic_id": tid, "topic_name": m["topic_name"],
+                       "subject": m["subject"], "count": m["count"]})
+    topics.sort(key=lambda t: (t["subject"], t["topic_name"]))
+    return {"topics": topics}

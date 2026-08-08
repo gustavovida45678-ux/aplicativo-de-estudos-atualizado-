@@ -3,7 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import secrets
 from models.user import (
-    User, UserCreate, UserLogin, UserResponse, Token,
+    User, UserCreate, UserLogin, GuestAccess, UserResponse, Token,
     RegisterResponse, VerifyEmailRequest, ResendVerificationRequest
 )
 from utils.auth import (
@@ -154,6 +154,49 @@ async def resend_verification(payload: ResendVerificationRequest):
     except Exception as e:
         logger.error(f"Error resending verification: {e}")
         raise HTTPException(500, "Erro ao reenviar confirmação")
+
+
+@router.post("/guest", response_model=Token)
+async def guest_access(payload: GuestAccess):
+    """Guest access: create or update user by email (no password/verification needed)."""
+    try:
+        email = payload.email.lower().strip()
+        name = payload.name.strip()
+
+        user = await db.users.find_one({"email": email})
+        if user:
+            if not user.get("is_active", True):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Usuário inativo"
+                )
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"name": name, "email_verified": True}}
+            )
+        else:
+            new_user = User(
+                email=email,
+                name=name,
+                hashed_password="",
+                email_verified=True,
+            )
+            user_dict = new_user.model_dump()
+            user_dict['created_at'] = user_dict['created_at'].isoformat()
+            await db.users.insert_one(user_dict)
+
+        access_token = create_access_token(data={"sub": email})
+        logger.info(f"Guest access granted: {email}")
+        return Token(access_token=access_token, token_type="bearer")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in guest access: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro no acesso rápido"
+        )
 
 
 @router.post("/login", response_model=Token)

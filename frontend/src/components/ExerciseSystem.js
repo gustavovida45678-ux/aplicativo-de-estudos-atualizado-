@@ -5,6 +5,7 @@ import StudyTimer from './StudyTimer';
 import ExerciseGenerator from './ExerciseGenerator';
 import { BookOpen, Clock, Calendar, BarChart3, Sparkles } from 'lucide-react';
 import axios from 'axios';
+import { BACKEND_URL } from '../lib/backendUrl';
 
 export default function ExerciseSystem() {
   const [activeTab, setActiveTab] = useState('exercises');
@@ -16,7 +17,7 @@ export default function ExerciseSystem() {
 
   const loadStats = async () => {
     try {
-      const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/study/stats`);
+      const response = await axios.get(`${BACKEND_URL}/api/study/stats`);
       setStats(response.data);
     } catch (error) {
       console.error('Error loading stats:', error);

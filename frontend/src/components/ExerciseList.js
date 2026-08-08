@@ -5,8 +5,8 @@ import { Badge } from './ui/badge';
 import { ChevronRight, CheckCircle, XCircle, BookOpen, Brain, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/study`;
 
 export default function ExerciseList({ onStatsUpdate }) {

@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Users, Calendar, BookOpen, LogOut, User, Mail, Clock, Activity, CheckCircle2, Zap, Brain, Globe, Shield, Code, Terminal, ExternalLink } from "lucide-react";
+import { BACKEND_URL } from "../lib/backendUrl";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const ACTIVE_SUBJECTS = [

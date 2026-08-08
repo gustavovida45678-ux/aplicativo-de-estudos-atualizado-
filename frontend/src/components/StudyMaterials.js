@@ -24,8 +24,8 @@ import JudgePanel from './JudgePanel';
 import { VIDEO_EXERCISES } from '../data/videoExercises';
 import { getAvaliacaoByPart } from '../data/avaliacoesDisciplinas';
 import { SIMULADOS_CRONOGRAMA } from '../data/simuladosCronograma';
+import { BACKEND_URL } from '../lib/backendUrl';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api/study`;
 
 const yt = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;

@@ -32,6 +32,12 @@ class TokenRequest(BaseModel):
     url: str = "https://moodle.ifg.edu.br"
 
 
+class ConnectRequest(BaseModel):
+    username: str
+    password: str
+    url: str = "https://moodle.ifg.edu.br"
+
+
 def _load_config():
     try:
         with open(CONFIG_PATH, "r") as f:
@@ -489,6 +495,45 @@ def moodle_sync(current_user: dict = Depends(get_current_user)):
     _cache_set("deadlines", data["deadlines"], user_id)
     _cache_set("announcements", data["announcements"], user_id)
     return {"success": True, "synced": True, "last_sync": datetime.utcnow().isoformat()}
+
+
+@router.post("/connect")
+def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current_user)):
+    """Connect using IFG username/password. Moodle issues a token automatically
+    via login/token.php (same flow as the official Moodle Mobile app)."""
+    user_id = current_user.get("id")
+    base = _base(req.url)
+    try:
+        r = requests.post(
+            f"{base}/login/token.php",
+            data={
+                "username": req.username.strip(),
+                "password": req.password,
+                "service": "moodle_mobile_app",
+            },
+            timeout=25,
+        )
+        data = r.json()
+    except Exception as e:
+        raise HTTPException(
+            status_code=502, detail=f"Não foi possível acessar o Moodle: {e}"
+        )
+    if isinstance(data, dict) and data.get("token"):
+        cfg = {"url": base, "token": data["token"]}
+        _save_config(cfg, user_id)
+        try:
+            info = _call(base, data["token"], "core_webservice_get_site_info")
+            return {
+                "success": True,
+                "valid": True,
+                "site": info.get("sitename", "Moodle"),
+                "user": info.get("fullname", req.username.strip()),
+                "last_sync": _cache_get("last_sync", user_id),
+            }
+        except HTTPException:
+            return {"success": True, "valid": True, "site": "Moodle"}
+    detail = data.get("error", "Falha de autenticação.") if isinstance(data, dict) else "Falha de autenticação."
+    raise HTTPException(status_code=401, detail=detail)
 
 
 @router.post("/token")

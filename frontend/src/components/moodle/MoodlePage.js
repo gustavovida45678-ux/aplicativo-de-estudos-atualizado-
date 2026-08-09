@@ -26,26 +26,37 @@ export function MoodlePage({ onClose }) {
   const [lastSync, setLastSync] = useState(null);
   const [moodleConfigured, setMoodleConfigured] = useState(false);
   const [configChecked, setConfigChecked] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [tokenInput, setTokenInput] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [useTokenOption, setUseTokenOption] = useState(false);
 
   const connectMoodle = async () => {
-    if (!tokenInput.trim() || connecting) return;
+    if (connecting) return;
+    if (!useTokenOption && (!username.trim() || !password)) return;
+    if (useTokenOption && !tokenInput.trim()) return;
     setConnecting(true);
     try {
-      const res = await axios.post(`${API}/token`, { token: tokenInput.trim() });
+      const payload = useTokenOption
+        ? { token: tokenInput.trim() }
+        : { username: username.trim(), password };
+      const res = await axios.post(`${API}/${useTokenOption ? 'token' : 'connect'}`, payload);
       if (res.data.valid) {
         toast.success('Moodle conectado com sucesso!');
         setMoodleConfigured(true);
+        setUsername('');
+        setPassword('');
         setTokenInput('');
         setLastSync(new Date());
         await fetchAll();
       } else {
-        toast.error('Token inválido. Verifique o token e tente novamente.');
+        toast.error('Falha na conexão. Verifique os dados e tente novamente.');
       }
     } catch (e) {
       console.error('Erro ao conectar ao Moodle:', e);
-      toast.error('Não foi possível conectar ao Moodle. Verifique o token.');
+      const detail = e.response?.data?.detail;
+      toast.error(detail ? `Não foi possível conectar: ${detail}` : 'Não foi possível conectar ao Moodle. Verifique CPF e senha.');
     } finally {
       setConnecting(false);
     }
@@ -223,35 +234,50 @@ export function MoodlePage({ onClose }) {
           <div className="moodle-not-configured">
             <Shield size={48} color="#f59e0b" />
             <h3>Moodle não conectado</h3>
-            <p>Conecte sua conta do Moodle IFG para ver atividades, prazos, disciplinas e avisos direto no app.</p>
-            <div className="config-steps">
-              <div className="step">
-                <span className="step-num">1</span>
-                <div>
-                  <strong>Acesse o Moodle IFG</strong>
-                  <p>Entre em <a href={MOODLE_URL} target="_blank" rel="noopener noreferrer">moodle.ifg.edu.br</a></p>
-                </div>
-              </div>
-              <div className="step">
-                <span className="step-num">2</span>
-                <div>
-                  <strong>Gere um token</strong>
-                  <p>Perfil > Preferências > Tokens de serviço web > Criar token</p>
-                </div>
-              </div>
-            </div>
-            <div className="moodle-token-form">
+            <p>Conecte com seu CPF e senha do IFG para ver atividades, prazos, disciplinas e avisos direto no app.</p>
+            <div className="moodle-login-form">
               <input
                 type="text"
-                placeholder="Cole aqui o token do Moodle"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
+                inputMode="numeric"
+                placeholder="CPF (somente números)"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') connectMoodle(); }}
                 disabled={connecting}
               />
-              <button className="moodle-btn primary" onClick={connectMoodle} disabled={connecting || !tokenInput.trim()}>
-                {connecting ? <><Loader2 size={16} className="spin" /> Conectando...</> : <><Unlock size={16} /> Conectar</>}
+              <input
+                type="password"
+                placeholder="Senha do IFG"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') connectMoodle(); }}
+                disabled={connecting}
+              />
+              <button className="moodle-btn primary" onClick={connectMoodle} disabled={connecting || !username.trim() || !password}>
+                {connecting ? <><Loader2 size={16} className="spin" /> Conectando...</> : <><Unlock size={16} /> Entrar no Moodle</>}
               </button>
+              {!useTokenOption ? (
+                <button className="moodle-btn secondary" onClick={() => setUseTokenOption(true)} disabled={connecting}>
+                  <Key size={14} /> Já tenho um token
+                </button>
+              ) : (
+                <div className="moodle-token-form">
+                  <input
+                    type="text"
+                    placeholder="Cole aqui o token do Moodle"
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') connectMoodle(); }}
+                    disabled={connecting}
+                  />
+                  <button className="moodle-btn primary" onClick={connectMoodle} disabled={connecting || !tokenInput.trim()}>
+                    {connecting ? <><Loader2 size={16} className="spin" /> Conectando...</> : 'Conectar'}
+                  </button>
+                  <button className="moodle-btn secondary" onClick={() => setUseTokenOption(false)} disabled={connecting}>
+                    Usar CPF
+                  </button>
+                </div>
+              )}
             </div>
             <button className="moodle-btn secondary" onClick={openMoodle}>
               <ExternalLink size={16} /> Abrir Moodle IFG

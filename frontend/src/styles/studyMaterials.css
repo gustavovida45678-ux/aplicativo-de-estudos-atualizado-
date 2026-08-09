@@ -2936,6 +2936,10 @@
 .moodle-token-form input { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #1a1a1a; color: #e5e5e5; font-size: 13px; font-family: inherit; }
 .moodle-token-form input:focus { outline: none; border-color: #2563eb; }
 .moodle-token-form input::placeholder { color: #64748b; }
+.moodle-login-form { display: flex; flex-direction: column; gap: 8px; max-width: 380px; margin: 0 auto 14px; }
+.moodle-login-form input { padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #1a1a1a; color: #e5e5e5; font-size: 14px; font-family: inherit; }
+.moodle-login-form input:focus { outline: none; border-color: #2563eb; }
+.moodle-login-form input::placeholder { color: #64748b; }
 .moodle-tabs { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid #333; overflow-x: auto; }
 .moodle-tabs button { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border: none; background: none; color: #94a3b8; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
 .moodle-tabs button.active { color: #60a5fa; border-bottom-color: #60a5fa; }

@@ -277,7 +277,7 @@ export function addChildNode(elements, parentId, text, opts) {
   return { elements: [...elements, conn, node], node };
 }
 
-export function addSiblingNode(elements, siblingId, text) {
+export function addSiblingNode(elements, siblingId, text, opts = {}) {
   const sibling = elements.find((e) => e.id === siblingId);
   if (!sibling) return { elements, node: null };
   const parentId = sibling.parentId;
@@ -285,7 +285,7 @@ export function addSiblingNode(elements, siblingId, text) {
     color: "#ffffff",
     bg: "#1f2937",
     borderColor: sibling.borderColor || "#60a5fa",
-    fontSize: 14,
+    fontSize: opts.fontSize || 14,
     parentId,
   });
   const out = [...elements, node];

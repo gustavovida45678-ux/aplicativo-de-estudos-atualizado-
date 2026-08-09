@@ -33,6 +33,7 @@ export const GRID_MODES = {
   NONE: "none",
   DOTS: "dots",
   LINES: "lines",
+  RULED: "ruled",
 };
 
 export const MINDMAP_DIRECTIONS = {
@@ -46,6 +47,36 @@ export const STORAGE_KEY = "virtual_whiteboard_state_v2";
 
 export const MIN_ZOOM = 0.25;
 export const MAX_ZOOM = 4;
+
+export const STROKE_PRESETS = [
+  { value: 0.5, label: "0.5" },
+  { value: 1, label: "1" },
+  { value: 2, label: "2" },
+  { value: 3, label: "3" },
+  { value: 4, label: "4" },
+  { value: 6, label: "6" },
+  { value: 8, label: "8" },
+];
+
+export const TOOL_PROFILES = {
+  pen: { width: 3, smoothing: 0.5, stabilizer: "medium", pressure: true, autoZoom: false },
+  writing: { width: 1, smoothing: 0.6, stabilizer: "high", pressure: true, autoZoom: true },
+  marker: { width: 6, smoothing: 0.3, stabilizer: "low", pressure: true, autoZoom: false },
+  highlighter: { width: 8, smoothing: 0.2, stabilizer: "low", pressure: false, autoZoom: false },
+};
+
+export const STABILIZER_LEVELS = {
+  off: { smoothing: 0, iterations: 0, name: "Desligado" },
+  low: { smoothing: 0.3, iterations: 1, name: "Baixa" },
+  medium: { smoothing: 0.6, iterations: 2, name: "Média" },
+  high: { smoothing: 0.85, iterations: 3, name: "Alta" },
+};
+
+export const MINDMAP_TEXT_SIZES = {
+  small: 12,
+  medium: 15,
+  large: 18,
+};
 
 export const COLORS = [
   "#ffffff",

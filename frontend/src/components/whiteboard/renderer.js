@@ -35,6 +35,34 @@ export function drawGrid(ctx, w, h, pan, scale, mode) {
       }
     }
     ctx.fill();
+  } else if (mode === "ruled") {
+    const lineSpacing = 28 * scale;
+    while (lineSpacing < 16) lineSpacing *= 2;
+    while (lineSpacing > 60) lineSpacing /= 2;
+    const y0ruled = (pan.y % lineSpacing) - lineSpacing;
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.05)";
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (let y = y0ruled; y <= h + lineSpacing; y += lineSpacing) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.12)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let y = y0ruled; y <= h + lineSpacing; y += lineSpacing * 4) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+    }
+    ctx.stroke();
+    const marginX = (pan.x % (w * 0.15)) - w * 0.15;
+    ctx.strokeStyle = "rgba(239, 68, 68, 0.15)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-marginX, 0);
+    ctx.lineTo(-marginX, h);
+    ctx.stroke();
   }
 }
 
@@ -71,13 +99,18 @@ function drawArrowHead(ctx, tip, angle, size) {
   ctx.fill();
 }
 
-export function strokeWidthAt(stroke, i) {
+export function strokeWidthAt(stroke, i, scale = 1, zoomIndependent = false) {
   const p = stroke.points[i];
   const pv = p && p.p != null ? p.p : 0.5;
-  return (stroke.width || 3) * clamp(pv, 0.35, 1);
+  const baseWidth = stroke.width || 3;
+  const pressureFactor = clamp(pv, 0.35, 1);
+  if (zoomIndependent) {
+    return baseWidth * pressureFactor;
+  }
+  return baseWidth * clamp(pv, 0.35, 1) * scale;
 }
 
-export function renderStrokeElement(ctx, s) {
+export function renderStrokeElement(ctx, s, scale = 1, zoomIndependent = false) {
   const pts = s.points;
   const n = pts.length;
   if (!pts || n < 2) return;
@@ -87,8 +120,8 @@ export function renderStrokeElement(ctx, s) {
   const taperStart = n < 6 ? 0.7 : 0.35;
   const taperEnd = n < 6 ? 0.7 : 0.2;
   for (let i = 0; i < n - 1; i++) {
-    const w1 = strokeWidthAt(s, i) * (i === 0 ? taperStart : 1);
-    const w2 = strokeWidthAt(s, i + 1) * (i + 1 === n - 1 ? taperEnd : 1);
+    const w1 = strokeWidthAt(s, i, scale, zoomIndependent) * (i === 0 ? taperStart : 1);
+    const w2 = strokeWidthAt(s, i + 1, scale, zoomIndependent) * (i + 1 === n - 1 ? taperEnd : 1);
     ctx.beginPath();
     ctx.moveTo(pts[i].x, pts[i].y);
     ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
@@ -278,7 +311,7 @@ export function renderConnectorElement(ctx, c, from, to) {
   }
 }
 
-export function renderElements(ctx, elements, mapById) {
+export function renderElements(ctx, elements, mapById, scale = 1, zoomIndependent = false) {
   // Camada 1: conectores
   for (const el of elements) {
     if (el.type === "connector") {
@@ -293,7 +326,7 @@ export function renderElements(ctx, elements, mapById) {
   }
   // Camada 3: tracos
   for (const el of elements) {
-    if (el.type === "stroke") renderStrokeElement(ctx, el);
+    if (el.type === "stroke") renderStrokeElement(ctx, el, scale, zoomIndependent);
   }
   // Camada 4: textos
   for (const el of elements) {

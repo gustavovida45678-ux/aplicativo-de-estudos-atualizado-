@@ -69,6 +69,10 @@ import {
   makeGroup,
   loadState,
   saveState,
+  STROKE_PRESETS,
+  TOOL_PROFILES,
+  STABILIZER_LEVELS,
+  MINDMAP_TEXT_SIZES,
 } from "./whiteboard/core";
 import {
   dist2d,
@@ -172,6 +176,23 @@ function VirtualWhiteboard() {
 
   const [mindmapDirection, setMindmapDirection] = useState(MINDMAP_DIRECTIONS.LEFT_RIGHT);
   const [mindmapPalette, setMindmapPalette] = useState(true);
+
+  const [toolProfile, setToolProfile] = useState("pen");
+  const toolProfileRef = useRef(toolProfile);
+  const [stabilizerLevel, setStabilizerLevel] = useState("medium");
+  const stabilizerLevelRef = useRef(stabilizerLevel);
+  const [pressureEnabled, setPressureEnabled] = useState(true);
+  const pressureEnabledRef = useRef(pressureEnabled);
+  const [pressureMin, setPressureMin] = useState(0.35);
+  const pressureMinRef = useRef(pressureMin);
+  const [pressureMax, setPressureMax] = useState(1);
+  const pressureMaxRef = useRef(pressureMax);
+  const [autoZoomWriting, setAutoZoomWriting] = useState(false);
+  const autoZoomWritingRef = useRef(autoZoomWriting);
+  const [mindmapTextSize, setMindmapTextSize] = useState("medium");
+  const mindmapTextSizeRef = useRef(mindmapTextSize);
+  const [showPenCursor, setShowPenCursor] = useState(true);
+  const showPenCursorRef = useRef(showPenCursor);
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
@@ -281,6 +302,30 @@ function VirtualWhiteboard() {
   useEffect(() => {
     spaceDownRef.current = spaceDown;
   }, [spaceDown]);
+  useEffect(() => {
+    toolProfileRef.current = toolProfile;
+  }, [toolProfile]);
+  useEffect(() => {
+    stabilizerLevelRef.current = stabilizerLevel;
+  }, [stabilizerLevel]);
+  useEffect(() => {
+    pressureEnabledRef.current = pressureEnabled;
+  }, [pressureEnabled]);
+  useEffect(() => {
+    pressureMinRef.current = pressureMin;
+  }, [pressureMin]);
+  useEffect(() => {
+    pressureMaxRef.current = pressureMax;
+  }, [pressureMax]);
+  useEffect(() => {
+    autoZoomWritingRef.current = autoZoomWriting;
+  }, [autoZoomWriting]);
+  useEffect(() => {
+    mindmapTextSizeRef.current = mindmapTextSize;
+  }, [mindmapTextSize]);
+  useEffect(() => {
+    showPenCursorRef.current = showPenCursor;
+  }, [showPenCursor]);
 
   // ---------------- Render loop ----------------
   const mapById = useCallback(() => {
@@ -305,7 +350,7 @@ function VirtualWhiteboard() {
     sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawGrid(sctx, w / dpr, h / dpr, p, s, gridModeRef.current);
     sctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * p.x, dpr * p.y);
-    renderElements(sctx, elementsRef.current, mapById());
+    renderElements(sctx, elementsRef.current, mapById(), s, true);
     sctx.setTransform(1, 0, 0, 1, 0, 0);
     drawMinimap();
   }, [mapById]);
@@ -361,7 +406,7 @@ function VirtualWhiteboard() {
     ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * p.x, dpr * p.y);
 
     if (liveStrokeRef.current) {
-      renderStrokeElement(ctx, liveStrokeRef.current);
+      renderStrokeElement(ctx, liveStrokeRef.current, s, true);
     }
     if (tempShapeRef.current) {
       renderShapeElement(ctx, tempShapeRef.current);
@@ -398,6 +443,7 @@ function VirtualWhiteboard() {
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     drawMinimap();
+    drawPenCursor(ctx);
   }, [drawStaticScene, drawMinimap, mapById]);
 
   const drawMoveDragOverlay = useCallback(
@@ -478,6 +524,38 @@ function VirtualWhiteboard() {
     },
     [mapById]
   );
+
+  const drawPenCursor = useCallback((ctx) => {
+    if (!showPenCursorRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ptr = pointerRef.current;
+    if (!ptr || !ptr.active || ptr.type !== "pen") return;
+    const t = toolRef.current;
+    if (t !== TOOLS.PEN) return;
+
+    const s = scaleRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    const profile = TOOL_PROFILES[toolProfileRef.current] || TOOL_PROFILES.pen;
+    const baseWidth = profile.width;
+    const cursorRadius = (baseWidth / 2) * s * dpr;
+
+    const mouseX = (ptr.last?.sx ?? rect.width / 2) * dpr;
+    const mouseY = (ptr.last?.sy ?? rect.height / 2) * dpr;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, Math.max(2, cursorRadius), 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(88, 166, 255, 0.8)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, Math.max(1, cursorRadius - 1), 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(13, 17, 23, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }, []);
 
   // ---------------- Dimensionamento / DPR ----------------
   const resizeCanvas = useCallback(() => {
@@ -865,7 +943,8 @@ function VirtualWhiteboard() {
   const eraseAt = useCallback(
     (point, mode) => {
       const els = elementsRef.current;
-      const radius = Math.max(10 / scaleRef.current, strokeWidthRef.current * 2.2);
+      const s = scaleRef.current;
+      const radius = Math.max(10 / s, (strokeWidthRef.current || 3) * 2.2 / s);
       let changed = false;
       let next = els;
 
@@ -888,6 +967,10 @@ function VirtualWhiteboard() {
           }
         }
         next = out;
+      } else if (mode === ERASER_MODES.SELECT) {
+        const hit = hitTest(point);
+        selectElements(hit ? [hit.id] : []);
+        return;
       }
 
       if (changed) {
@@ -931,9 +1014,21 @@ function VirtualWhiteboard() {
 
       if (t === TOOLS.PEN) {
         beginGesture();
+        const profile = TOOL_PROFILES[toolProfileRef.current] || TOOL_PROFILES.pen;
+        const strokeW = profile.width;
         liveStrokeRef.current = {
-          ...makeStroke([point], strokeColorRef.current, strokeWidthRef.current),
+          ...makeStroke([point], strokeColorRef.current, strokeW),
         };
+        pointerRef.current = {
+          ...pointerRef.current,
+          type: "pen",
+          last: point,
+          points: [point],
+          stabilizerBuffer: [],
+        };
+        if (autoZoomWritingRef.current && profile.autoZoom) {
+          checkAutoZoom(point);
+        }
         requestFrame();
         return;
       }
@@ -1097,6 +1192,55 @@ function VirtualWhiteboard() {
     [getPointerPos, startPan, beginGesture, commitElements, endGesture, fontSize, fontFamily, textBold, textItalic, textAlign, hitTest, resolveSelection, selectElements, requestFrame, strokeColorRef, fillColorRef, strokeWidthRef, eraseAt]
   );
 
+  const checkAutoZoom = useCallback((point) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const s = scaleRef.current;
+    if (s < 1.5) return;
+    const rect = canvas.getBoundingClientRect();
+    const screenX = point.x * s + panRef.current.x;
+    const screenY = point.y * s + panRef.current.y;
+    const margin = 100;
+    if (screenX < margin || screenX > rect.width - margin ||
+        screenY < margin || screenY > rect.height - margin) {
+      const targetScale = Math.min(2.5, s * 1.3);
+      zoomAt(targetScale / s, screenX, screenY);
+    }
+  }, [zoomAt]);
+
+  const applyStabilizer = useCallback((ptr, point, pv, stabilizerConfig) => {
+    if (!ptr.stabilizerBuffer) ptr.stabilizerBuffer = [];
+    const buffer = ptr.stabilizerBuffer;
+    buffer.push({ ...point, p: pv });
+    
+    if (buffer.length < stabilizerConfig.iterations + 1) {
+      return [{ ...point, p: pv }];
+    }
+    
+    const smoothed = [];
+    const windowSize = stabilizerConfig.iterations + 1;
+    const weights = [];
+    for (let i = 0; i < windowSize; i++) {
+      weights[i] = Math.pow(stabilizerConfig.smoothing, windowSize - 1 - i);
+    }
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    
+    const lastPoints = buffer.slice(-windowSize);
+    let sx = 0, sy = 0, sp = 0;
+    for (let i = 0; i < lastPoints.length; i++) {
+      const w = weights[i] / weightSum;
+      sx += lastPoints[i].x * w;
+      sy += lastPoints[i].y * w;
+      sp += lastPoints[i].p * w;
+    }
+    
+    if (buffer.length > windowSize * 2) {
+      buffer.splice(0, buffer.length - windowSize);
+    }
+    
+    return [{ x: sx, y: sy, p: sp }];
+  }, []);
+
   const handlePointerMove = useCallback(
     (e) => {
       const ptr = pointerRef.current;
@@ -1121,20 +1265,30 @@ function VirtualWhiteboard() {
         const prev = ptr.last;
         const dt = Math.max(1, e.timeStamp - (ptr.time || e.timeStamp));
         const speed = dist / dt;
-        const velFactor = clamp(1 / (1 + speed * 0.055), 0.55, 1);
-        const pressureFactor = clamp(point.pressure, 0.35, 1);
-        const pv = clamp(pressureFactor * velFactor, 0.3, 1);
-        if (dist > 6) {
-          const interp = interpolateSegment(prev, point, 3);
-          for (const ip of interp) {
-            ip.p = pv;
-            liveStrokeRef.current.points.push(ip);
-          }
-        } else {
-          liveStrokeRef.current.points.push({ ...point, p: pv });
+        const profile = TOOL_PROFILES[toolProfileRef.current] || TOOL_PROFILES.pen;
+        const stabilizer = STABILIZER_LEVELS[stabilizerLevelRef.current] || STABILIZER_LEVELS.medium;
+        
+        let pressureFactor = 0.5;
+        if (pressureEnabledRef.current) {
+          pressureFactor = clamp(point.pressure, pressureMinRef.current, pressureMaxRef.current);
         }
+        
+        const velFactor = clamp(1 / (1 + speed * 0.055), 0.55, 1);
+        const pv = clamp(pressureFactor * velFactor, 0.3, 1);
+        
+        const stabilizedPoints = applyStabilizer(ptr, point, pv, stabilizer);
+        
+        for (const sp of stabilizedPoints) {
+          liveStrokeRef.current.points.push(sp);
+        }
+        
         ptr.last = point;
         ptr.time = e.timeStamp;
+        
+        if (autoZoomWritingRef.current && profile.autoZoom) {
+          checkAutoZoom(point);
+        }
+        
         requestFrame();
         return;
       }
@@ -1427,8 +1581,10 @@ function VirtualWhiteboard() {
       return;
     }
     beginGesture();
+    const fontSize = MINDMAP_TEXT_SIZES[mindmapTextSizeRef.current] || 15;
     const res = addChildNode(elementsRef.current, parent.id, "Novo filho", {
       color: mindmapPalette ? "#60a5fa" : parent.borderColor,
+      fontSize,
     });
     commitElements(res.elements);
     selectElements(res.node ? [res.node.id] : []);
@@ -1444,7 +1600,10 @@ function VirtualWhiteboard() {
       return;
     }
     beginGesture();
-    const res = addSiblingNode(elementsRef.current, sibling.id, "Novo irmão");
+    const fontSize = MINDMAP_TEXT_SIZES[mindmapTextSizeRef.current] || 15;
+    const res = addSiblingNode(elementsRef.current, sibling.id, "Novo irmão", {
+      fontSize,
+    });
     commitElements(res.elements);
     selectElements(res.node ? [res.node.id] : []);
     endGesture(true);
@@ -1542,6 +1701,88 @@ function VirtualWhiteboard() {
     wrapper.addEventListener("wheel", onWheel, { passive: false });
     return () => wrapper.removeEventListener("wheel", onWheel);
   }, [zoomAt]);
+
+  useEffect(() => {
+    const wrapper = canvasRef.current ? canvasRef.current.parentElement : null;
+    if (!wrapper) return;
+    let initialPinchDist = null;
+    let initialScale = null;
+    let initialCenter = null;
+    let initialPan = null;
+
+    const getTouchDist = (touches) => {
+      if (touches.length < 2) return null;
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const getTouchCenter = (touches) => {
+      if (touches.length < 2) return null;
+      return {
+        x: (touches[0].clientX + touches[1].clientX) / 2,
+        y: (touches[0].clientY + touches[1].clientY) / 2,
+      };
+    };
+
+    const onTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        initialPinchDist = getTouchDist(e.touches);
+        initialScale = scaleRef.current;
+        initialCenter = getTouchCenter(e.touches);
+        initialPan = { ...panRef.current };
+        e.preventDefault();
+      }
+    };
+
+    const onTouchMove = (e) => {
+      if (e.touches.length === 2 && initialPinchDist !== null) {
+        const currentDist = getTouchDist(e.touches);
+        const currentCenter = getTouchCenter(e.touches);
+        if (currentDist && currentCenter && initialCenter) {
+          const factor = currentDist / initialPinchDist;
+          const newScale = clamp(initialScale * factor, MIN_ZOOM, MAX_ZOOM);
+          const ratio = newScale / initialScale;
+          const canvas = canvasRef.current;
+          const rect = canvas.getBoundingClientRect();
+          const mx = initialCenter.x - rect.left;
+          const my = initialCenter.y - rect.top;
+          setPan({
+            x: mx - (mx - initialPan.x) * ratio,
+            y: my - (my - initialPan.y) * ratio,
+          });
+          setScale(newScale);
+        }
+        e.preventDefault();
+      } else if (e.touches.length === 1 && !spaceDownRef.current && toolRef.current !== TOOLS.PAN) {
+        const touch = e.touches[0];
+        const dx = touch.clientX - (pointerRef.current?.last?.sx ?? touch.clientX);
+        const dy = touch.clientY - (pointerRef.current?.last?.sy ?? touch.clientY);
+        setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+        if (pointerRef.current) {
+          pointerRef.current.last = { sx: touch.clientX, sy: touch.clientY };
+        }
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      if (e.touches.length < 2) {
+        initialPinchDist = null;
+        initialScale = null;
+        initialCenter = null;
+        initialPan = null;
+      }
+    };
+
+    wrapper.addEventListener("touchstart", onTouchStart, { passive: false });
+    wrapper.addEventListener("touchmove", onTouchMove, { passive: false });
+    wrapper.addEventListener("touchend", onTouchEnd, { passive: false });
+    return () => {
+      wrapper.removeEventListener("touchstart", onTouchStart);
+      wrapper.removeEventListener("touchmove", onTouchMove);
+      wrapper.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
 
   // ---------------- Teclado ----------------
   useEffect(() => {
@@ -1699,9 +1940,22 @@ function VirtualWhiteboard() {
   ];
 
   const gridCycle = () => {
-    const order = [GRID_MODES.NONE, GRID_MODES.DOTS, GRID_MODES.LINES];
+    const order = [GRID_MODES.NONE, GRID_MODES.DOTS, GRID_MODES.LINES, GRID_MODES.RULED];
     const idx = order.indexOf(gridMode);
     setGridMode(order[(idx + 1) % order.length]);
+  };
+
+  const handleProfileChange = useCallback((profile) => {
+    setToolProfile(profile);
+    const p = TOOL_PROFILES[profile] || TOOL_PROFILES.pen;
+    setStrokeWidth(p.width);
+    setStabilizerLevel(p.stabilizer);
+    setPressureEnabled(p.pressure);
+    setAutoZoomWriting(p.autoZoom);
+  }, []);
+
+  const handleProfileSelect = (e) => {
+    handleProfileChange(e.target.value);
   };
 
   return (
@@ -1778,7 +2032,7 @@ function VirtualWhiteboard() {
         <div className="toolbar-divider" />
 
         <div className="toolbar-group">
-          <button className={`tool-btn ${gridMode !== GRID_MODES.NONE ? "active" : ""}`} onClick={gridCycle} title="Grade: pontilhada / linhas / desligada">
+          <button className={`tool-btn ${gridMode !== GRID_MODES.NONE ? "active" : ""}`} onClick={gridCycle} title="Grade: pontilhada / linhas / caderno (linhas pautadas) / desligada">
             <LayoutGrid size={20} />
           </button>
           <button className={`tool-btn ${autoFix ? "active" : ""}`} onClick={() => setAutoFix(!autoFix)} title="Corrigir forma automaticamente">
@@ -1885,16 +2139,86 @@ function VirtualWhiteboard() {
 
         <div className="toolbar-group">
           <span className="toolbar-label">Espessura</span>
-          <input
-            type="range"
-            min="1"
-            max="20"
-            value={strokeWidth}
-            onChange={(e) => setStrokeWidth(Number(e.target.value))}
-            className="stroke-slider"
-          />
-          <span className="stroke-value">{strokeWidth}px</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            {STROKE_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                className={`mini-btn ${strokeWidth === preset.value ? "active" : ""}`}
+                onClick={() => setStrokeWidth(preset.value)}
+                style={{ padding: "4px 8px", fontSize: "11px", minWidth: "32px" }}
+              >
+                {preset.label}
+              </button>
+            ))}
+            <input
+              type="range"
+              min="0.5"
+              max="8"
+              step="0.5"
+              value={strokeWidth}
+              onChange={(e) => setStrokeWidth(Number(e.target.value))}
+              className="stroke-slider"
+              style={{ width: "100px", marginLeft: "8px" }}
+            />
+            <span className="stroke-value">{strokeWidth}px</span>
+          </div>
         </div>
+
+        {tool === TOOLS.PEN && (
+          <>
+            <div className="toolbar-divider" />
+            <div className="toolbar-group">
+              <span className="toolbar-label">Perfil</span>
+              <select value={toolProfile} onChange={handleProfileSelect} className="shape-select" style={{ minWidth: "130px" }}>
+                <option value="pen">✏️ Caneta</option>
+                <option value="writing">✍️ Escrita</option>
+                <option value="marker">🖍️ Marcador</option>
+                <option value="highlighter">🖋️ Marca-texto</option>
+              </select>
+            </div>
+            <div className="toolbar-group">
+              <span className="toolbar-label">Estabilizador</span>
+              <select value={stabilizerLevel} onChange={(e) => setStabilizerLevel(e.target.value)} className="shape-select" style={{ minWidth: "110px" }}>
+                <option value="off">Desligado</option>
+                <option value="low">Baixa</option>
+                <option value="medium">Média</option>
+                <option value="high">Alta</option>
+              </select>
+            </div>
+            <div className="toolbar-group">
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#7d8590", cursor: "pointer" }}>
+                <input type="checkbox" checked={pressureEnabled} onChange={(e) => setPressureEnabled(e.target.checked)} />
+                Pressão
+              </label>
+            </div>
+            {pressureEnabled && (
+              <>
+                <div className="toolbar-group">
+                  <span className="toolbar-label">Min</span>
+                  <input type="range" min="0.1" max="0.8" step="0.05" value={pressureMin} onChange={(e) => setPressureMin(Number(e.target.value))} className="stroke-slider" style={{ width: "70px" }} />
+                  <span className="stroke-value" style={{ minWidth: "30px" }}>{pressureMin.toFixed(2)}</span>
+                </div>
+                <div className="toolbar-group">
+                  <span className="toolbar-label">Máx</span>
+                  <input type="range" min="0.5" max="1" step="0.05" value={pressureMax} onChange={(e) => setPressureMax(Number(e.target.value))} className="stroke-slider" style={{ width: "70px" }} />
+                  <span className="stroke-value" style={{ minWidth: "30px" }}>{pressureMax.toFixed(2)}</span>
+                </div>
+              </>
+            )}
+            <div className="toolbar-group">
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#7d8590", cursor: "pointer" }}>
+                <input type="checkbox" checked={autoZoomWriting} onChange={(e) => setAutoZoomWriting(e.target.checked)} />
+                Auto-zoom escrita
+              </label>
+            </div>
+            <div className="toolbar-group">
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#7d8590", cursor: "pointer" }}>
+                <input type="checkbox" checked={showPenCursor} onChange={(e) => setShowPenCursor(e.target.checked)} />
+                Cursor caneta
+              </label>
+            </div>
+          </>
+        )}
 
         {tool === TOOLS.SHAPE && (
           <>
@@ -2003,6 +2327,17 @@ function VirtualWhiteboard() {
             <button className={`mini-btn ${mindmapPalette ? "active" : ""}`} onClick={() => setMindmapPalette(!mindmapPalette)} title="Cores por nível">
               <Palette size={14} /> Cores
             </button>
+          </div>
+
+          <div className="toolbar-divider" />
+
+          <div className="toolbar-group">
+            <span className="toolbar-label">Texto nós</span>
+            <select value={mindmapTextSize} onChange={(e) => setMindmapTextSize(e.target.value)} className="shape-select" style={{ minWidth: "120px" }}>
+              <option value="small">Pequena (12px)</option>
+              <option value="medium">Média (15px)</option>
+              <option value="large">Grande (18px)</option>
+            </select>
           </div>
 
           <div className="toolbar-divider" />

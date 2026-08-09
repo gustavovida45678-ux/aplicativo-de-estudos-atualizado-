@@ -146,6 +146,7 @@ export function LearningMode({
 
   if (!isOpen) return null;
 
+  const HintIcon = HINT_LEVELS[hintLevel]?.icon;
   const currentStepData = steps[currentStep];
 
   return (
@@ -206,7 +207,7 @@ export function LearningMode({
               <div className="learning-empty">
                 <Target size={48} color="#60a5fa" />
                 <h3>Pronto para começar?</h3>
-                <p>Pressione <kbd>T</kd> para ver o primeiro passo da resolução.</p>
+                <p>Pressione <kbd>T</kbd> para ver o primeiro passo da resolução.</p>
                 <div className="learning-hints">
                   <span>O sistema analisa seu código e o enunciado</span>
                   <span>Mostra o próximo passo lógico</span>
@@ -274,7 +275,7 @@ export function LearningMode({
                   {showHint && hint && (
                     <div className="hint-display" style={{ borderLeftColor: HINT_LEVELS[hintLevel]?.color }}>
                       <div className="hint-header">
-                        <HINT_LEVELS[hintLevel]?.icon size={16} color={HINT_LEVELS[hintLevel]?.color} />
+                        <HintIcon size={16} color={HINT_LEVELS[hintLevel]?.color} />
                         <span>Nível {hintLevel} - {HINT_LEVELS[hintLevel]?.label}</span>
                       </div>
                       <pre className="hint-code">{hint}</pre>

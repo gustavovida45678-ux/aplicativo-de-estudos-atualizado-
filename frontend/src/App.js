@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import "./App.css";
 import "@/styles/studySchedule.css";
+import "./styles/studyMaterials.css";
 import "./styles/virtualWhiteboard.css";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
@@ -21,6 +22,7 @@ import FeedbackForm from "./components/FeedbackForm";
 import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
 import JudgePanel from "./components/JudgePanel";
 import VirtualWhiteboard from "./components/VirtualWhiteboard";
+import MoodlePage from "./components/moodle/MoodlePage";
 // import DebugPanel from "./components/DebugPanel"; // Removed
 
 import { BACKEND_URL } from "./lib/backendUrl";
@@ -573,6 +575,18 @@ function App() {
             </div>
 
             <div className="nav-group">
+              <span className="nav-group-label">Moodle</span>
+              <button
+                onClick={() => setActiveTab("moodle")}
+                className={`nav-tab ${activeTab === "moodle" ? "active" : ""}`}
+                data-testid="tab-moodle"
+              >
+                <GraduationCap size={18} />
+                <span className="nav-tab-text">Moodle IFG</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
               <span className="nav-group-label">Conta</span>
               <button
                 onClick={() => setActiveTab("feedback")}
@@ -621,11 +635,15 @@ function App() {
             <div className="mx-auto max-w-5xl px-4 py-8">
               <JudgePanel />
             </div>
-          ) : activeTab === "whiteboard" ? (
-            <VirtualWhiteboard />
-          ) : (
-        <>
-          {/* Drag and drop overlay */}
+            ) : activeTab === "whiteboard" ? (
+              <VirtualWhiteboard />
+            ) : activeTab === "moodle" ? (
+              <div className="mx-auto max-w-5xl px-4 py-8">
+                <MoodlePage onClose={() => setActiveTab("dashboard")} />
+              </div>
+            ) : (
+              <>
+                {/* Drag and drop overlay */}
           {isDragging && (
         <div className="drag-drop-overlay" data-testid="drag-drop-overlay">
           <div className="drag-drop-content">

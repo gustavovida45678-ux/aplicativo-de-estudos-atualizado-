@@ -13,6 +13,10 @@ import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
 import '../styles/studyMaterials.css';
 import { BACKEND_URL } from '../lib/backendUrl';
+import LearningMode from './juiz/LearningMode';
+import ErrorExplanation from './juiz/ErrorExplanation';
+import CodeExplanation from './juiz/CodeExplanation';
+import LineByLineExplanation from './juiz/LineByLineExplanation';
 
 const API = `${BACKEND_URL}/api/judge`;
 
@@ -76,6 +80,12 @@ const JudgePanel = () => {
   const [vismoLoading, setVismoLoading] = useState(false);
   const [showVismo, setShowVismo] = useState(false);
 
+  const [showLearningMode, setShowLearningMode] = useState(false);
+  const [showErrorExplanation, setShowErrorExplanation] = useState(false);
+  const [showCodeExplanation, setShowCodeExplanation] = useState(false);
+  const [showLineByLine, setShowLineByLine] = useState(false);
+  const [codeSelection, setCodeSelection] = useState('');
+
   useEffect(() => {
     if (!walkPlay || !walk) return;
     const t = setInterval(() => {
@@ -86,6 +96,27 @@ const JudgePanel = () => {
     }, 1800);
     return () => clearInterval(t);
   }, [walkPlay, walk]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const target = e.target;
+      const inInput = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable;
+      if (showLearningMode || showErrorExplanation || showCodeExplanation || showLineByLine) return;
+      if (inInput && !activeExercise) return;
+      if (!inInput && activeExercise && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        setShowLearningMode(true);
+      }
+      if (e.key === 'Escape') {
+        setShowLearningMode(false);
+        setShowErrorExplanation(false);
+        setShowCodeExplanation(false);
+        setShowLineByLine(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeExercise, showLearningMode, showErrorExplanation, showCodeExplanation, showLineByLine]);
 
   const saveCode = (id, lang, c) => { localStorage.setItem(`judge_code_${id}_${lang}`, c); };
 
@@ -455,6 +486,7 @@ const JudgePanel = () => {
 
   if (activeExercise) {
     const explanation = result?.explanation;
+    const problem = { id: activeExercise.id, title: activeExercise.title, topic: activeExercise.topic, statement: activeExercise.statement };
     return (
       <div className="materials-judge">
         <button className="materials-judge-back" onClick={() => { setSelected(null); setNewExercise(null); setResult(null); setShowExplanation(false); setShowAnswer(false); }}>
@@ -493,7 +525,18 @@ const JudgePanel = () => {
             </div>
             <span className="materials-judge-cases"><ListOrdered size={13} /> {(activeExercise.test_cases || []).length} testes</span>
           </div>
-          <textarea className="materials-judge-code" spellCheck="false" value={code} onChange={(e) => { setCode(e.target.value); saveCode(activeExercise.id || 'custom', language, e.target.value); }} />
+          <textarea className="materials-judge-code" spellCheck="false"
+            value={code}
+            onChange={(e) => { setCode(e.target.value); saveCode(activeExercise.id || 'custom', language, e.target.value); }}
+            onContextMenu={(e) => {
+              const sel = window.getSelection().toString();
+              if (sel && activeExercise) {
+                e.preventDefault();
+                setCodeSelection(sel);
+                setShowCodeExplanation(true);
+              }
+            }}
+          />
            <div className="materials-judge-actions">
              <button className="materials-judge-run" onClick={() => submit(true)} disabled={running}>
                {running ? <Loader2 size={15} className="materials-spin" /> : <Play size={15} />} Executar (1o caso)
@@ -546,6 +589,31 @@ const JudgePanel = () => {
                   Gabarito
                 </button>
               )}
+              <button
+                onClick={() => setShowLearningMode(true)}
+                className="materials-judge-learn"
+                title="Modo Aprender: ve o proximo passo com T, dicas com Shift+T, codigo com Alt+T (Esc fecha)"
+              >
+                <Brain size={14} />
+                Modo Aprender (T)
+              </button>
+              <button
+                onClick={() => setShowLineByLine(true)}
+                className="materials-judge-line"
+                title="Explicacao por linha (hover sobre cada linha)"
+              >
+                <BookOpen size={14} />
+                Linha a Linha
+              </button>
+              <button
+                onClick={() => setShowErrorExplanation(true)}
+                className="materials-judge-error"
+                title="Explicacao educacional do erro"
+                disabled={!result || result.summary?.accepted}
+              >
+                <AlertTriangle size={14} />
+                Explicar Erro
+              </button>
               <button className="materials-judge-submit" onClick={() => submit(false)} disabled={running}>
                 {running ? <Loader2 size={15} className="materials-spin" /> : <Send size={15} />}
                 {running ? 'Executando...' : 'Enviar para o juiz'}
@@ -1256,9 +1324,6 @@ const JudgePanel = () => {
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
 
             {explanation && !showExplanation && !result.summary?.accepted && (
               <button
@@ -1458,9 +1523,54 @@ const JudgePanel = () => {
             </div>
           </div>
         )}
-      </div>
-    );
-  }
+        {/* Educational overlays */}
+        {showLearningMode && (
+          <LearningMode
+            code={code}
+            language={language}
+            problem={problem}
+            isOpen={showLearningMode}
+            onClose={() => setShowLearningMode(false)}
+            onApplyHint={(hint) => {
+              setCode(hint);
+              saveCode(activeExercise.id || 'custom', language, hint);
+              setShowLearningMode(false);
+              toast.success('Dica aplicada ao editor');
+            }}
+          />
+        )}
+        {showErrorExplanation && (
+          <ErrorExplanation
+            code={code}
+            language={language}
+            problem={problem}
+            result={result}
+            isOpen={showErrorExplanation}
+            onClose={() => setShowErrorExplanation(false)}
+          />
+        )}
+        {showCodeExplanation && codeSelection && (
+          <CodeExplanation
+            code={code}
+            language={language}
+            problem={problem}
+            selection={codeSelection}
+            isOpen={showCodeExplanation}
+            onClose={() => setShowCodeExplanation(false)}
+          />
+        )}
+        {showLineByLine && (
+          <LineByLineExplanation
+            code={code}
+            language={language}
+            problem={problem}
+            isOpen={showLineByLine}
+            onClose={() => setShowLineByLine(false)}
+          />
+        )}
+        </div>
+      );
+    }
 
   return (
     <div className="materials-judge">

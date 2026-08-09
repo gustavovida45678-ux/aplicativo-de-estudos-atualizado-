@@ -1,9 +1,16 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import requests
+import os
+import json
 from urllib.parse import urlparse
+from datetime import datetime
 
 router = APIRouter(prefix="/moodle", tags=["moodle"])
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+CONFIG_PATH = os.path.join(DATA_DIR, "moodle_config.json")
+CACHE_PATH = os.path.join(DATA_DIR, "moodle_cache.json")
 
 
 class MoodleConfig(BaseModel):
@@ -15,6 +22,29 @@ class MoodleCourseRequest(BaseModel):
     url: str
     token: str
     courseid: int
+
+
+class TokenRequest(BaseModel):
+    token: str
+    url: str = "https://moodle.ifg.edu.br"
+
+
+def _load_config():
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            cfg = json.load(f)
+        if cfg and cfg.get("token") and cfg.get("url"):
+            return cfg
+    except Exception:
+        pass
+    return None
+
+
+def _save_config(cfg):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f)
+    return cfg
 
 
 def _base(url: str) -> str:
@@ -202,3 +232,189 @@ def moodle_calendar(cfg: MoodleConfig):
         pass
     events.sort(key=lambda e: e["timestart"] or 0)
     return {"events": events}
+
+
+# ===== Config-based endpoints used by the Moodle IFG frontend page =====
+# These read the token/url from a persisted config file so the page can work
+# without sending credentials on every request. The data is cached on /sync.
+
+def _cache_get(key):
+    try:
+        if os.path.exists(CACHE_PATH):
+            with open(CACHE_PATH, "r") as f:
+                cache = json.load(f)
+            return cache.get(key)
+    except Exception:
+        pass
+    return None
+
+
+def _cache_set(key, value):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        cache = {}
+        if os.path.exists(CACHE_PATH):
+            try:
+                with open(CACHE_PATH, "r") as f:
+                    cache = json.load(f) or {}
+            except Exception:
+                cache = {}
+        cache[key] = value
+        cache["last_sync"] = datetime.utcnow().isoformat()
+        with open(CACHE_PATH, "w") as f:
+            json.dump(cache, f)
+    except Exception:
+        pass
+
+
+def _ts(ts):
+    try:
+        return datetime.utcfromtimestamp(int(float(ts))).isoformat()
+    except Exception:
+        return None
+
+
+def _sync_all():
+    cfg = _load_config()
+    if not cfg:
+        return {"courses": [], "activities": [], "deadlines": [], "announcements": []}
+    base = _base(cfg["url"])
+    token = cfg["token"]
+
+    raw_courses = _call(base, token, "core_enrol_get_users_courses") or []
+    courses = []
+    for c in raw_courses if isinstance(raw_courses, list) else []:
+        courses.append({
+            "id": c.get("id"),
+            "fullname": c.get("fullname", ""),
+            "shortname": c.get("shortname", ""),
+            "category": c.get("category") if isinstance(c.get("category"), str) else "",
+            "progress": c.get("progress", 0) or 0,
+            "url": "",
+        })
+
+    course_ids = [c.get("id") for c in courses if c.get("id")]
+    assignments = []
+    if course_ids:
+        try:
+            payload = {f"courseids[{i}]": cid for i, cid in enumerate(course_ids)}
+            data2 = _call(base, token, "mod_assign_get_assignments", **payload)
+            for course in data2.get("courses", []) or []:
+                cname = course.get("fullname", "")
+                for a in course.get("assignments", []) or []:
+                    cmid = a.get("cmid")
+                    assignments.append({
+                        "id": a.get("id"),
+                        "name": a.get("name", ""),
+                        "course_name": cname,
+                        "due_date": a.get("duedate", 0),
+                        "type": "assign",
+                        "url": f"{base}/mod/assign/view.php?id={cmid}" if cmid else "",
+                    })
+        except HTTPException:
+            pass
+
+    events = []
+    try:
+        cal = _call(base, token, "core_calendar_get_calendar_upcoming_events")
+        events = cal.get("events", []) or []
+    except HTTPException:
+        pass
+
+    deadlines = []
+    announcements = []
+    for e in events:
+        eid = e.get("id")
+        name = e.get("name", "")
+        ts = e.get("timestart", 0)
+        url = e.get("url", "")
+        cid = e.get("courseid")
+        if isinstance(cid, dict):
+            course_name = cid.get("fullname", "") or cid.get("shortname", "")
+        elif cid:
+            course_name = str(cid)
+        else:
+            course_name = ""
+        iso = _ts(ts)
+        deadlines.append({
+            "id": eid, "name": name, "course_name": course_name,
+            "due_date": iso, "url": url,
+        })
+        announcements.append({
+            "id": eid, "subject": name, "course_name": course_name,
+            "message": (e.get("description") or "")[:300],
+            "author": e.get("author", ""),
+            "created": iso, "url": url,
+        })
+
+    assignments.sort(key=lambda a: a.get("due_date") or 0)
+    deadlines.sort(key=lambda d: d.get("due_date") or "")
+    return {"courses": courses, "activities": assignments, "deadlines": deadlines, "announcements": announcements}
+
+
+@router.get("/status")
+def moodle_status():
+    cfg = _load_config()
+    if not cfg:
+        return {"configured": False}
+    base = _base(cfg["url"])
+    try:
+        info = _call(base, cfg["token"], "core_webservice_get_site_info")
+    except HTTPException:
+        return {"configured": False}
+    return {"configured": True, "last_sync": _cache_get("last_sync")}
+
+
+@router.get("/courses")
+def moodle_get_courses():
+    return {"courses": _cache_get("courses") or []}
+
+
+@router.get("/activities")
+def moodle_get_activities():
+    return {"activities": _cache_get("activities") or []}
+
+
+@router.get("/deadlines")
+def moodle_get_deadlines():
+    return {"deadlines": _cache_get("deadlines") or []}
+
+
+@router.get("/announcements")
+def moodle_get_announcements():
+    return {"announcements": _cache_get("announcements") or []}
+
+
+@router.post("/sync")
+def moodle_sync():
+    cfg = _load_config()
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Token do Moodle nao configurado.")
+    data = _sync_all()
+    _cache_set("courses", data["courses"])
+    _cache_set("activities", data["activities"])
+    _cache_set("deadlines", data["deadlines"])
+    _cache_set("announcements", data["announcements"])
+    return {"success": True, "synced": True, "last_sync": datetime.utcnow().isoformat()}
+
+
+@router.post("/token")
+def moodle_save_token(req: TokenRequest):
+    cfg = {"url": req.url, "token": req.token}
+    _save_config(cfg)
+    base = _base(cfg["url"])
+    try:
+        info = _call(base, cfg["token"], "core_webservice_get_site_info")
+        return {"success": True, "valid": True, "site": info.get("sitename", "Moodle"), "last_sync": _cache_get("last_sync")}
+    except HTTPException as e:
+        return {"success": True, "valid": False, "detail": str(e.detail)}
+
+
+@router.delete("/token")
+def moodle_delete_token():
+    try:
+        if os.path.exists(CONFIG_PATH):
+            os.remove(CONFIG_PATH)
+    except Exception:
+        pass
+    return {"success": True}

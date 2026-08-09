@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  BookOpen, ExternalLink, RefreshCw, Loader2, Calendar, AlertTriangle, 
+import { toast } from 'sonner';
+import {
+  BookOpen, ExternalLink, RefreshCw, Loader2, Calendar, AlertTriangle,
   CheckCircle2, Clock, Bell, FolderOpen, User, Settings, X, ChevronRight,
   Download, Upload, Search, Filter, MoreVertical, Eye, Edit, Trash2,
-  GraduationCap, Globe, Shield, Key, Unlock, LogIn, LogOut, ArrowRight
+  GraduationCap, Globe, Shield, Key, Unlock, LogIn, LogOut, ArrowRight,
+  FileText, MessageSquare, HelpCircle
 } from 'lucide-react';
 import { BACKEND_URL } from '../../lib/backendUrl';
 

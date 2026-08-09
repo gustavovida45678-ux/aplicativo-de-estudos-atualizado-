@@ -658,6 +658,239 @@ def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = N
     return None
 
 
+# ===== Endpoints educacionais (Modo Aprender / Explicacoes) =====
+# Estes endpoints alimentam os componentes juiz/LearningMode, ErrorExplanation,
+# CodeExplanation e LineByLineExplanation do frontend. Reaproveitam os helpers
+# de IA existentes (_call_ai, _ai_explain, _fallback_explanation, etc.).
+
+class EducationalRequest(BaseModel):
+    language: str
+    code: str
+    statement: str = ""
+    topic: str = ""
+    error: str = ""
+    tests: List[dict] = []
+    summary: Optional[dict] = None
+
+
+class WalkRequest(BaseModel):
+    language: str
+    code: str
+    statement: str = ""
+    topic: str = ""
+    currentStep: int = 0
+    steps: List[str] = []
+
+
+class HintRequest(BaseModel):
+    language: str
+    code: str
+    statement: str = ""
+    topic: str = ""
+    step: str = ""
+    level: int = 1
+
+
+class SelectionRequest(BaseModel):
+    language: str
+    code: str
+    selection: str
+    statement: str = ""
+    topic: str = ""
+    mode: str = "simple"
+
+
+class ReasoningRequest(BaseModel):
+    language: str
+    code: str
+    statement: str = ""
+    topic: str = ""
+
+
+class LineRequest(BaseModel):
+    language: str
+    code: str
+    lineNumber: int = 1
+    totalLines: int = 0
+    statement: str = ""
+    topic: str = ""
+
+
+class ErrorHintRequest(BaseModel):
+    language: str
+    code: str
+    statement: str = ""
+    topic: str = ""
+    errorType: str = ""
+    analysis: str = ""
+    level: int = 1
+
+
+def _educ_lang_name(language: str) -> str:
+    return {"c": "C", "cpp": "C++", "python": "Python 3"}.get(language, language)
+
+
+def _educ_json(raw, fallback):
+    if not raw:
+        return fallback
+    try:
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```\w*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```$", "", cleaned)
+        data = json.loads(cleaned)
+        return data if isinstance(data, dict) else fallback
+    except Exception:
+        logger.error(f"IA: falha ao parsear JSON: {str(raw)[:400]}")
+        return fallback
+
+
+@router.post("/explain-error")
+async def explain_error(req: EducationalRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    if not req.code.strip():
+        raise HTTPException(status_code=400, detail="Codigo vazio.")
+    result = _run(req.language, req.code, "")
+    compile_error = False
+    error_text = ""
+    if result.get("compile") and result["compile"].get("code") is not None and result["compile"].get("code") != 0:
+        error_text = result["compile"].get("stderr", "")
+        compile_error = True
+    elif result.get("run"):
+        error_text = (result.get("run") or {}).get("stderr", "")
+    ai_explanation = _ai_explain(req.code, req.language, error_text, "", "", compile_error, x_custom_api_key)
+    if not ai_explanation:
+        ai_explanation = _fallback_explanation(req.code, req.language, error_text, "", "", compile_error)
+    _enrich_explanation(ai_explanation, req.language)
+    ai_explanation["youtube_videos"] = _get_youtube_videos(ai_explanation.get("error_type", "erro"), req.language, req.code)
+    return ai_explanation
+
+
+@router.post("/error-hint")
+async def error_hint(req: ErrorHintRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    lang_name = _educ_lang_name(req.language)
+    levels = {
+        1: ("Explicacao simples", "Explique em linguagem simples, sem mostrar codigo."),
+        2: ("Dica direcionada", "Dê uma dica didatica que orienta o aluno a achar a solucao por si, sem entregar codigo completo."),
+        3: ("Trecho de codigo", "Forneca apenas o trecho de codigo necessario para corrigir o erro, minimalista."),
+    }
+    label, guidance = levels.get(req.level, levels[1])
+    system = f"Voce e um professor de {lang_name} expert. Gere um HINT de nivel {req.level} ({label}). {PEDAGOGY_RULES}\n{guidance}\nResponda em portugues, breve e didatico. Nivel 1/2: sem codigo. Nivel 3: apenas o trecho entre crases simples.\nENUNCIADO: {req.statement or '(nao informado)'}\nERRO/TIPO: {req.errorType}\nANALISE: {req.analysis}\nCODIGO:\n```\n{req.code}\n```"
+    fallbacks = {
+        1: "Releia a mensagem de erro e localize a linha indicada. Verifique se a logica de entrada -> calculo -> saida esta completa e se usou os comandos de impressao corretos para a linguagem.",
+        2: "Confirme se leu todas as entradas antes de usa-las, se declarou todas as variaveis e se a operacao produz exatamente a saida esperada.",
+        3: "int main() { /* leia, calcule e imprima conforme o enunciado */ }",
+    }
+    hint = (_call_ai(system, "", x_custom_api_key) or "").strip() or fallbacks.get(req.level, fallbacks[1])
+    return {"hint": hint}
+
+
+@router.post("/next-step")
+async def next_step(req: WalkRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    lang_name = _educ_lang_name(req.language)
+    previous = "\n".join(f"- {s}" for s in req.steps[:10]) if req.steps else "Nenhum passo anterior."
+    system = f"""Voce e um professor de {lang_name} expert. Ajude o aluno a dar o PROXIMO passo logico para resolver o exercicio, SEM entregar a solucao completa.
+{PEDAGOGY_RULES}
+Responda APENAS com JSON valido (sem markdown, sem crases). Campos:
+{{"summary": "texto curto do passo (ate 12 palavras)", "explanation": "por que este passo e necessario neste exercicio", "why": "por que esse conceito resolve este problema", "concept": "conceito fundamental envolvido"}}
+ENUNCIADO: {req.statement or '(nao informado)'}
+TEMA: {req.topic}
+PASSOS ANTERIORES: {previous}
+CODIGO ATUAL:
+```{req.language}
+{req.code}
+```"""
+    fallback = {
+        "step": {
+            "summary": "Analise a entrada e planeje a saida",
+            "explanation": "Primeiro entenda o que o enunciado pede: quais sao as entradas e qual saida e esperada.",
+            "why": "Ter clareza da entrada/saida evita erros de formato.",
+            "concept": "Formato de entrada e saida",
+        }
+    }
+    raw = _call_ai(system, "", x_custom_api_key)
+    data = _educ_json(raw, fallback)
+    if "step" not in data and "summary" in data:
+        data = {"step": data}
+    if "step" not in data:
+        data = fallback
+    return data
+
+
+@router.post("/hint")
+async def hint(req: HintRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    lang_name = _educ_lang_name(req.language)
+    levels = {
+        1: "Explicacao simples (sem codigo), responda o que fazer.",
+        2: "Dica direcionada que guia o aluno sem entregar codigo.",
+        3: "Forneca apenas o trecho de codigo necessario entre crases simples.",
+    }
+    guidance = levels.get(req.level, levels[1])
+    system = f"Voce e um professor de {lang_name}. Gere uma dica de nivel {req.level}. {guidance}\nPEDAGOGY: {PEDAGOGY_RULES}\nENUNCIADO: {req.statement or '(nao informado)'}\nPASSO/EXPRESSAO: {req.step}\nCODIGO:\n```\n{req.code}\n```"
+    fallbacks = {
+        1: "Reflite sobre o passo atual e relacione-o com a entrada e saida do problema.",
+        2: "Identifique qual dado falta processar nesse passo e como a linguagem le/calcula/imprime.",
+        3: "int main() { /* implemente o passo atual aqui */ }",
+    }
+    return {"hint": (_call_ai(system, "", x_custom_api_key) or "").strip() or fallbacks.get(req.level, fallbacks[1])}
+
+
+@router.post("/reasoning")
+async def reasoning(req: ReasoningRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    lang_name = _educ_lang_name(req.language)
+    system = f"""Voce e um professor de {lang_name} expert. Explique o RACIOCINIO da solucao passo a passo (Modo Professor).
+{PEDAGOGY_RULES}
+Responda APENAS com JSON: {{"steps": [{{"title": "...", "description": "...", "concept": "..."}}]}} com de 3 a 6 passos.
+ENUNCIADO: {req.statement or '(nao informado)'}
+TEMA: {req.topic}
+CODIGO:
+```{req.language}
+{req.code}
+```"""
+    fallback = {"steps": [
+        {"title": "Entender o problema", "description": "Leia o enunciado, identifique entradas e saida esperada.", "concept": "Leitura de especificacao"},
+        {"title": "Planejar a solucao", "description": "Defina a sequencia: ler, processar, imprimir.", "concept": "Algoritmo"},
+    ]}
+    raw = _call_ai(system, "", x_custom_api_key)
+    data = _educ_json(raw, fallback)
+    return data if "steps" in data else fallback
+
+
+@router.post("/explain-selection")
+async def explain_selection(req: SelectionRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    lang_name = _educ_lang_name(req.language)
+    mode_guide = {"simple": "linguagem simples, para iniciantes", "technical": "detalhado e tecnico", "examples": "com exemplos praticos"}.get(req.mode, "simples")
+    system = f"""Voce e um professor de {lang_name}. Explique o trecho de codigo SELECIONADO para um aluno, em {mode_guide}.
+{PEDAGOGY_RULES}
+Responda APENAS com JSON: {{"what": "...", "syntax": "...", "logic": "...", "purpose": "...", "types": [{"name":"...","type":"...","description":"..."}], "alternatives": ["..."], "commonErrors": ["..."], "relationToProblem": "..."}}. Campos sao opcionais; inclua apenas os relevantes.
+ENUNCIADO: {req.statement or '(nao informado)'}
+CODIGO COMPLETO:
+```{req.language}
+{req.code}
+```
+SELECIONADO:
+{req.selection}"""
+    fallback = {"what": "Segue a logica do trecho selecionado.", "purpose": "Contribui para a resolucao do exercicio.", "relationToProblem": "Relacione a entrada, o processamento e a saida do problema."}
+    data = _educ_json(_call_ai(system, "", x_custom_api_key), fallback)
+    data.setdefault("examples", [])
+    data.setdefault("concepts", [])
+    return {"explanation": data, "examples": data.get("examples", []), "concepts": data.get("concepts", [])}
+
+
+@router.post("/explain-line")
+async def explain_line(req: LineRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    lang_name = _educ_lang_name(req.language)
+    lines = req.code.split("\n")
+    line_text = lines[req.lineNumber - 1] if 1 <= req.lineNumber <= len(lines) else ""
+    system = f"""Voce e um professor de {lang_name}. Explique a LINHA {req.lineNumber} do codigo para um aluno iniciante.
+{PEDAGOGY_RULES}
+Responda APENAS com JSON: {{"what": "...", "syntax": "...", "purpose": "...", "commonError": "..."}}. Campos opcionais.
+ENUNCIADO: {req.statement or '(nao informado)'}
+LINHA: {line_text}"""
+    fallback = {"what": "Processa ou manipula dados conforme o enunciado.", "syntax": "Sintaxe propria da linguagem.", "purpose": "Contribui para a resolucao do exercicio.", "commonError": "Erros comuns incluem esquecer ponto e virgula ou declarar variavel."}
+    data = _educ_json(_call_ai(system, "", x_custom_api_key), fallback)
+    return {"explanation": data}
+
+
 def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool, custom_key: Optional[str] = None) -> Optional[dict]:
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
 

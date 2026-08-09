@@ -2,7 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import {
   Code2, HelpCircle, BookOpen, Wand2, Lightbulb, X, MessageSquare,
-  Copy, Check, ChevronDown, ChevronUp, Sparkles, Zap
+  Copy, Check, ChevronDown, ChevronUp, Sparkles, Zap, AlertTriangle,
+  Brain, Target
 } from 'lucide-react';
 import { BACKEND_URL } from '../../lib/backendUrl';
 

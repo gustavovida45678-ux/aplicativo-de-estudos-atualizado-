@@ -1082,6 +1082,8 @@ function VirtualWhiteboard() {
       }
 
       if (t === TOOLS.TEXT) {
+        e.preventDefault();
+        e.stopPropagation();
         const el = makeText("", point.x, point.y, {
           color: strokeColorRef.current,
           fontSize,
@@ -1091,6 +1093,16 @@ function VirtualWhiteboard() {
           align: textAlign,
         });
         setTextEdit({ id: el.id, kind: "text", el });
+        // Release pointer capture for text tool - we don't want canvas to capture events
+        try {
+          canvasRef.current.releasePointerCapture(e.pointerId);
+        } catch (err) {
+          /* noop */
+        }
+        pointerRef.current = {
+          ...pointerRef.current,
+          type: "text",
+        };
         return;
       }
 
@@ -1249,6 +1261,11 @@ function VirtualWhiteboard() {
 
       const point = getPointerPos(e);
       const t = toolRef.current;
+
+      // TEXT tool: never draw, just update position if needed
+      if (t === TOOLS.TEXT || ptr.type === "text") {
+        return;
+      }
 
       if (ptr.type === "pan") {
         const dx = e.clientX - ptr.last.x;
@@ -1412,6 +1429,13 @@ function VirtualWhiteboard() {
         }
         liveStrokeRef.current = null;
         requestFrame();
+        return;
+      }
+
+      if (t === TOOLS.TEXT || ptr.type === "text") {
+        // Text tool handles commit via onBlur/onKeyDown in the overlay
+        // Just ensure pointer is released
+        ptr.active = false;
         return;
       }
 
@@ -2398,6 +2422,10 @@ function VirtualWhiteboard() {
               top: textEdit.el.y * scale + pan.y,
               width: textEdit.kind === "node" ? textEdit.el.width * scale : Math.max(160, textEdit.el.width * scale),
             }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerMove={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
           >
             {textEdit.kind === "node" ? (
               <input
@@ -2422,10 +2450,11 @@ function VirtualWhiteboard() {
                 value={textEdit.value || ""}
                 onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
                     commitTextEdit();
                   }
+                  // Enter alone adds new line (default behavior)
                   e.stopPropagation();
                 }}
                 onBlur={commitTextEdit}
@@ -2437,7 +2466,7 @@ function VirtualWhiteboard() {
                   fontWeight: textEdit.el.bold ? "bold" : "normal",
                   fontStyle: textEdit.el.italic ? "italic" : "normal",
                 }}
-                placeholder="Digite seu texto..."
+                placeholder="Digite seu texto... (Ctrl+Enter para finalizar)"
               />
             )}
           </div>

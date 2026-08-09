@@ -489,12 +489,25 @@ def moodle_sync(current_user: dict = Depends(get_current_user)):
     cfg = _load_config(user_id)
     if not cfg:
         raise HTTPException(status_code=400, detail="Token do Moodle nao configurado.")
-    data = _sync_all(user_id)
+    try:
+        data = _sync_all(user_id)
+    except HTTPException as e:
+        raise HTTPException(status_code=502, detail=f"Falha ao sincronizar com o Moodle: {e.detail}")
     _cache_set("courses", data["courses"], user_id)
     _cache_set("activities", data["activities"], user_id)
     _cache_set("deadlines", data["deadlines"], user_id)
     _cache_set("announcements", data["announcements"], user_id)
-    return {"success": True, "synced": True, "last_sync": datetime.utcnow().isoformat()}
+    return {
+        "success": True,
+        "synced": True,
+        "last_sync": datetime.utcnow().isoformat(),
+        "counts": {
+            "courses": len(data["courses"]),
+            "activities": len(data["activities"]),
+            "deadlines": len(data["deadlines"]),
+            "announcements": len(data["announcements"]),
+        },
+    }
 
 
 @router.post("/connect")
@@ -523,15 +536,23 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
         _save_config(cfg, user_id)
         try:
             info = _call(base, data["token"], "core_webservice_get_site_info")
-            return {
-                "success": True,
-                "valid": True,
-                "site": info.get("sitename", "Moodle"),
-                "user": info.get("fullname", req.username.strip()),
-                "last_sync": _cache_get("last_sync", user_id),
-            }
         except HTTPException:
-            return {"success": True, "valid": True, "site": "Moodle"}
+            info = {}
+        try:
+            synced = _sync_all(user_id)
+            _cache_set("courses", synced["courses"], user_id)
+            _cache_set("activities", synced["activities"], user_id)
+            _cache_set("deadlines", synced["deadlines"], user_id)
+            _cache_set("announcements", synced["announcements"], user_id)
+        except Exception:
+            pass
+        return {
+            "success": True,
+            "valid": True,
+            "site": info.get("sitename", "Moodle"),
+            "user": info.get("fullname", req.username.strip()),
+            "last_sync": _cache_get("last_sync", user_id),
+        }
     detail = data.get("error", "Falha de autenticação.") if isinstance(data, dict) else "Falha de autenticação."
     raise HTTPException(status_code=401, detail=detail)
 

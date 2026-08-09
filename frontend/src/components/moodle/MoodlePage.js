@@ -49,6 +49,11 @@ export function MoodlePage({ onClose }) {
         setPassword('');
         setTokenInput('');
         setLastSync(new Date());
+        try {
+          await axios.post(`${API}/sync`);
+        } catch (e) {
+          console.error('Sincronização inicial falhou:', e);
+        }
         await fetchAll();
       } else {
         toast.error('Falha na conexão. Verifique os dados e tente novamente.');

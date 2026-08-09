@@ -86,6 +86,8 @@ const JudgePanel = () => {
   const [showLineByLine, setShowLineByLine] = useState(false);
   const [codeSelection, setCodeSelection] = useState('');
 
+  const activeExercise = selected || newExercise;
+
   useEffect(() => {
     if (!walkPlay || !walk) return;
     const t = setInterval(() => {
@@ -470,7 +472,6 @@ const JudgePanel = () => {
   };
 
   const solvedCount = Object.values(progress).filter((p) => p?.solved).length;
-  const activeExercise = selected || newExercise;
 
   if (activeExercise) {
     const explanation = result?.explanation;

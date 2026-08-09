@@ -1867,7 +1867,7 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
         generated = None
 
     if generated:
-        topic_meta = dict(topic)
+        topic_meta = {"id": topic, "name": topic, "description": ""}
         return {
             "id": f"text_{abs(hash(description)) % 100000}",
             "title": generated["title"],

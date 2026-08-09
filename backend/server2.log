@@ -1,0 +1,122 @@
+2026-08-08 21:27:53,182 - server - INFO - Startup env check -> MONGO_URL set: False | MONGODB_URI set: False | DB_NAME: study_app
+INFO:     Started server process [27302]
+INFO:     Waiting for application startup.
+2026-08-08 21:27:53,238 - routes.schedule - WARNING - MongoDB not configured, skipping data initialization
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+2026-08-08 21:27:54,389 - backend.services.chat_service - INFO - Sending chat to Claude (Anthropic) / anthropic/claude-3-5-sonnet-20241022
+[92m21:27:54 - LiteLLM:INFO[0m: utils.py:1307 - [92m
+
+POST Request Sent from LiteLLM:
+curl -X POST \
+https://api.anthropic.com/v1/messages \
+-H 'accept: application/json' -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' -H 'x-api-key: AQ.Ab8RN6JTpSWU3Gxy1jgvzWymTE6j8z********************' \
+-d '{'model': 'claude-3-5-sonnet-20241022', 'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'Olá'}]}], 'temperature': 0.7, 'max_tokens': 4096}'
+[0m
+
+2026-08-08 21:27:54,391 - LiteLLM - INFO - [92m
+
+POST Request Sent from LiteLLM:
+curl -X POST \
+https://api.anthropic.com/v1/messages \
+-H 'accept: application/json' -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' -H 'x-api-key: AQ.Ab8RN6JTpSWU3Gxy1jgvzWymTE6j8z********************' \
+-d '{'model': 'claude-3-5-sonnet-20241022', 'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'Olá'}]}], 'temperature': 0.7, 'max_tokens': 4096}'
+[0m
+
+2026-08-08 21:27:54,752 - httpx - INFO - HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 401 Unauthorized"
+Traceback (most recent call last):
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/main.py", line 347, in acompletion
+    response = await init_response
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/llms/anthropic.py", line 469, in acompletion_function
+    response = await async_handler.post(api_base, headers=headers, json=data)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/llms/custom_httpx/http_handler.py", line 84, in post
+    response.raise_for_status()
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.anthropic.com/v1/messages'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-08-08 21:27:54,771 - backend.services.chat_service - ERROR - Error in chat with Claude (Anthropic): Client error '401 Unauthorized' for url 'https://api.anthropic.com/v1/messages'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-08-08 21:27:54,771 - backend.services.chat_service - WARNING - Provider claude falhou (Client error '401 Unauthorized' for url 'https://api.anthropic.com/v1/messages'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401); tentando proximo provedor...
+2026-08-08 21:27:54,771 - backend.services.chat_service - INFO - Sending chat to Google Gemini / gemini/gemini-1.5-flash
+Traceback (most recent call last):
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/llms/gemini.py", line 129, in completion
+    import google.generativeai as genai  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'google'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/main.py", line 1838, in completion
+    model_response = gemini.completion(
+                     ^^^^^^^^^^^^^^^^^^
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/llms/gemini.py", line 131, in completion
+    raise Exception(
+Exception: Importing google.generativeai failed, please run 'pip install -q google-generativeai
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/main.py", line 339, in acompletion
+    init_response = await loop.run_in_executor(None, func_with_context)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/erijohnsondesousa/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/utils.py", line 3113, in wrapper
+    result = original_function(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/main.py", line 2446, in completion
+    raise exception_type(
+          ^^^^^^^^^^^^^^^
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/utils.py", line 10006, in exception_type
+    raise e
+  File "/Users/erijohnsondesousa/aplicativo-de-estudos-atualizado-/venv/lib/python3.12/site-packages/litellm/utils.py", line 9981, in exception_type
+    raise APIConnectionError(
+litellm.exceptions.APIConnectionError: Importing google.generativeai failed, please run 'pip install -q google-generativeai
+2026-08-08 21:27:54,781 - backend.services.chat_service - ERROR - Error in chat with Google Gemini: Importing google.generativeai failed, please run 'pip install -q google-generativeai
+2026-08-08 21:27:54,781 - backend.services.chat_service - WARNING - Provider gemini falhou (Importing google.generativeai failed, please run 'pip install -q google-generativeai); tentando proximo provedor...
+2026-08-08 21:27:54,781 - backend.services.chat_service - INFO - Sending chat to Groq / groq/llama-3.3-70b-versatile
+[92m21:27:54 - LiteLLM:INFO[0m: utils.py:1307 - [92m
+
+POST Request Sent from LiteLLM:
+curl -X POST \
+https://api.groq.com/openai/v1/ \
+-H 'Authorization: Bearer gsk_iXJfXEiUYLyj4h8LvfmdWGdyb3FY4a8X********************' \
+-d '{'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': 'Olá'}], 'temperature': 0.7, 'max_tokens': 4096, 'stream': False, 'extra_body': {}}'
+[0m
+
+2026-08-08 21:27:54,785 - LiteLLM - INFO - [92m
+
+POST Request Sent from LiteLLM:
+curl -X POST \
+https://api.groq.com/openai/v1/ \
+-H 'Authorization: Bearer gsk_iXJfXEiUYLyj4h8LvfmdWGdyb3FY4a8X********************' \
+-d '{'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': 'Olá'}], 'temperature': 0.7, 'max_tokens': 4096, 'stream': False, 'extra_body': {}}'
+[0m
+
+2026-08-08 21:27:56,162 - httpx - INFO - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.set_verbose=True'.
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.set_verbose=True'.
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm.set_verbose=True'.
+
+INFO:     127.0.0.1:54824 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [27302]

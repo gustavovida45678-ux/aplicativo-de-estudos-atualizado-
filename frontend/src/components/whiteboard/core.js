@@ -314,9 +314,10 @@ export function textColorForBackground(bg) {
   return luminance > 150 ? "#111827" : "#ffffff";
 }
 
-export function loadState() {
+export function loadState(subjectId = "default") {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const key = `${STORAGE_KEY}_${subjectId}`;
+    const saved = localStorage.getItem(key);
     if (!saved) {
       const legacy = localStorage.getItem("virtual_whiteboard_state");
       if (legacy) {
@@ -342,10 +343,57 @@ export function loadState() {
   }
 }
 
-export function saveState(elements, pan, scale) {
+export function saveState(elements, pan, scale, subjectId = "default") {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ elements, pan, scale }));
+    const key = `${STORAGE_KEY}_${subjectId}`;
+    localStorage.setItem(key, JSON.stringify({ elements, pan, scale }));
   } catch (e) {
     console.error("Erro ao salvar estado da lousa:", e);
+  }
+}
+
+export function getSavedSubjects() {
+  try {
+    const subjects = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(STORAGE_KEY + "_")) {
+        const subjectId = key.replace(STORAGE_KEY + "_", "");
+        const data = JSON.parse(localStorage.getItem(key) || "{}");
+        subjects.push({
+          id: subjectId,
+          name: subjectId,
+          elementCount: (data.elements || []).length,
+          lastModified: data.lastModified || null,
+        });
+      }
+    }
+    return subjects;
+  } catch (e) {
+    console.error("Erro ao listar matérias:", e);
+    return [];
+  }
+}
+
+export function deleteSubject(subjectId) {
+  try {
+    const key = `${STORAGE_KEY}_${subjectId}`;
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.error("Erro ao excluir matéria:", e);
+  }
+}
+
+export function renameSubject(oldId, newId) {
+  try {
+    const oldKey = `${STORAGE_KEY}_${oldId}`;
+    const newKey = `${STORAGE_KEY}_${newId}`;
+    const data = localStorage.getItem(oldKey);
+    if (data) {
+      localStorage.setItem(newKey, data);
+      localStorage.removeItem(oldKey);
+    }
+  } catch (e) {
+    console.error("Erro ao renomear matéria:", e);
   }
 }

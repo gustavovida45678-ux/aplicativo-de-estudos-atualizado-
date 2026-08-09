@@ -963,7 +963,7 @@ const JudgePanel = () => {
               </div>
             )}
 
-            {explanation && showExplanation && (
+{explanation && showExplanation && (
               <div style={{
                 marginTop: 16, borderRadius: 12, overflow: 'hidden',
                 border: '2px solid #333',
@@ -975,113 +975,196 @@ const JudgePanel = () => {
                   borderBottom: '1px solid #333',
                 }}>
                   <Brain size={20} color="#f59e0b" />
-                  <b style={{ fontSize: 16, color: '#f59e0b' }}>Analise do Erro - Passo a Passo</b>
+                  <b style={{ fontSize: 16, color: '#f59e0b' }}>📚 Explicação Detalhada para Iniciantes</b>
                 </div>
 
                 {/* Content */}
                 <div style={{ background: '#111', padding: 16 }}>
 
-                  {/* Error Type */}
+                  {/* O que aconteceu - linguagem simples */}
                   <div style={{
-                    background: '#111', borderRadius: 8, padding: 12, marginBottom: 12,
-                    borderLeft: '4px solid #f59e0b', border: '1px solid #333',
+                    background: '#0f172a', borderRadius: 8, padding: 16, marginBottom: 16,
+                    borderLeft: '4px solid #3b82f6', border: '1px solid #1e40af',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <AlertTriangle size={14} color="#f59e0b" />
-                      <b style={{ color: '#f59e0b', fontSize: 14 }}>Tipo do erro:</b>
-                      <span style={{ color: '#ef4444', fontWeight: 700 }}>{explanation.error_type}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <HelpCircle size={18} color="#60a5fa" />
+                      <b style={{ color: '#93c5fd', fontSize: 15 }}>O que aconteceu?</b>
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, color: '#a3a3a3', lineHeight: 1.5 }}>{explanation.analysis}</p>
+                    <p style={{ margin: 0, fontSize: 14, color: '#e2e8f0', lineHeight: 1.7 }}>
+                      {explanation.simple_explanation || explanation.analysis || 'O código não funcionou como esperado.'}
+                    </p>
                   </div>
 
-                  {/* Steps */}
+                  {/* Tipo do erro com explicação */}
+                  <div style={{
+                    background: '#1a1a2e', borderRadius: 8, padding: 12, marginBottom: 16,
+                    borderLeft: '4px solid #f59e0b', border: '1px solid #333',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <AlertTriangle size={14} color="#f59e0b" />
+                      <b style={{ color: '#fbbf24', fontSize: 14 }}>Tipo do erro:</b>
+                      <span style={{ color: '#ef4444', fontWeight: 700, marginLeft: 8 }}>{explanation.error_type}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6 }}>
+                      <b>O que significa:</b> {explanation.error_meaning || 'Este erro indica que algo no código não está correto.'}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6, marginTop: 8 }}>
+                      <b>Por que acontece:</b> {explanation.why_it_happens || 'Geralmente ocorre por um pequeno descuido na sintaxe ou lógica.'}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6, marginTop: 8 }}>
+                      <b>Análise técnica:</b> {explanation.analysis}
+                    </div>
+                  </div>
+
+                  {/* Passos para corrigir */}
                   {explanation.step_by_step?.map((step, i) => (
                     <div key={i} style={{
                       background: expandedStep === i ? '#1a1a2e' : '#1a1a1a',
-                      borderRadius: 8, marginBottom: 8,
+                      borderRadius: 8, marginBottom: 12,
                       border: `1px solid ${expandedStep === i ? '#3b82f6' : '#333'}`,
                       overflow: 'hidden', transition: 'all 0.2s',
                     }}>
                       <button
                         onClick={() => setExpandedStep(expandedStep === i ? null : i)}
                         style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '12px 14px', background: 'transparent', border: 'none',
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '14px 16px', background: 'transparent', border: 'none',
                           cursor: 'pointer', textAlign: 'left', color: '#fff',
                         }}
                       >
                         <span style={{
-                          width: 28, height: 28, borderRadius: '50%',
+                          width: 32, height: 32, borderRadius: '50%',
                           background: expandedStep === i ? '#3b82f6' : '#333',
                           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 13, fontWeight: 'bold', flexShrink: 0,
+                          fontSize: 14, fontWeight: 'bold', flexShrink: 0,
                           transition: 'background 0.2s',
                         }}>{step.step}</span>
                         <div style={{ flex: 1 }}>
-                          <b style={{ fontSize: 14, color: '#fff' }}>{step.title}</b>
-                          {step.concept && expandedStep !== i && (
-                            <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 2 }}>
-                              <BookOpen size={10} style={{ display: 'inline' }} /> {step.concept}
+                          <b style={{ fontSize: 15, color: '#fff' }}>{step.title}</b>
+                          {step.concept && (
+                            <div style={{ fontSize: 12, color: '#60a5fa', marginTop: 4 }}>
+                              <BookOpen size={12} style={{ display: 'inline', marginRight: 4 }} /> 
+                              <b>Conceito:</b> {step.concept}
                             </div>
                           )}
                         </div>
-                        {expandedStep === i ? <ChevronUp size={16} color="#a3a3a3" /> : <ChevronDown size={16} color="#a3a3a3" />}
+                        {expandedStep === i ? <ChevronUp size={18} color="#a3a3a3" /> : <ChevronDown size={18} color="#a3a3a3" />}
                       </button>
                       {expandedStep === i && (
-                        <div style={{ padding: '0 14px 14px 52px' }}>
-                          <p style={{ margin: '0 0 8px', fontSize: 13, lineHeight: 1.7, color: '#d4d4d4', whiteSpace: 'pre-wrap' }}>{step.detail}</p>
+                        <div style={{ padding: '0 16px 16px 48px' }}>
+                          <div style={{ marginBottom: 12, padding: 12, background: '#0d1117', borderRadius: 8, border: '1px solid #333' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                              <Lightbulb size={14} color="#fbbf24" />
+                              <b style={{ color: '#fbbf24', fontSize: 13 }}>💡 Explicação simples:</b>
+                            </div>
+                            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
+                              {step.simple_detail || step.detail}
+                            </p>
+                          </div>
+                          
+                          {step.analogy && (
+                            <div style={{ marginBottom: 12, padding: 12, background: '#1a0b2e', borderRadius: 8, border: '1px solid #7c3aed' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                <Sparkles size={14} color="#a78bfa" />
+                                <b style={{ color: '#c4b5fd', fontSize: 13 }}>🎯 Analogia para entender:</b>
+                              </div>
+                              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#e9d5ff' }}>{step.analogy}</p>
+                            </div>
+                          )}
+
                           {step.concept && (
-                            <div style={{
-                              background: '#0f172a', borderRadius: 6, padding: '8px 10px',
-                              marginBottom: 8, border: '1px solid #1e40af',
-                            }}>
+                            <div style={{ marginBottom: 12, padding: 12, background: '#0f172a', borderRadius: 6, border: '1px solid #1e40af' }}>
                               <BookOpen size={12} color="#60a5fa" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
-                              <span style={{ color: '#60a5fa', fontSize: 12, fontWeight: 600 }}>Conceito: </span>
+                              <span style={{ color: '#60a5fa', fontSize: 12, fontWeight: 600 }}>📖 Conceito importante: </span>
                               <span style={{ color: '#93c5fd', fontSize: 12 }}>{step.concept}</span>
                             </div>
                           )}
+
                           {step.code_hint && (
-                            <pre style={{
-                              background: '#0d1117', color: '#7ee787', padding: 10,
-                              borderRadius: 6, fontSize: 12, overflow: 'auto', margin: 0,
-                              border: '1px solid #30363d',
-                            }}>{step.code_hint}</pre>
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                <Code2 size={14} color="#34d399" />
+                                <b style={{ color: '#4ade80', fontSize: 13 }}>✅ Como deveria ser (exemplo):</b>
+                              </div>
+                              <pre style={{
+                                background: '#0d1117', color: '#7ee787', padding: 12,
+                                borderRadius: 8, fontSize: 13, overflow: 'auto', margin: 0,
+                                border: '1px solid #30363d', whiteSpace: 'pre-wrap',
+                                lineHeight: 1.6,
+                              }}>{step.code_hint}</pre>
+                            </div>
+                          )}
+
+                          {step.common_mistake && (
+                            <div style={{ padding: 12, background: '#2a0a0a', borderRadius: 8, border: '1px solid #ef4444' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                <AlertTriangle size={14} color="#ef4444" />
+                                <b style={{ color: '#fca5a5', fontSize: 13 }}>⚠ Erro comum:</b>
+                              </div>
+                              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#fecaca' }}>{step.common_mistake}</p>
+                            </div>
+                          )}
+
+                          {step.why_this_works && (
+                            <div style={{ padding: 12, background: '#0a1a0a', borderRadius: 8, border: '1px solid #22c55e' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                <CheckCircle2 size={14} color="#22c55e" />
+                                <b style={{ color: '#86efac', fontSize: 13 }}>✅ Por que funciona:</b>
+                              </div>
+                              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#bbf7d0' }}>{step.why_this_works}</p>
+                            </div>
                           )}
                         </div>
                       )}
                     </div>
                   ))}
 
-                  {/* Suggestion */}
+                  {/* Dica final */}
                   {explanation.suggestion && (
                     <div style={{
-                      background: '#111', borderRadius: 8, padding: 12, marginTop: 8,
+                      background: '#0a1a0a', borderRadius: 8, padding: 16, marginTop: 16,
                       borderLeft: '4px solid #22c55e', border: '1px solid #333',
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <Lightbulb size={14} color="#22c55e" />
-                        <b style={{ color: '#4ade80', fontSize: 13 }}>Dica:</b>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <Lightbulb size={16} color="#22c55e" />
+                        <b style={{ color: '#86efac', fontSize: 14 }}>💡 Dica para não errar de novo:</b>
                       </div>
-                      <p style={{ margin: 0, fontSize: 13, color: '#86efac', lineHeight: 1.5 }}>{explanation.suggestion}</p>
+                      <p style={{ margin: 0, fontSize: 14, color: '#bbf7d0', lineHeight: 1.6 }}>{explanation.suggestion}</p>
                     </div>
                   )}
 
-                  {/* Corrected Code */}
+                  {/* Código corrigido */}
                   {explanation.corrected_code && (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                        <Code2 size={14} color="#22c55e" />
-                        <b style={{ color: '#4ade80', fontSize: 13 }}>Codigo Corrigido:</b>
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <Code2 size={16} color="#22c55e" />
+                        <b style={{ color: '#4ade80', fontSize: 14 }}>📝 Código corrigido completo:</b>
                       </div>
                       <pre style={{
-                        background: '#0d1117', color: '#7ee787', padding: 12,
-                        borderRadius: 8, fontSize: 12, overflow: 'auto', margin: 0,
+                        background: '#0d1117', color: '#7ee787', padding: 16,
+                        borderRadius: 10, fontSize: 13, overflow: 'auto', margin: 0,
                         border: '1px solid #30363d', whiteSpace: 'pre-wrap',
+                        lineHeight: 1.7,
                       }}>{explanation.corrected_code}</pre>
+                      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                        <button onClick={() => navigator.clipboard.writeText(explanation.corrected_code)} style={{
+                          padding: '8px 16px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff',
+                          fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+                        }}>
+                          <Copy size={14} /> Copiar código
+                        </button>
+                        <button onClick={() => { setCode(explanation.corrected_code); saveCode(activeExercise.id || 'custom', language, explanation.corrected_code); toast.success('Código aplicado no editor!'); }} style={{
+                          padding: '8px 16px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff',
+                          fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+                        }}>
+                          <Wand2 size={14} /> Usar no editor
+                        </button>
+                      </div>
                     </div>
                   )}
-
-                   {/* YouTube Videos por Passo */}
+                </div>
+              </div>
+            )}
                   {explanation.step_by_step?.some(step => step.youtube_search) && (
                     <div style={{ marginTop: 14 }}>
                       <div style={{

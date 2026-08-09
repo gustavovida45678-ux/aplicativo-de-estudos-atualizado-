@@ -195,6 +195,11 @@ function VirtualWhiteboard() {
   const [showPenCursor, setShowPenCursor] = useState(true);
   const showPenCursorRef = useRef(showPenCursor);
 
+  const [canvasBounds, setCanvasBounds] = useState({ x: -5000, y: -5000, width: 10000, height: 10000 });
+  const canvasBoundsRef = useRef(canvasBounds);
+  const [autoExpandCanvas, setAutoExpandCanvas] = useState(true);
+  const autoExpandCanvasRef = useRef(autoExpandCanvas);
+
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [canUndo, setCanUndo] = useState(false);
@@ -327,6 +332,12 @@ function VirtualWhiteboard() {
   useEffect(() => {
     showPenCursorRef.current = showPenCursor;
   }, [showPenCursor]);
+  useEffect(() => {
+    canvasBoundsRef.current = canvasBounds;
+  }, [canvasBounds]);
+  useEffect(() => {
+    autoExpandCanvasRef.current = autoExpandCanvas;
+  }, [autoExpandCanvas]);
 
   // ---------------- Render loop ----------------
   const mapById = useCallback(() => {
@@ -922,6 +933,17 @@ function VirtualWhiteboard() {
     setPan({ x: 0, y: 0 });
   }, []);
 
+  const expandCanvasManually = useCallback(() => {
+    const bounds = canvasBoundsRef.current;
+    setCanvasBounds({
+      x: bounds.x - 5000,
+      y: bounds.y - 5000,
+      width: bounds.width + 10000,
+      height: bounds.height + 10000,
+    });
+    markStaticDirty();
+  }, [markStaticDirty]);
+
   // ---------------- Manipuladores de ponteiro ----------------
   const startPan = useCallback(
     (e) => {
@@ -1221,6 +1243,37 @@ function VirtualWhiteboard() {
     }
   }, [zoomAt]);
 
+  const checkAutoExpand = useCallback((point) => {
+    const bounds = canvasBoundsRef.current;
+    const margin = 500; // Expand when within 500 units of edge
+    let expanded = false;
+    const newBounds = { ...bounds };
+
+    if (point.x < bounds.x + margin) {
+      newBounds.x = bounds.x - 5000;
+      newBounds.width = bounds.width + 5000;
+      expanded = true;
+    }
+    if (point.x > bounds.x + bounds.width - margin) {
+      newBounds.width = bounds.width + 5000;
+      expanded = true;
+    }
+    if (point.y < bounds.y + margin) {
+      newBounds.y = bounds.y - 5000;
+      newBounds.height = bounds.height + 5000;
+      expanded = true;
+    }
+    if (point.y > bounds.y + bounds.height - margin) {
+      newBounds.height = bounds.height + 5000;
+      expanded = true;
+    }
+
+    if (expanded) {
+      setCanvasBounds(newBounds);
+      markStaticDirty();
+    }
+  }, [markStaticDirty]);
+
   const applyStabilizer = useCallback((ptr, point, pv, stabilizerConfig) => {
     if (!ptr.stabilizerBuffer) ptr.stabilizerBuffer = [];
     const buffer = ptr.stabilizerBuffer;
@@ -1305,6 +1358,10 @@ function VirtualWhiteboard() {
         
         if (autoZoomWritingRef.current && profile.autoZoom) {
           checkAutoZoom(point);
+        }
+
+        if (autoExpandCanvasRef.current) {
+          checkAutoExpand(point);
         }
         
         requestFrame();
@@ -2065,6 +2122,12 @@ function VirtualWhiteboard() {
           </button>
           <button className={`tool-btn ${showMinimap ? "active" : ""}`} onClick={() => setShowMinimap(!showMinimap)} title="Minimapa">
             <Maximize size={20} />
+          </button>
+          <button className={`tool-btn ${autoExpandCanvas ? "active" : ""}`} onClick={() => setAutoExpandCanvas(!autoExpandCanvas)} title="Expandir tela automaticamente ao escrever nas bordas">
+            <Move size={20} />
+          </button>
+          <button className="tool-btn" onClick={expandCanvasManually} title="Expandir tela manualmente (+5000px)">
+            <ArrowRight size={20} />
           </button>
         </div>
 

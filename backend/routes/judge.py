@@ -33,11 +33,12 @@ AI_PROVIDERS = [
         "name": "OpenRouter",
         "url": "https://openrouter.ai/api/v1/chat/completions",
         "env": "OPENROUTER_API_KEY",
-        "model": "deepseek/deepseek-v3.2",
+        "model": "openai/gpt-4.1-mini",
         "headers": {
             "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
             "X-Title": "StudyApp Judge",
         },
+        "reasoning": False,
     },
     {
         "name": "Groq",
@@ -424,7 +425,7 @@ REGRAS:
   * used_in: onde essa variavel sera usada nas proximas linhas
 - IMPORTANTE: em TODO passo que envolver expressoes importantes (input, scanf, print, if, for, operadores, variaveis), preencha `expressions` seguindo o PEDAGOGY_RULES (por que, o que aconteceria sem ela, quando usar, alternativas)
 - Seja MUITO didatico, como aula particular para alguem que nunca programou
-- No maximo 40 passos"""
+- No maximo 8 passos"""
     elif compile_error:
         system_prompt = f"""Voce e um professor de {lang_name} muito didatico. O codigo do aluno NAO COMPILOU.
 
@@ -447,10 +448,9 @@ REGRAS:
 - Primeiro passo: explique de forma resumida qual era o erro de compilacao e o que foi corrigido (sem lengalenga, 1-2 frases)
 - Depois, simule CADA linha do CODIGO CORRIGIDO usando os valores reais da entrada
 - `line` deve corresponder a linha correspondente dentro do corrected_code (1-based)
-- IMPORTANTE: em TODO passo que envolver variaveis (declaracao, leitura, calculo, impressao), preencha `variable_details` explicando COM MAXIMO DETALHE
-- IMPORTANTE: em TODO passo que envolver expressoes importantes (input, scanf, print, if, for, operadores, variaveis), preencha `expressions` seguindo o PEDAGOGY_RULES
+- Preencha `variable_details` e `expressions` apenas nos passos mais importantes (declaracao de variaveis, leitura, calculo, impressao) - sem repeticao
 - Seja MUITO didatico, como aula particular para alguem que nunca programou
-- No maximo 40 passos"""
+- No maximo 8 passos"""
     else:
         system_prompt = f"""Voce e um professor de {lang_name} que explica como o codigo executa passo a passo, linha por linha, como se o aluno nunca tivesse programado.
 
@@ -464,14 +464,10 @@ Responda APENAS com JSON (sem markdown, sem ```), um array de objetos:
 REGRAS:
 - Use os valores REAIS da execucao (ex: A=2, B=3, soma=5)
 - Cada passo deve referenciar uma linha que REALMENTE existe no codigo fornecido
-- IMPORTANTE: em TODO passo que envolver variaveis (declaracao, leitura, calculo, impressao), preencha `variable_details` explicando COM MAXIMO DETALHE:
-  * purpose: o que essa variavel guarda e para que ela serve no programa
-  * why: por que o tipo foi escolhido (int para inteiros, float/double para decimais, char para um caractere) e por que a variavel precisa existir em vez de usar o valor direto
-  * used_in: onde essa variavel sera usada (calculos, impressoes, condicoes)
-- IMPORTANTE: em TODO passo com expressao importante, preencha `expressions` (por que usada aqui, o que aconteceria sem ela, quando usar de novo, alternativas)
+- Preencha `variable_details` apenas nos passos de declaracao/leitura/calculo/impressao de variaveis, e `expressions` apenas para as expressoes mais importantes - sem repeticao nos demais passos
 - Quando a linha imprimir, mostre em output a saida acumulada usando \\n
 - Seja MUITO didatico, como aula particular
-- No maximo 40 passos"""
+- No maximo 8 passos"""
 
     context_parts = [f"LINGUAGEM: {lang_name}"]
     if statement:
@@ -482,7 +478,7 @@ REGRAS:
     context_parts.append(f"CODIGO:\n```{language}\n{code}\n```")
     context = "\n\n".join(context_parts)
 
-    raw = _call_ai(system_prompt, context, custom_key, max_tokens=4500)
+    raw = _call_ai(system_prompt, context, custom_key, max_tokens=1800)
     if not raw:
         return None, None
     try:
@@ -631,25 +627,42 @@ def _run(lang: str, code: str, stdin: str) -> dict:
 
 
 def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = None, max_tokens: int = 3000) -> Optional[str]:
-    def _call_openai_compat(url: str, api_key: str, model: str, extra_headers: dict = None) -> Optional[str]:
+    import concurrent.futures
+
+    def _post_with_deadline(url: str, headers: dict, payload: dict, timeout: int = 45):
+        """POST com timeout TOTAL real (requests nao impoe tempo total, so por-leitura)."""
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(requests.post, url, headers=headers, json=payload, timeout=timeout)
+            try:
+                return fut.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                logger.error(f"IA timeout total de {timeout}s")
+                return None
+
+    def _call_openai_compat(url: str, api_key: str, model: str, extra_headers: dict = None, provider=None) -> Optional[str]:
         try:
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             if extra_headers:
                 headers.update(extra_headers)
-            resp = requests.post(
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": max_tokens,
+            }
+            if provider and provider.get("reasoning"):
+                payload["reasoning"] = {"enabled": False}
+            resp = _post_with_deadline(
                 url,
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": max_tokens,
-                },
-                timeout=60,
+                headers,
+                payload,
+                timeout=45,
             )
+            if resp is None:
+                return None
             if resp.status_code == 200:
                 data = resp.json()
                 content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
@@ -667,7 +680,7 @@ def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = N
     # 1) Chave personalizada do frontend (X-Custom-API-Key) tem prioridade.
     if custom_key:
         for provider in AI_PROVIDERS[:3]:
-            content = _call_openai_compat(provider["url"], custom_key, provider["model"], provider["headers"])
+            content = _call_openai_compat(provider["url"], custom_key, provider["model"], provider["headers"], provider)
             if content:
                 return content
 
@@ -676,7 +689,7 @@ def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = N
         key = os.environ.get(provider["env"])
         if not key:
             continue
-        content = _call_openai_compat(provider["url"], key, provider["model"], provider["headers"])
+        content = _call_openai_compat(provider["url"], key, provider["model"], provider["headers"], provider)
         if content:
             return content
 
@@ -1478,6 +1491,32 @@ async def explain_error(req: SubmitRequest, x_custom_api_key: Optional[str] = He
     return ai_explanation
 
 
+def _fix_code_ai(code: str, language: str, compile_error: str, custom_key=None):
+    """Chamada curta dedicada a corrigir o codigo com erro de compilacao."""
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
+    system_prompt = f"""Voce e um professor de {lang_name}. O codigo do aluno NAO COMPILA.
+
+CORRIJA o codigo para compilar e resolver o problema, mantendo a logica e o estilo do aluno o mais proximo possivel do original. Nao reescreva o codigo do zero, nao mude a estrutura, nao adicione funcionalidades novas. Apenas conserte os erros de sintaxe/compilacao.
+
+Responda APENAS com o codigo corrigido completo (sem markdown, sem ```, sem comentarios adicionais)."""
+    context = f"""LINGUAGEM: {lang_name}
+ERRO DE COMPILACAO:
+{compile_error[:600]}
+
+CODIGO DO ALUNO:
+```{language}
+{code}
+```"""
+    raw = _call_ai(system_prompt, context, custom_key, max_tokens=1200)
+    if not raw:
+        return None
+    cleaned = re.sub(r"^```\w*\n?", "", raw.strip()).strip()
+    cleaned = re.sub(r"\n?```$", "", cleaned)
+    if not cleaned or cleaned.lower().startswith(("desculpe", "não ", "nao ", "erro")):
+        return None
+    return cleaned
+
+
 @router.post("/walkthrough")
 def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
     if not req.code.strip():
@@ -1487,8 +1526,8 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
     is_template = _is_template(req.code, req.language)
     compile_error = None
 
-    # Executa o codigo real do aluno para detectar erro de compilacao
-    if not is_template:
+    def _check_compile():
+        nonlocal compile_error
         try:
             run_result = _run(req.language, req.code, stdin)
             if run_result and isinstance(run_result, dict):
@@ -1500,10 +1539,39 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
         except Exception as e:
             logger.warning(f"Falha ao executar no walkthrough: {e}")
 
-    steps, corrected_code = _walkthrough_ai(
-        req.code, req.language, stdin, req.statement, expected,
-        is_template, x_custom_api_key, compile_error=compile_error,
-    )
+    # Roda o check de compilacao em paralelo, mas espera ate ~7s antes de chamar a IA:
+    # o Wandbox costuma responder em ~5s, e com o erro conhecido a IA ja corrige numa unica chamada.
+    if not is_template:
+        import threading
+
+        check_thread = threading.Thread(target=_check_compile, daemon=True)
+        check_thread.start()
+        check_thread.join(timeout=7)
+        if check_thread.is_alive():
+            # nao terminou: segue sem o erro; o fix dedicado rodara depois se necessario
+            check_thread = None
+    else:
+        check_thread = None
+
+    try:
+        steps, corrected_code = _walkthrough_ai(
+            req.code, req.language, stdin, req.statement, expected,
+            is_template, x_custom_api_key, compile_error=compile_error,
+        )
+    finally:
+        if check_thread:
+            check_thread.join(timeout=8)
+
+    if not steps:
+        # IA falhou ou nao produziu steps: re-tenta com o erro de compilacao conhecido
+        if compile_error and not is_template:
+            steps, corrected_code = _walkthrough_ai(
+                req.code, req.language, stdin, req.statement, expected,
+                False, x_custom_api_key, compile_error=compile_error,
+            )
+    if not corrected_code and compile_error and not is_template:
+        # Erro de compilacao real e a IA nao corrigiu: chamada curta dedicada a corrigir
+        corrected_code = _fix_code_ai(req.code, req.language, compile_error, x_custom_api_key)
     if not steps:
         if is_template:
             steps = [{

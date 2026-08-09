@@ -844,41 +844,46 @@ const JudgePanel = () => {
               </button>
             </div>
 
-            {walk.template && !code.trim() && (
+            {(walk.template && !code.trim()) || (walk.compile_error && walk.corrected_code) ? (
               <div style={{
-                background: 'rgba(124, 58, 237, 0.12)', borderBottom: '1px solid #7c3aed',
+                background: walk.compile_error ? 'rgba(220, 38, 38, 0.12)' : 'rgba(124, 58, 237, 0.12)',
+                borderBottom: `1px solid ${walk.compile_error ? '#dc2626' : '#7c3aed'}`,
                 padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
               }}>
-                <Sparkles size={15} color="#a78bfa" />
-                <span style={{ fontSize: 12.5, color: '#c4b5fd', flex: 1, minWidth: 200 }}>
-                  Codigo vazio detectado: a solucao abaixo foi <b>preenchida automaticamente</b> para demonstrar como o exercicio deve ser resolvido.
+                {walk.compile_error ? <AlertTriangle size={15} color="#f87171" /> : <Sparkles size={15} color="#a78bfa" />}
+                <span style={{ fontSize: 12.5, color: walk.compile_error ? '#fca5a5' : '#c4b5fd', flex: 1, minWidth: 200 }}>
+                  {walk.compile_error
+                    ? <>Seu codigo <b>nao compilou</b>. A solucao abaixo foi <b>corrigida</b> para demonstrar como o exercicio deve ser resolvido.</>
+                    : <>Codigo vazio detectado: a solucao abaixo foi <b>preenchida automaticamente</b> para demonstrar como o exercicio deve ser resolvido.</>}
                 </span>
                 {walk.corrected_code && (
                   <button
                     onClick={() => {
                       setCode(walk.corrected_code);
                       saveCode(activeExercise.id || 'custom', language, walk.corrected_code);
-                      toast.success('Solucao preenchida no editor!');
+                      toast.success(walk.compile_error ? 'Codigo corrigido aplicado no editor!' : 'Solucao preenchida no editor!');
                     }}
                     style={{
-                      padding: '6px 12px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff',
+                      padding: '6px 12px', borderRadius: 8, border: 'none', background: walk.compile_error ? '#dc2626' : '#7c3aed', color: '#fff',
                       fontWeight: 700, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
                     }}
                   >
-                    <Wand2 size={13} /> Usar solucao no editor
+                    <Wand2 size={13} /> {walk.compile_error ? 'Usar codigo corrigido' : 'Usar solucao no editor'}
                   </button>
                 )}
               </div>
-            )}
+            ) : null}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {(() => {
                 const cur = walk.steps[walkIdx];
                 // Sempre mostra o código do usuário se ele tiver escrito algo
                 // Só usa corrected_code se o usuário não escreveu nada (código vazio)
+                // ou se o código dele não compilou (a simulação roda sobre o código corrigido)
                 const userHasCode = code.trim().length > 0;
-                const shownCode = (!userHasCode && walk.template && walk.corrected_code) 
-                  ? walk.corrected_code 
+                const showCorrected = walk.compile_error && walk.corrected_code;
+                const shownCode = ((!userHasCode && walk.template) || showCorrected) && walk.corrected_code
+                  ? walk.corrected_code
                   : code;
                 const codeLines = shownCode.split('\n');
                 return (

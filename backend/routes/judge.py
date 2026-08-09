@@ -396,7 +396,7 @@ def _local_walkthrough(code: str, language: str, stdin: str) -> list:
     return steps
 
 
-def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False, custom_key: Optional[str] = None):
+def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False, custom_key: Optional[str] = None, compile_error: Optional[str] = None):
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
     if is_template:
         system_prompt = f"""Voce e um professor de {lang_name} muito didatico. O aluno enviou um CODIGO VAZIO (apenas o esqueleto com '// seu codigo aqui').
@@ -423,6 +423,32 @@ REGRAS:
   * why: por que escolhemos esse tipo (int para inteiros, float/double para decimais) e por que ela precisa existir
   * used_in: onde essa variavel sera usada nas proximas linhas
 - IMPORTANTE: em TODO passo que envolver expressoes importantes (input, scanf, print, if, for, operadores, variaveis), preencha `expressions` seguindo o PEDAGOGY_RULES (por que, o que aconteceria sem ela, quando usar, alternativas)
+- Seja MUITO didatico, como aula particular para alguem que nunca programou
+- No maximo 40 passos"""
+    elif compile_error:
+        system_prompt = f"""Voce e um professor de {lang_name} muito didatico. O codigo do aluno NAO COMPILOU.
+
+Erro de compilacao reportado:
+{compile_error[:800]}
+
+Sua tarefa: CORRIGIR o codigo do aluno (apenas o necessario para compilar e resolver o problema) e simular a execucao do CODIGO CORRIGIDO passo a passo, linha por linha, com os valores concretos da ENTRADA do teste.
+
+{PEDAGOGY_RULES}
+
+Responda APENAS com JSON (sem markdown, sem ```), com esta estrutura exata:
+{{
+  "corrected_code": "codigo completo corrigido em {lang_name} que compila e resolve o problema",
+  "steps": [
+    {{"line": 1, "code": "texto exato da linha do corrected_code", "explanation": "explicacao didatica em portugues do que esta linha faz, com valores concretos", "variables": {{"A": 2}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel no programa", "why": "por que foi usado esse tipo e esse nome", "used_in": "onde essa variavel e usada (linhas/frases)"}}], "expressions": [{{"expression": "input()", "why": "por que foi usada nesta linha deste exercicio", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "regra pratica", "alternatives": "outras formas"}}], "output": "saida acumulada ate aqui"}}
+  ]
+}}
+
+REGRAS:
+- Primeiro passo: explique de forma resumida qual era o erro de compilacao e o que foi corrigido (sem lengalenga, 1-2 frases)
+- Depois, simule CADA linha do CODIGO CORRIGIDO usando os valores reais da entrada
+- `line` deve corresponder a linha correspondente dentro do corrected_code (1-based)
+- IMPORTANTE: em TODO passo que envolver variaveis (declaracao, leitura, calculo, impressao), preencha `variable_details` explicando COM MAXIMO DETALHE
+- IMPORTANTE: em TODO passo que envolver expressoes importantes (input, scanf, print, if, for, operadores, variaveis), preencha `expressions` seguindo o PEDAGOGY_RULES
 - Seja MUITO didatico, como aula particular para alguem que nunca programou
 - No maximo 40 passos"""
     else:
@@ -456,7 +482,7 @@ REGRAS:
     context_parts.append(f"CODIGO:\n```{language}\n{code}\n```")
     context = "\n\n".join(context_parts)
 
-    raw = _call_ai(system_prompt, context, custom_key)
+    raw = _call_ai(system_prompt, context, custom_key, max_tokens=4500)
     if not raw:
         return None, None
     try:
@@ -604,7 +630,7 @@ def _run(lang: str, code: str, stdin: str) -> dict:
     return _run_piston(conf, code, stdin)
 
 
-def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = None) -> Optional[str]:
+def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = None, max_tokens: int = 3000) -> Optional[str]:
     def _call_openai_compat(url: str, api_key: str, model: str, extra_headers: dict = None) -> Optional[str]:
         try:
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -620,9 +646,9 @@ def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = N
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 3000,
+                    "max_tokens": max_tokens,
                 },
-                timeout=45,
+                timeout=60,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -1459,7 +1485,25 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
     stdin = req.input or (req.test_cases[0].input if req.test_cases else "")
     expected = req.expected or (req.test_cases[0].expected if req.test_cases else "")
     is_template = _is_template(req.code, req.language)
-    steps, corrected_code = _walkthrough_ai(req.code, req.language, stdin, req.statement, expected, is_template, x_custom_api_key)
+    compile_error = None
+
+    # Executa o codigo real do aluno para detectar erro de compilacao
+    if not is_template:
+        try:
+            run_result = _run(req.language, req.code, stdin)
+            if run_result and isinstance(run_result, dict):
+                compile_res = run_result.get("compile") or {}
+                if compile_res.get("code") not in (0, None, -1):
+                    compile_error = (compile_res.get("stderr") or "Erro de compilacao.").strip()[:800]
+        except HTTPException:
+            pass
+        except Exception as e:
+            logger.warning(f"Falha ao executar no walkthrough: {e}")
+
+    steps, corrected_code = _walkthrough_ai(
+        req.code, req.language, stdin, req.statement, expected,
+        is_template, x_custom_api_key, compile_error=compile_error,
+    )
     if not steps:
         if is_template:
             steps = [{
@@ -1469,6 +1513,20 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
                 "variables": {},
                 "output": "",
             }]
+        elif compile_error:
+            # IA falhou: usa o codigo corrigido se veio, senão mostra o erro de compilacao
+            if corrected_code:
+                steps = _local_walkthrough(corrected_code, req.language, stdin)
+                for s in steps:
+                    s["explanation"] = f"(Codigo corrigido) {s.get('explanation', '')}"
+            else:
+                steps = [{
+                    "line": 1,
+                    "code": req.code.split("\n")[0] if req.code.strip() else "",
+                    "explanation": f"Seu codigo nao compilou:\n{compile_error[:400]}\n\nCorrija o erro e clique em 'Passo a Passo' de novo, ou use 'Explicar Erro' para ajuda detalhada.",
+                    "variables": {},
+                    "output": "",
+                }]
         else:
             steps = _local_walkthrough(req.code, req.language, stdin)
     # Garante que cada passo detalhe TODAS as expressoes do dicionario presentes na linha
@@ -1480,6 +1538,7 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
         "stdin": stdin,
         "template": is_template,
         "corrected_code": corrected_code,
+        "compile_error": compile_error,
     }
 
 

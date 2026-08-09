@@ -861,7 +861,7 @@ async def explain_selection(req: SelectionRequest, x_custom_api_key: Optional[st
     mode_guide = {"simple": "linguagem simples, para iniciantes", "technical": "detalhado e tecnico", "examples": "com exemplos praticos"}.get(req.mode, "simples")
     system = f"""Voce e um professor de {lang_name}. Explique o trecho de codigo SELECIONADO para um aluno, em {mode_guide}.
 {PEDAGOGY_RULES}
-Responda APENAS com JSON: {{"what": "...", "syntax": "...", "logic": "...", "purpose": "...", "types": [{"name":"...","type":"...","description":"..."}], "alternatives": ["..."], "commonErrors": ["..."], "relationToProblem": "..."}}. Campos sao opcionais; inclua apenas os relevantes.
+Responda APENAS com JSON: {{"what": "...", "syntax": "...", "logic": "...", "purpose": "...", "types": [{{"name":"...","type":"...","description":"..."}}], "alternatives": ["..."], "commonErrors": ["..."], "relationToProblem": "..."}}. Campos sao opcionais; inclua apenas os relevantes.
 ENUNCIADO: {req.statement or '(nao informado)'}
 CODIGO COMPLETO:
 ```{req.language}

@@ -244,6 +244,16 @@ class ChatService:
         try:
             logger.info(f"Sending chat to {provider_config.name} / {model_id}")
             
+            # OpenRouter aceita apenas formato OpenAI-compatible (/chat/completions).
+            # O litellm usa o formato nativo do prefixo (ex: /messages para anthropic/*),
+            # que o OpenRouter rejeita. Fazer chamada HTTP direta para o OpenRouter.
+            if provider_type == ProviderType.OPENROUTER:
+                if not api_key:
+                    raise ValueError(f"Chave API necessária para {provider_config.name}.")
+                if stream:
+                    return self._stream_openrouter(api_key, model_id, messages, temperature, max_tokens)
+                return await self._chat_openrouter_once(api_key, model_id, messages, temperature, max_tokens)
+
             if stream:
                 # Return async generator for streaming
                 return await self._stream_response(params, provider_config.name, model_id)
@@ -254,6 +264,103 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error in chat with {provider_config.name}: {e}")
             raise
+
+    @staticmethod
+    async def _chat_openrouter_once(
+        api_key: str,
+        model_id: str,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> Dict[str, Any]:
+        """Chamada HTTP direta ao OpenRouter (formato OpenAI-compatible)."""
+        import httpx
+        import json as _json
+
+        body = {
+            "model": model_id,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                json=body,
+                headers=headers,
+            )
+        if resp.status_code != 200:
+            raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {resp.text[:300]}")
+        payload = resp.json()
+        content = (
+            (payload.get("choices") or [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+        return {
+            "type": "complete",
+            "content": content,
+            "provider": "OpenRouter",
+            "model": model_id,
+            "usage": payload.get("usage", {}),
+        }
+
+    @staticmethod
+    async def _stream_openrouter(
+        api_key: str,
+        model_id: str,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Streaming via OpenRouter (formato OpenAI-compatible, SSE)."""
+        import httpx
+        import json as _json
+
+        body = {
+            "model": model_id,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=60) as client:
+            async with client.stream(
+                "POST",
+                "https://openrouter.ai/api/v1/chat/completions",
+                json=body,
+                headers=headers,
+            ) as resp:
+                if resp.status_code != 200:
+                    raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {await resp.aread()}")
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    chunk = _json.loads(data)
+                    delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+                    if delta.get("content"):
+                        yield {
+                            "type": "chunk",
+                            "content": delta["content"],
+                            "provider": "OpenRouter",
+                            "model": model_id,
+                        }
+                yield {
+                    "type": "done",
+                    "provider": "OpenRouter",
+                    "model": model_id,
+                }
     
     async def _stream_response(
         self,

@@ -208,38 +208,28 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
         name="OpenRouter",
         category="Agregador",
         models={
-            "claude-3-5-sonnet": ModelConfig(
-                model_id="anthropic/claude-3.5-sonnet",
-                display_name="Claude 3.5 Sonnet (via OpenRouter)",
+            "claude-sonnet-4.5": ModelConfig(
+                model_id="anthropic/claude-sonnet-4.5",
+                display_name="Claude Sonnet 4.5 (via OpenRouter)",
+                context_window=1000000,
+                supports_vision=True
+            ),
+            "claude-haiku-4.5": ModelConfig(
+                model_id="anthropic/claude-haiku-4.5",
+                display_name="Claude Haiku 4.5 (via OpenRouter)",
                 context_window=200000,
                 supports_vision=True
             ),
-            "claude-3-5-haiku": ModelConfig(
-                model_id="anthropic/claude-3.5-haiku",
-                display_name="Claude 3.5 Haiku (via OpenRouter)",
+            "claude-3-haiku": ModelConfig(
+                model_id="anthropic/claude-3-haiku",
+                display_name="Claude 3 Haiku (via OpenRouter)",
                 context_window=200000,
                 supports_vision=True
-            ),
-            "claude-3-7-sonnet": ModelConfig(
-                model_id="anthropic/claude-3.7-sonnet",
-                display_name="Claude 3.7 Sonnet (via OpenRouter)",
-                context_window=200000,
-                supports_vision=True
-            ),
-            "qwen-2.5-72b-instruct": ModelConfig(
-                model_id="qwen/qwen-2.5-72b-instruct",
-                display_name="Qwen 2.5 72B (Free)",
-                context_window=32768
-            ),
-            "mistral-nemo": ModelConfig(
-                model_id="mistralai/mistral-nemo",
-                display_name="Mistral Nemo (Free)",
-                context_window=128000
             ),
             "deepseek-v3": ModelConfig(
-                model_id="deepseek/deepseek-chat",
-                display_name="DeepSeek V3 via OpenRouter",
-                context_window=64000
+                model_id="deepseek/deepseek-v3.2",
+                display_name="DeepSeek V3.2 via OpenRouter",
+                context_window=163840
             ),
         },
         env_var="OPENROUTER_API_KEY",
@@ -492,7 +482,7 @@ DEFAULT_MODELS = {
     ProviderType.PERPLEXITY: "llama-3.1-sonar-small-128k-online",
     ProviderType.DEEPSEEK: "deepseek-chat",
     ProviderType.GROQ: "llama-3.3-70b-versatile",
-    ProviderType.OPENROUTER: "claude-3-5-sonnet",
+    ProviderType.OPENROUTER: "deepseek-v3",
     ProviderType.FREE_AI: "qwen-2.5-72b",
     ProviderType.OLLAMA: "gemma4-12b",
     ProviderType.OPENAI: "gpt-4o-mini",
@@ -501,11 +491,11 @@ DEFAULT_MODELS = {
 
 # Preferred order for auto-detection and fallback
 AUTO_PRIORITY = [
+    ProviderType.OPENROUTER,
     ProviderType.CLAUDE,
     ProviderType.GEMINI,
     ProviderType.GROQ,
     ProviderType.DEEPSEEK,
-    ProviderType.OPENROUTER,
     ProviderType.FREE_AI,
     ProviderType.PERPLEXITY,
     ProviderType.XAI,

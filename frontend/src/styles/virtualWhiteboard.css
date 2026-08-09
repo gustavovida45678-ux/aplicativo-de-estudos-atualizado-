@@ -364,6 +364,349 @@
   .stroke-slider {
     width: 80px;
   }
+  
+  .whiteboard-toolbar.secondary {
+    gap: 8px;
+  }
+  
+  .wb-modal {
+    padding: 16px;
+  }
+  
+  .node-quick-actions {
+    flex-wrap: wrap;
+    max-width: calc(100% - 24px);
+  }
+}
+
+/* ============ Nova UI: mapa mental, mini-botões, modais, minimapa ============ */
+
+.whiteboard-toolbar.secondary {
+  padding: 8px 16px;
+  gap: 10px;
+  border-bottom: 1px solid #21262d;
+  background: linear-gradient(180deg, rgba(16, 21, 28, 0.95) 0%, rgba(13, 17, 23, 0.98) 100%);
+}
+
+.whiteboard-toolbar.secondary .toolbar-group {
+  flex-wrap: wrap;
+}
+
+.mindmap-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.12);
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.mindmap-toggle.active {
+  background: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.4);
+}
+
+.mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  background: #161b22;
+  color: #c9d1d9;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.mini-btn:hover {
+  background: rgba(88, 166, 255, 0.12);
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.mini-btn.active {
+  background: rgba(88, 166, 255, 0.2);
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.mini-btn.primary {
+  background: #58a6ff;
+  border-color: #58a6ff;
+  color: #0d1117;
+  font-weight: 600;
+}
+
+.mini-btn.primary:hover {
+  background: #79b8ff;
+  color: #0d1117;
+}
+
+.mini-btn.danger {
+  color: #f85149;
+}
+
+.mini-btn.danger:hover {
+  background: rgba(248, 81, 73, 0.15);
+  border-color: #f85149;
+}
+
+.mini-btn.ai-btn {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(88, 166, 255, 0.25));
+  border-color: rgba(168, 85, 247, 0.5);
+  color: #d8b4fe;
+}
+
+.mini-btn.ai-btn:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.4), rgba(88, 166, 255, 0.4));
+  color: #f3e8ff;
+}
+
+.eraser-modes {
+  display: flex;
+  gap: 6px;
+}
+
+.node-count {
+  font-size: 12px;
+  color: #7d8590;
+  white-space: nowrap;
+}
+
+.zoom-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c9d1d9;
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.export-svg {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.export-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Minimapa */
+.whiteboard-minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 190px;
+  height: 120px;
+  border-radius: 8px;
+  border: 1px solid #21262d;
+  background: rgba(13, 17, 23, 0.92);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Painel mapa mental */
+.mindmap-panel {
+  border-bottom: 1px solid #21262d;
+  background: linear-gradient(180deg, rgba(30, 27, 45, 0.95) 0%, rgba(13, 17, 23, 0.98) 100%);
+}
+
+/* Acoes rapidas do no selecionado */
+.node-quick-actions {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 60;
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #21262d;
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #8b949e;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-btn:hover {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+}
+
+/* Modais */
+.wb-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  padding: 16px;
+}
+
+.wb-modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  animation: wb-modal-in 0.18s ease;
+}
+
+@keyframes wb-modal-in {
+  from {
+    transform: translateY(12px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.wb-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.wb-modal-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  color: #e6edf3;
+}
+
+.wb-modal-close {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wb-modal-close:hover {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+}
+
+.wb-modal-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #8b949e;
+}
+
+.wb-modal-input,
+.wb-modal-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #e6edf3;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wb-modal-input:focus,
+.wb-modal-textarea:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+.wb-modal-textarea {
+  resize: vertical;
+  min-height: 110px;
+  font-family: inherit;
+}
+
+.wb-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.wb-modal-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #7d8590;
+}
+
+/* Estilos de texto */
+.font-size-input {
+  width: 58px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  background: #161b22;
+  color: #e2e8f0;
+  font-size: 12px;
+  outline: none;
+}
+
+.font-size-input:focus {
+  border-color: #58a6ff;
+}
+
+.font-select {
+  min-width: 120px;
+}
+
+.italic-btn em,
+.text-style .mini-btn em {
+  font-style: italic;
+}
+
+.node-text-input {
+  text-align: center;
 }
 
 /* High contrast mode support */

@@ -30,21 +30,21 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 # A chave personalizada (X-Custom-API-Key do frontend) tem prioridade.
 AI_PROVIDERS = [
     {
+        "name": "OpenRouter",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "env": "OPENROUTER_API_KEY",
+        "model": "deepseek/deepseek-v3.2",
+        "headers": {
+            "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
+            "X-Title": "StudyApp Judge",
+        },
+    },
+    {
         "name": "Groq",
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "env": "GROQ_API_KEY",
         "model": "llama-3.3-70b-versatile",
         "headers": {},
-    },
-    {
-        "name": "OpenRouter",
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "env": "OPENROUTER_API_KEY",
-        "model": "anthropic/claude-haiku-4.5",
-        "headers": {
-            "HTTP-Referer": "https://aplicativo-de-estudos-atualizado.onrender.com",
-            "X-Title": "StudyApp Judge",
-        },
     },
     {
         "name": "Gemini",

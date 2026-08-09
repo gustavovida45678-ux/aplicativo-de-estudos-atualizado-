@@ -131,8 +131,9 @@ class ChatService:
         if custom_api_key:
             self.provider_keys[provider_type] = [custom_api_key]
 
-        # NÃO faz fallback quando provider específico é solicitado
-        allow_fallback = (provider_type.value == "auto")
+        # Fallback entre provedores: se o provider selecionado falhar
+        # (rate limit, 402, etc.), tenta os demais provedores configurados.
+        allow_fallback = True
         candidates = self._ordered_providers(provider_type, custom_api_key, allow_fallback)
         if not candidates:
             configured = [f"{p['name']} ({p.get('env_var', '')})" for p in self.get_available_providers() if p.get("has_key")]

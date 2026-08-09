@@ -100,9 +100,12 @@ def _call(base: str, token: str, function: str, **params):
         ):
             raise HTTPException(
                 status_code=401,
-                detail=f"Token inválido ou sem permissão de web service no Moodle: {detail}",
+                detail=f"[{function}] Token inválido ou sem permissão de web service no Moodle: {detail} (debug: {data.get('debuginfo') or data.get('errorcode') or ''})",
             )
-        raise HTTPException(status_code=400, detail=f"Erro do Moodle: {detail}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"[{function}] Erro do Moodle: {detail} (debug: {data.get('debuginfo') or data.get('errorcode') or ''})",
+        )
     return data
 
 

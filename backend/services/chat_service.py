@@ -141,7 +141,7 @@ class ChatService:
             raise ValueError(
                 "Nenhuma chave API de IA configurada. "
                 "Adicione uma chave no Render (ex: GROQ_API_KEY, GEMINI_API_KEY, "
-                "ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, EMERGENT_LLM_KEY) "
+                "ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, EMERGENT_API_KEY) "
                 f"ou envie uma chave personalizada no campo custom_api_key.{hint}"
             )
 

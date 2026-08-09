@@ -467,8 +467,8 @@ ProviderType.OLLAMA: ProviderConfig(
                 context_window=200000
             ),
         },
-        env_var="EMERGENT_LLM_KEY",
-        base_url=os.environ.get("EMERGENT_BASE_URL", "https://api.emergent.sh/v1"),
+        env_var="EMERGENT_API_KEY",
+        base_url=os.environ.get("EMERGENT_BASE_URL", "https://integrations.emergentagent.com/llm"),
         free_tier_description="Universal - uma chave para OpenAI, Anthropic e Google",
         website="https://emergent.sh",
         icon="key"

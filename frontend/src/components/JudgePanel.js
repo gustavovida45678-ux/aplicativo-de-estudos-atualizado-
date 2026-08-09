@@ -260,6 +260,7 @@ const JudgePanel = () => {
         language, code, test_cases: tc,
         statement: stmt,
         expected: tc[0]?.expected || '',
+        execute_user_code: true, // Sinaliza para executar o código do usuário passo a passo
       });
       if (!res.data.steps?.length) {
         toast.error('Nao foi possivel gerar o passo a passo.');
@@ -786,7 +787,7 @@ const JudgePanel = () => {
               </button>
             </div>
 
-            {walk.template && (
+            {walk.template && !code.trim() && (
               <div style={{
                 background: 'rgba(124, 58, 237, 0.12)', borderBottom: '1px solid #7c3aed',
                 padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
@@ -816,7 +817,12 @@ const JudgePanel = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {(() => {
                 const cur = walk.steps[walkIdx];
-                const shownCode = (walk.template && walk.corrected_code) ? walk.corrected_code : code;
+                // Sempre mostra o código do usuário se ele tiver escrito algo
+                // Só usa corrected_code se o usuário não escreveu nada (código vazio)
+                const userHasCode = code.trim().length > 0;
+                const shownCode = (!userHasCode && walk.template && walk.corrected_code) 
+                  ? walk.corrected_code 
+                  : code;
                 const codeLines = shownCode.split('\n');
                 return (
                   <>
@@ -824,7 +830,7 @@ const JudgePanel = () => {
                       background: '#0d1117', padding: '12px 0', borderBottom: '1px solid #333',
                       fontFamily: "'SF Mono', Menlo, Consolas, monospace", fontSize: 12.5, lineHeight: 1.7,
                     }}>
-                      {walk.template && walk.corrected_code && (
+                      {(!code.trim() && walk.template && walk.corrected_code) && (
                         <div style={{
                           padding: '2px 12px 6px', fontSize: 10.5, color: '#a78bfa', fontFamily: 'inherit',
                           letterSpacing: 0.3, textTransform: 'uppercase', fontWeight: 700,

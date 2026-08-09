@@ -65,6 +65,13 @@ export const TOOL_PROFILES = {
   highlighter: { width: 8, smoothing: 0.2, stabilizer: "low", pressure: false, autoZoom: false },
 };
 
+export const TOOL_PROFILE_LABELS = {
+  pen: "Caneta",
+  writing: "Escrita à mão",
+  marker: "Marcador",
+  highlighter: "Marca-texto",
+};
+
 export const STABILIZER_LEVELS = {
   off: { smoothing: 0, iterations: 0, name: "Desligado" },
   low: { smoothing: 0.3, iterations: 1, name: "Baixa" },

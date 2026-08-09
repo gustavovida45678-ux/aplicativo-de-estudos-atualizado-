@@ -71,6 +71,7 @@ import {
   saveState,
   STROKE_PRESETS,
   TOOL_PROFILES,
+  TOOL_PROFILE_LABELS,
   STABILIZER_LEVELS,
   MINDMAP_TEXT_SIZES,
 } from "./whiteboard/core";
@@ -2170,10 +2171,10 @@ function VirtualWhiteboard() {
             <div className="toolbar-group">
               <span className="toolbar-label">Perfil</span>
               <select value={toolProfile} onChange={handleProfileSelect} className="shape-select" style={{ minWidth: "130px" }}>
-                <option value="pen">✏️ Caneta</option>
-                <option value="writing">✍️ Escrita</option>
-                <option value="marker">🖍️ Marcador</option>
-                <option value="highlighter">🖋️ Marca-texto</option>
+                <option value="pen">✏️ {TOOL_PROFILE_LABELS.pen}</option>
+                <option value="writing">✍️ {TOOL_PROFILE_LABELS.writing}</option>
+                <option value="marker">🖍️ {TOOL_PROFILE_LABELS.marker}</option>
+                <option value="highlighter">🖋️ {TOOL_PROFILE_LABELS.highlighter}</option>
               </select>
             </div>
             <div className="toolbar-group">

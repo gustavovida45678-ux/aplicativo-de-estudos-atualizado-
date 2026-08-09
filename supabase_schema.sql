@@ -120,6 +120,8 @@ CREATE TABLE IF NOT EXISTS public.moodle_integrations (
 
 ALTER TABLE public.moodle_integrations ENABLE ROW LEVEL SECURITY;
 
+CREATE UNIQUE INDEX IF NOT EXISTS moodle_integrations_user_id_key ON public.moodle_integrations (user_id);
+
 CREATE POLICY "Users can manage own moodle integrations" ON public.moodle_integrations
     FOR ALL USING (auth.uid() = user_id);
 

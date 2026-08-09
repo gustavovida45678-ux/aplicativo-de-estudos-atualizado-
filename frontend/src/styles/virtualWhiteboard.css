@@ -732,3 +732,95 @@
     transition: none;
   }
 }
+/* Subject selector & management */
+.subject-select {
+  min-width: 150px;
+}
+
+.subject-input {
+  width: 130px;
+}
+
+.manage-subjects-popover {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  background: #1a1f2e;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.manage-subjects-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.manage-subject-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.manage-subject-name {
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.manage-subject-count {
+  font-size: 11px;
+  color: #7d8590;
+}
+
+.manage-subject-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.manage-subject-empty {
+  font-size: 12px;
+  color: #7d8590;
+  padding: 8px 0;
+}
+
+/* HTML Overlay for formula/table/chart */
+.whiteboard-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.overlay-element {
+  position: absolute;
+  pointer-events: none;
+}
+
+.formula-render {
+  font-family: "Inter", sans-serif;
+}
+
+.wb-table {
+  border-collapse: collapse;
+}
+
+.wb-table td {
+  border: 1px solid #444;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.wb-table-editor {
+  margin-bottom: 12px;
+}

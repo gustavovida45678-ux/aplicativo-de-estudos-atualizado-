@@ -9,6 +9,9 @@ export const TOOLS = {
   CONNECTOR: "connector",
   MINDMAP: "mindmap",
   POLYGON: "polygon",
+  FORMULA: "formula",
+  TABLE: "table",
+  CHART: "chart",
 };
 
 export const SHAPES = {
@@ -165,6 +168,15 @@ export function elementBBox(el, allElements) {
   if (el.type === "node") {
     return { x: el.x, y: el.y, width: el.width, height: el.height };
   }
+  if (el.type === "formula") {
+    return { x: el.x, y: el.y, width: el.width || 120, height: el.height || 60 };
+  }
+  if (el.type === "table") {
+    return { x: el.x, y: el.y, width: el.width || 200, height: el.height || 100 };
+  }
+  if (el.type === "chart") {
+    return { x: el.x, y: el.y, width: el.width || 200, height: el.height || 150 };
+  }
   if (el.type === "group") {
     const ids = new Set(el.children || []);
     let box = null;
@@ -236,6 +248,61 @@ export function makeText(content, x, y, opts = {}) {
     italic: !!opts.italic,
     align: opts.align || "left",
     width: opts.width || estimateTextWidth(content, fontSize, fontFamily),
+  };
+}
+
+export function makeFormula(latex, x, y, opts = {}) {
+  const fontSize = opts.fontSize || 20;
+  const color = opts.color || "#ffffff";
+  return {
+    id: uid(),
+    type: "formula",
+    latex,
+    x,
+    y,
+    fontSize,
+    color,
+    width: opts.width || 160,
+    height: opts.height || 80,
+  };
+}
+
+export function makeTable(rows, cols, cells, x, y, opts = {}) {
+  const fontSize = opts.fontSize || 16;
+  const color = opts.color || "#ffffff";
+  const cellW = opts.cellWidth || 80;
+  const cellH = opts.cellHeight || 32;
+  return {
+    id: uid(),
+    type: "table",
+    rows,
+    cols,
+    cells,
+    x,
+    y,
+    fontSize,
+    color,
+    cellWidth: cellW,
+    cellHeight: cellH,
+    width: cellW * cols,
+    height: cellH * rows,
+  };
+}
+
+export function makeChart(chartType, labels, values, x, y, opts = {}) {
+  const w = opts.width || 240;
+  const h = opts.height || 160;
+  return {
+    id: uid(),
+    type: "chart",
+    chartType: chartType || "bar",
+    labels: labels || [],
+    values: values || [],
+    x,
+    y,
+    width: w,
+    height: h,
+    color: opts.color || "#22d3ee",
   };
 }
 

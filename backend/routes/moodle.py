@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import requests
 import os
 import json
 from urllib.parse import urlparse
 from datetime import datetime
+
+from utils.auth import get_current_user
+from utils.supabase import get_supabase_admin
 
 router = APIRouter(prefix="/moodle", tags=["moodle"])
 
@@ -235,21 +238,109 @@ def moodle_calendar(cfg: MoodleConfig):
 
 
 # ===== Config-based endpoints used by the Moodle IFG frontend page =====
-# These read the token/url from a persisted config file so the page can work
-# without sending credentials on every request. The data is cached on /sync.
+# These read the token/url from a persisted config (Supabase, com fallback
+# para arquivo local) so the page can work without sending credentials on
+# every request. The data is cached per user on /sync.
 
-def _cache_get(key):
+MOODLE_TABLE = "moodle_integrations"
+
+
+def _cache_key(key, user_id=None):
+    return f"{user_id or 'global'}__{key}"
+
+
+def _load_config(user_id=None):
+    # Try Supabase first (persistent across restarts)
+    if user_id:
+        try:
+            sb = get_supabase_admin()
+            rows = (
+                sb.table(MOODLE_TABLE)
+                .select("url, token")
+                .eq("user_id", user_id)
+                .eq("is_active", True)
+                .order("updated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if rows.data:
+                return rows.data[0]
+        except Exception:
+            pass
+    # Fallback: file (single global config)
     try:
-        if os.path.exists(CACHE_PATH):
-            with open(CACHE_PATH, "r") as f:
-                cache = json.load(f)
-            return cache.get(key)
+        with open(CONFIG_PATH, "r") as f:
+            cfg = json.load(f)
+        if cfg and cfg.get("token") and cfg.get("url"):
+            return cfg
     except Exception:
         pass
     return None
 
 
-def _cache_set(key, value):
+def _save_config(cfg, user_id=None):
+    try:
+        sb = get_supabase_admin()
+        now = datetime.utcnow().isoformat()
+        existing = (
+            sb.table(MOODLE_TABLE).select("id").eq("user_id", user_id).limit(1).execute()
+        )
+        if existing.data:
+            sb.table(MOODLE_TABLE).update(
+                {
+                    "url": cfg["url"],
+                    "token": cfg["token"],
+                    "is_active": True,
+                    "updated_at": now,
+                }
+            ).eq("id", existing.data[0]["id"]).execute()
+        else:
+            sb.table(MOODLE_TABLE).insert(
+                {
+                    "user_id": user_id,
+                    "name": "Moodle IFG",
+                    "url": cfg["url"],
+                    "token": cfg["token"],
+                    "is_active": True,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            ).execute()
+        return cfg
+    except Exception:
+        pass
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f)
+    return cfg
+
+
+def _delete_config(user_id=None):
+    try:
+        sb = get_supabase_admin()
+        sb.table(MOODLE_TABLE).delete().eq("user_id", user_id).execute()
+        return
+    except Exception:
+        pass
+    try:
+        if os.path.exists(CONFIG_PATH):
+            os.remove(CONFIG_PATH)
+    except Exception:
+        pass
+
+
+def _cache_get(key, user_id=None):
+    try:
+        if os.path.exists(CACHE_PATH):
+            with open(CACHE_PATH, "r") as f:
+                cache = json.load(f)
+            return cache.get(_cache_key(key, user_id))
+    except Exception:
+        pass
+    return None
+
+
+def _cache_set(key, value, user_id=None):
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
         cache = {}
@@ -259,7 +350,7 @@ def _cache_set(key, value):
                     cache = json.load(f) or {}
             except Exception:
                 cache = {}
-        cache[key] = value
+        cache[_cache_key(key, user_id)] = value
         cache["last_sync"] = datetime.utcnow().isoformat()
         with open(CACHE_PATH, "w") as f:
             json.dump(cache, f)
@@ -274,8 +365,8 @@ def _ts(ts):
         return None
 
 
-def _sync_all():
-    cfg = _load_config()
+def _sync_all(user_id=None):
+    cfg = _load_config(user_id)
     if not cfg:
         return {"courses": [], "activities": [], "deadlines": [], "announcements": []}
     base = _base(cfg["url"])
@@ -353,8 +444,9 @@ def _sync_all():
 
 
 @router.get("/status")
-def moodle_status():
-    cfg = _load_config()
+def moodle_status(current_user: dict = Depends(get_current_user)):
+    user_id = current_user.get("id")
+    cfg = _load_config(user_id)
     if not cfg:
         return {"configured": False}
     base = _base(cfg["url"])
@@ -362,59 +454,57 @@ def moodle_status():
         info = _call(base, cfg["token"], "core_webservice_get_site_info")
     except HTTPException:
         return {"configured": False}
-    return {"configured": True, "last_sync": _cache_get("last_sync")}
+    return {"configured": True, "last_sync": _cache_get("last_sync", user_id)}
 
 
 @router.get("/courses")
-def moodle_get_courses():
-    return {"courses": _cache_get("courses") or []}
+def moodle_get_courses(current_user: dict = Depends(get_current_user)):
+    return {"courses": _cache_get("courses", current_user.get("id")) or []}
 
 
 @router.get("/activities")
-def moodle_get_activities():
-    return {"activities": _cache_get("activities") or []}
+def moodle_get_activities(current_user: dict = Depends(get_current_user)):
+    return {"activities": _cache_get("activities", current_user.get("id")) or []}
 
 
 @router.get("/deadlines")
-def moodle_get_deadlines():
-    return {"deadlines": _cache_get("deadlines") or []}
+def moodle_get_deadlines(current_user: dict = Depends(get_current_user)):
+    return {"deadlines": _cache_get("deadlines", current_user.get("id")) or []}
 
 
 @router.get("/announcements")
-def moodle_get_announcements():
-    return {"announcements": _cache_get("announcements") or []}
+def moodle_get_announcements(current_user: dict = Depends(get_current_user)):
+    return {"announcements": _cache_get("announcements", current_user.get("id")) or []}
 
 
 @router.post("/sync")
-def moodle_sync():
-    cfg = _load_config()
+def moodle_sync(current_user: dict = Depends(get_current_user)):
+    user_id = current_user.get("id")
+    cfg = _load_config(user_id)
     if not cfg:
         raise HTTPException(status_code=400, detail="Token do Moodle nao configurado.")
-    data = _sync_all()
-    _cache_set("courses", data["courses"])
-    _cache_set("activities", data["activities"])
-    _cache_set("deadlines", data["deadlines"])
-    _cache_set("announcements", data["announcements"])
+    data = _sync_all(user_id)
+    _cache_set("courses", data["courses"], user_id)
+    _cache_set("activities", data["activities"], user_id)
+    _cache_set("deadlines", data["deadlines"], user_id)
+    _cache_set("announcements", data["announcements"], user_id)
     return {"success": True, "synced": True, "last_sync": datetime.utcnow().isoformat()}
 
 
 @router.post("/token")
-def moodle_save_token(req: TokenRequest):
+def moodle_save_token(req: TokenRequest, current_user: dict = Depends(get_current_user)):
+    user_id = current_user.get("id")
     cfg = {"url": req.url, "token": req.token}
-    _save_config(cfg)
+    _save_config(cfg, user_id)
     base = _base(cfg["url"])
     try:
         info = _call(base, cfg["token"], "core_webservice_get_site_info")
-        return {"success": True, "valid": True, "site": info.get("sitename", "Moodle"), "last_sync": _cache_get("last_sync")}
+        return {"success": True, "valid": True, "site": info.get("sitename", "Moodle"), "last_sync": _cache_get("last_sync", user_id)}
     except HTTPException as e:
         return {"success": True, "valid": False, "detail": str(e.detail)}
 
 
 @router.delete("/token")
-def moodle_delete_token():
-    try:
-        if os.path.exists(CONFIG_PATH):
-            os.remove(CONFIG_PATH)
-    except Exception:
-        pass
+def moodle_delete_token(current_user: dict = Depends(get_current_user)):
+    _delete_config(current_user.get("id"))
     return {"success": True}

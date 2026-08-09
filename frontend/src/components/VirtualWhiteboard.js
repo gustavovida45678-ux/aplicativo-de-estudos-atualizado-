@@ -38,9 +38,12 @@ import {
   FolderInput,
   FileDown,
   CornerDownRight,
-  ListTree,
+   ListTree,
   Palette,
   Crosshair,
+  Sigma,
+  Table,
+  BarChart3,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import "../styles/virtualWhiteboard.css";
@@ -64,11 +67,17 @@ import {
   makeStroke,
   makeShape,
   makeText,
-  makeNode,
+   makeNode,
   makeConnector,
   makeGroup,
+  makeFormula,
+  makeTable,
+  makeChart,
   loadState,
   saveState,
+  getSavedSubjects,
+  deleteSubject,
+  renameSubject,
   STROKE_PRESETS,
   TOOL_PROFILES,
   TOOL_PROFILE_LABELS,
@@ -109,10 +118,12 @@ import {
 } from "./whiteboard/mindmap";
 import { exportPNG, exportPDF, exportSVG, sceneBBox } from "./whiteboard/export";
 import { generateMindMapElements } from "./whiteboard/ai";
+import { renderChartSVGHTML, renderTableHTML, renderFormulaHTML } from "./whiteboard/overlay";
+import { FormulaModal, TableModal, ChartModal } from "./WhiteboardModals";
 
 const TEXT_FONTS = ["Inter", "Arial", "Georgia", "Courier New", "Comic Sans MS", "Times New Roman"];
 
-function VirtualWhiteboard() {
+function VirtualWhiteboard({ onExit }) {
   const { toast } = useToast();
 
   // ---------------- Ref para o loop de render ----------------
@@ -207,12 +218,36 @@ function VirtualWhiteboard() {
   const [spaceDown, setSpaceDown] = useState(false);
   const spaceDownRef = useRef(false);
 
+  const CURRENT_SUBJECT_KEY = "virtual_whiteboard_current_subject";
+  const [currentSubject, setCurrentSubject] = useState(() => localStorage.getItem(CURRENT_SUBJECT_KEY) || "default");
+  const currentSubjectRef = useRef(currentSubject);
+  useEffect(() => {
+    currentSubjectRef.current = currentSubject;
+    localStorage.setItem(CURRENT_SUBJECT_KEY, currentSubject);
+  }, [currentSubject]);
+
+  const [manageSubjectsOpen, setManageSubjectsOpen] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [subjectsVersion, setSubjectsVersion] = useState(0);
+  const forceSubjectsRefresh = useCallback(() => setSubjectsVersion((v) => v + 1), []);
+
   const [textEdit, setTextEdit] = useState(null);
   const [aiModal, setAiModal] = useState(false);
   const [aiTopic, setAiTopic] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [convertModal, setConvertModal] = useState(false);
   const [convertText, setConvertText] = useState("");
+
+  const [formulaPrompt, setFormulaPrompt] = useState(null);
+  const [formulaLatex, setFormulaLatex] = useState("");
+  const [tablePrompt, setTablePrompt] = useState(null);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
+  const [tableCells, setTableCells] = useState([]);
+  const [chartPrompt, setChartPrompt] = useState(null);
+  const [chartType, setChartType] = useState("bar");
+  const [chartLabels, setChartLabels] = useState("");
+  const [chartValues, setChartValues] = useState("");
 
   const clipboardRef = useRef([]);
 
@@ -609,9 +644,9 @@ function VirtualWhiteboard() {
     };
   }, [resizeCanvas]);
 
-  // ---------------- Carregar estado salvo ----------------
+   // ---------------- Carregar estado salvo ----------------
   useEffect(() => {
-    const saved = loadState();
+    const saved = loadState(currentSubject);
     if (saved && saved.elements) {
       elementsRef.current = saved.elements;
       setElementsState(saved.elements);
@@ -623,11 +658,17 @@ function VirtualWhiteboard() {
       updateUndoRedo();
     }
     markStaticDirty();
-  }, [markStaticDirty, updateUndoRedo]);
+  }, [currentSubject, markStaticDirty, updateUndoRedo]);
+
+  useEffect(() => {
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      window.MathJax.typesetPromise();
+    }
+  }, [elements, pan, scale]);
 
   // ---------------- Salvamento automatico ----------------
   const persist = useCallback(() => {
-    saveState(elementsRef.current, panRef.current, scaleRef.current);
+    saveState(elementsRef.current, panRef.current, scaleRef.current, currentSubjectRef.current);
     setLastSaved(new Date());
   }, []);
 
@@ -635,6 +676,76 @@ function VirtualWhiteboard() {
     persist();
     toast({ title: "Salvo!", description: "Estado da lousa salvo no navegador" });
   }, [persist, toast]);
+
+  // ---------------- Gestao de materias ----------------
+  const switchSubject = useCallback(
+    (nextSubject) => {
+      const old = currentSubjectRef.current;
+      if (old === nextSubject) return;
+      const saved = loadState(old);
+      const oldElements = saved ? saved.elements : [];
+      const oldHasContent = (elementsRef.current || []).length > 0;
+      const oldHasSaved = oldElements && oldElements.length > 0;
+      if (oldHasContent) {
+        saveState(elementsRef.current, panRef.current, scaleRef.current, old);
+      }
+      if (!oldHasSaved && !oldHasContent) {
+        deleteSubject(old);
+      }
+      setCurrentSubject(nextSubject);
+      forceSubjectsRefresh();
+      markStaticDirty();
+    },
+    [markStaticDirty]
+  );
+
+  const createSubject = useCallback(() => {
+    const name = newSubjectName.trim() || "default";
+    if (!name) return;
+    const existing = getSavedSubjects().find((s) => s.id === name);
+    if (existing) {
+      toast({ title: "Matéria já existe", description: `"${name}" já está salva` });
+      return;
+    }
+    saveState([], { x: 0, y: 0 }, 1, name);
+    setCurrentSubject(name);
+    setNewSubjectName("");
+    forceSubjectsRefresh();
+    toast({ title: "Matéria criada", description: `"${name}" foi criada e selecionada` });
+  }, [newSubjectName, toast]);
+
+  const renameCurrentSubject = useCallback(
+    (newName) => {
+      const old = currentSubjectRef.current;
+      if (!newName || newName === old) return;
+      const existing = getSavedSubjects().find((s) => s.id === newName);
+      if (existing) {
+        toast({ title: "Nome em uso", description: "Já existe uma matéria com esse nome" });
+        return;
+      }
+      renameSubject(old, newName);
+      setCurrentSubject(newName);
+      forceSubjectsRefresh();
+      toast({ title: "Matéria renomeada", description: `"${old}" → "${newName}"` });
+    },
+    [toast]
+  );
+
+  const deleteCurrentSubject = useCallback(() => {
+    const old = currentSubjectRef.current;
+    if (old === "default") {
+      toast({ title: "Não é possível excluir", description: "A matéria padrão não pode ser excluída" });
+      return;
+    }
+    deleteSubject(old);
+    setCurrentSubject("default");
+    forceSubjectsRefresh();
+    toast({ title: "Matéria excluída", description: `"${old}" foi excluída` });
+  }, [toast]);
+
+  const getAvailableSubjects = useCallback(() => {
+    return getSavedSubjects();
+  }, [subjectsVersion]);
 
   const saveTimerRef = useRef(null);
   useEffect(() => {
@@ -691,6 +802,11 @@ function VirtualWhiteboard() {
         }
         if (el.type === "stroke") {
           if (strokeHitTest(el, point, Math.max(4 / scaleRef.current, el.width * 0.6))) return el;
+          continue;
+        }
+        if (el.type === "formula" || el.type === "table" || el.type === "chart") {
+          const b = elementBBox(el, els);
+          if (rectContainsPoint(b, point, pad)) return el;
           continue;
         }
         if (el.type === "connector") {
@@ -1125,6 +1241,46 @@ function VirtualWhiteboard() {
           ...pointerRef.current,
           type: "text",
         };
+        return;
+      }
+
+      if (t === TOOLS.FORMULA) {
+        e.preventDefault();
+        e.stopPropagation();
+        setFormulaLatex("");
+        setFormulaPrompt({ x: point.x, y: point.y });
+        try {
+          canvasRef.current.releasePointerCapture(e.pointerId);
+        } catch (err) {}
+        setTool(TOOLS.SELECT);
+        return;
+      }
+
+      if (t === TOOLS.TABLE) {
+        e.preventDefault();
+        e.stopPropagation();
+        setTableRows(3);
+        setTableCols(3);
+        setTableCells(Array.from({ length: 3 }, () => Array(3).fill("")));
+        setTablePrompt({ x: point.x, y: point.y });
+        try {
+          canvasRef.current.releasePointerCapture(e.pointerId);
+        } catch (err) {}
+        setTool(TOOLS.SELECT);
+        return;
+      }
+
+      if (t === TOOLS.CHART) {
+        e.preventDefault();
+        e.stopPropagation();
+        setChartType("bar");
+        setChartLabels("");
+        setChartValues("");
+        setChartPrompt({ x: point.x, y: point.y });
+        try {
+          canvasRef.current.releasePointerCapture(e.pointerId);
+        } catch (err) {}
+        setTool(TOOLS.SELECT);
         return;
       }
 
@@ -1653,6 +1809,69 @@ function VirtualWhiteboard() {
     setTextEdit(null);
   }, [beginGesture, commitElements, endGesture, textEdit]);
 
+  // ---------------- Formula / Table / Chart ----------------
+  const commitFormula = useCallback(() => {
+    if (!formulaPrompt) return;
+    const el = makeFormula(formulaLatex, formulaPrompt.x, formulaPrompt.y, {
+      color: strokeColorRef.current,
+      fontSize: 20,
+    });
+    beginGesture();
+    commitElements([...elementsRef.current, el]);
+    endGesture(true);
+    selectElements([el.id]);
+    setFormulaPrompt(null);
+    setFormulaLatex("");
+  }, [formulaPrompt, formulaLatex, beginGesture, commitElements, endGesture, selectElements]);
+
+  const commitTable = useCallback(() => {
+    if (!tablePrompt) return;
+    const rows = tableRows;
+    const cols = tableCols;
+    let cells = tableCells;
+    if (!cells || cells.length !== rows || !cells[0] || cells[0].length !== cols) {
+      cells = Array.from({ length: rows }, () => Array(cols).fill(""));
+    }
+    const el = makeTable(rows, cols, cells, tablePrompt.x, tablePrompt.y, {
+      color: strokeColorRef.current,
+      fontSize: 16,
+    });
+    beginGesture();
+    commitElements([...elementsRef.current, el]);
+    endGesture(true);
+    selectElements([el.id]);
+    setTablePrompt(null);
+  }, [tablePrompt, tableRows, tableCols, tableCells, beginGesture, commitElements, endGesture, selectElements]);
+
+  const commitChart = useCallback(() => {
+    if (!chartPrompt) return;
+    const labels = chartLabels
+      ? chartLabels.split(",").map((l) => l.trim()).filter(Boolean)
+      : ["A", "B", "C"];
+    const values = chartValues
+      ? chartValues.split(",").map((v) => parseFloat(v)).filter((v) => !isNaN(v))
+      : [30, 50, 70];
+    const labelsPadded = labels.length ? labels : ["1", "2", "3"];
+    const valuesPadded = values.length ? values : [30, 50, 70];
+    const maxLen = Math.max(labelsPadded.length, valuesPadded.length);
+    while (labelsPadded.length < maxLen) labelsPadded.push(`Item ${labelsPadded.length + 1}`);
+    while (valuesPadded.length < maxLen) valuesPadded.push(0);
+    const el = makeChart(chartType, labelsPadded, valuesPadded, chartPrompt.x, chartPrompt.y, {
+      color: strokeColorRef.current,
+    });
+    beginGesture();
+    commitElements([...elementsRef.current, el]);
+    endGesture(true);
+    selectElements([el.id]);
+    setChartPrompt(null);
+  }, [chartPrompt, chartType, chartLabels, chartValues, beginGesture, commitElements, endGesture, selectElements]);
+
+  const renderChartSVG = useCallback((el) => {
+    const html = renderChartSVGHTML(el);
+    const inner = { __html: html };
+    return <div dangerouslySetInnerHTML={inner} />;
+  }, []);
+
   // ---------------- Mapa mental ----------------
   const createChildNode = useCallback(() => {
     const sel = selectedIdsRef.current;
@@ -2044,6 +2263,13 @@ function VirtualWhiteboard() {
     <div className="virtual-whiteboard" ref={wrapperRef}>
       {/* ---------- Barra principal ---------- */}
       <div className="whiteboard-toolbar">
+        {onExit && (
+          <div className="toolbar-group">
+            <button className="action-btn danger" onClick={onExit} title="Sair da lousa">
+              <X size={20} /> Sair
+            </button>
+          </div>
+        )}
         <div className="toolbar-group">
           <span className="toolbar-label">Ferramentas</span>
           <button className={`tool-btn ${tool === TOOLS.SELECT ? "active" : ""}`} onClick={() => setTool(TOOLS.SELECT)} title="Selecionar (V)">
@@ -2069,6 +2295,15 @@ function VirtualWhiteboard() {
           </button>
           <button className={`tool-btn ${tool === TOOLS.CONNECTOR ? "active" : ""}`} onClick={() => setTool(TOOLS.CONNECTOR)} title="Conector (liga nós)">
             <GitBranch size={20} />
+          </button>
+          <button className={`tool-btn ${tool === TOOLS.FORMULA ? "active" : ""}`} onClick={() => setTool(TOOLS.FORMULA)} title="Fórmula matemática (LaTeX)">
+            <Sigma size={20} />
+          </button>
+          <button className={`tool-btn ${tool === TOOLS.TABLE ? "active" : ""}`} onClick={() => setTool(TOOLS.TABLE)} title="Tabela">
+            <Table size={20} />
+          </button>
+          <button className={`tool-btn ${tool === TOOLS.CHART ? "active" : ""}`} onClick={() => setTool(TOOLS.CHART)} title="Gráfico">
+            <BarChart3 size={20} />
           </button>
         </div>
 
@@ -2172,6 +2407,98 @@ function VirtualWhiteboard() {
           <button className="action-btn danger" onClick={clearCanvas} title="Limpar tudo">
             <Trash2 size={20} />
           </button>
+        </div>
+
+        <div className="toolbar-divider" />
+
+                <div className="toolbar-group">
+          <span className="toolbar-label">Matéria</span>
+          <select
+            value={currentSubject}
+            onChange={(e) => switchSubject(e.target.value)}
+            className="subject-select shape-select"
+            title="Selecionar matéria salva"
+            style={{ minWidth: "150px" }}
+          >
+            {getAvailableSubjects().map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.id === "default" ? "📋 " + s.id : s.id} ({s.elementCount})
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={newSubjectName}
+            onChange={(e) => setNewSubjectName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") createSubject();
+            }}
+            placeholder="Nova matéria..."
+            className="subject-input shape-select"
+            style={{ minWidth: "110px", width: "130px" }}
+            title="Criar nova matéria (Enter)"
+          />
+          <button
+            className={`mini-btn ${manageSubjectsOpen ? "active" : ""}`}
+            onClick={() => setManageSubjectsOpen(!manageSubjectsOpen)}
+            title="Gerenciar matérias (listar/renomear/excluir)"
+          >
+            <FolderInput size={14} /> Gerenciar
+          </button>
+          {manageSubjectsOpen && (
+            <div className="manage-subjects-popover">
+              <div className="manage-subjects-header">
+                <span className="toolbar-label">Matérias salvas</span>
+                <button className="mini-btn" onClick={() => setManageSubjectsOpen(false)} title="Fechar">
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="manage-subjects-list">
+                {getAvailableSubjects()
+                  .filter((s) => s.id !== currentSubject)
+                  .map((s) => (
+                    <div key={s.id} className="manage-subject-row">
+                      <span className="manage-subject-name">{s.id === "default" ? "📋 " + s.id : s.id}</span>
+                      <span className="manage-subject-count">{s.elementCount} elementos</span>
+                      <div className="manage-subject-actions">
+                        <button
+                          className="mini-btn"
+                          onClick={() => {
+                            const nm = prompt("Novo nome da matéria:", s.id);
+                            if (nm && nm.trim()) renameSubject(s.id, nm.trim());
+                            forceSubjectsRefresh();
+                          }}
+                          title="Renomear"
+                        >
+                          <Palette size={12} />
+                        </button>
+                        <button
+                          className="mini-btn danger"
+                          onClick={() => {
+                            if (window.confirm(`Excluir "${s.id}"? Não dá para desfazer.`)) {
+                              deleteSubject(s.id);
+                              forceSubjectsRefresh();
+                            }
+                          }}
+                          title="Excluir"
+                          disabled={s.id === "default"}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                {getAvailableSubjects().filter((s) => s.id !== currentSubject).length === 0 && (
+                  <span className="manage-subject-empty">Nenhuma outra matéria salva</span>
+                )}
+              </div>
+              <div className="manage-subjects-footer" style={{ display: "flex", gap: "6px" }}>
+                <button className="mini-btn" onClick={() => setManageSubjectsOpen(false)}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="toolbar-info">
@@ -2534,6 +2861,52 @@ function VirtualWhiteboard() {
             )}
           </div>
         )}
+
+        {/* ---------- HTML Overlay (formula/table/chart) ---------- */}
+        <div className="whiteboard-overlay">
+          {elements
+            .filter((el) => el.type === "formula" || el.type === "table" || el.type === "chart")
+            .map((el) => {
+              const left = el.x * scale + pan.x;
+              const top = el.y * scale + pan.y;
+              return (
+                <div
+                  key={el.id}
+                  className="overlay-element"
+                  style={{
+                    position: "absolute",
+                    left: left,
+                    top: top,
+                    transform: "scale(" + scale + ")",
+                    transformOrigin: "0 0",
+                    width: el.width,
+                    height: el.height,
+                    pointerEvents: "none",
+                  }}
+                >
+                  {el.type === "formula" ? (
+                    <div
+                      className="formula-render"
+                      style={{ color: el.color, fontSize: el.fontSize + "px" }}
+                      ref={(node) => {
+                        if (node && window.MathJax) {
+                          window.MathJax.typesetPromise([node]);
+                        }
+                      }}
+                      dangerouslySetInnerHTML={{ __html: renderFormulaHTML(el) }}
+                    />
+                  ) : el.type === "table" ? (
+                    <div
+                      className="table-render"
+                      dangerouslySetInnerHTML={{ __html: renderTableHTML(el) }}
+                    />
+                  ) : (
+                    renderChartSVG(el)
+                  )}
+                </div>
+              );
+            })}
+        </div>
       </div>
 
       {/* ---------- Modal IA ---------- */}
@@ -2604,6 +2977,38 @@ function VirtualWhiteboard() {
         </div>
       )}
 
+      {/* ---------- Modais: Formula / Tabela / Grafico ---------- */}
+      <FormulaModal
+        open={!!formulaPrompt}
+        onClose={() => setFormulaPrompt(null)}
+        latex={formulaLatex}
+        onChange={setFormulaLatex}
+        onSubmit={commitFormula}
+      />
+      <TableModal
+        open={!!tablePrompt}
+        onClose={() => setTablePrompt(null)}
+        rows={tableRows}
+        cols={tableCols}
+        cells={tableCells}
+        onRows={setTableRows}
+        onCols={setTableCols}
+        onCells={setTableCells}
+        onGenerate={() => setTableCells(Array.from({ length: tableRows }, () => Array(tableCols).fill("")))}
+        onSubmit={commitTable}
+      />
+      <ChartModal
+        open={!!chartPrompt}
+        onClose={() => setChartPrompt(null)}
+        chartType={chartType}
+        labels={chartLabels}
+        values={chartValues}
+        onType={setChartType}
+        onLabels={setChartLabels}
+        onValues={setChartValues}
+        onSubmit={commitChart}
+      />
+
       {/* ---------- Barra de status ---------- */}
       <div className="whiteboard-status">
         <span>
@@ -2626,7 +3031,13 @@ function VirtualWhiteboard() {
                           ? "Polígono"
                           : tool === TOOLS.CONNECTOR
                             ? "Conector"
-                            : "Mapa Mental"}
+                            : tool === TOOLS.FORMULA
+                              ? "Fórmula (LaTeX)"
+                              : tool === TOOLS.TABLE
+                              ? "Tabela"
+                              : tool === TOOLS.CHART
+                              ? "Gráfico"
+                              : "Mapa Mental"}
         </span>
         <span>Zoom: {Math.round(scale * 100)}%</span>
         <span>Elementos: {elements.length}</span>

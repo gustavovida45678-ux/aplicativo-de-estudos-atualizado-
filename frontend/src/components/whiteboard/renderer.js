@@ -311,6 +311,259 @@ export function renderConnectorElement(ctx, c, from, to) {
   }
 }
 
+export function renderFormulaElement(ctx, el) {
+  const { x, y, width, height, latex, fontSize = 20, color = "#ffffff" } = el;
+  const displayLatex = latex || "";
+  if (!displayLatex.trim()) return;
+
+  ctx.save();
+  ctx.font = `${fontSize}px "Inter", sans-serif`;
+  ctx.fillStyle = color;
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+
+  try {
+    const lines = displayLatex.split("\n");
+    const lineHeight = fontSize * 1.35;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], x, y + i * lineHeight, width);
+    }
+  } catch (e) {
+    ctx.fillStyle = "#ef4444";
+    ctx.fillText("Error: " + displayLatex, x, y, width);
+  }
+  ctx.restore();
+}
+
+export function renderTableElement(ctx, el) {
+  const { x, y, width, height, rows, cols, cells, fontSize = 16, color = "#ffffff", cellWidth = 80, cellHeight = 32 } = el;
+  if (!cells || rows <= 0 || cols <= 0) return;
+
+  ctx.save();
+  ctx.font = `${fontSize}px "Inter", sans-serif`;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cellX = x + c * cellWidth;
+      const cellY = y + r * cellHeight;
+      const cellW = cellWidth;
+      const cellH = cellHeight;
+
+      ctx.strokeRect(cellX, cellY, cellW, cellH);
+
+      const cellContent = cells[r]?.[c] || "";
+      const lines = String(cellContent).split("\n");
+      const lineHeight = fontSize * 1.3;
+      const startY = cellY + cellH / 2 - ((lines.length - 1) * lineHeight) / 2;
+
+      lines.forEach((line, i) => {
+        ctx.fillText(line, cellX + cellW / 2, startY + i * lineHeight, cellW - 8);
+      });
+    }
+  }
+  ctx.restore();
+}
+
+function drawBarChart(ctx, el, x, y, w, h) {
+  const { labels = [], values = [], color = "#22d3ee" } = el;
+  const data = values.map((v) => Number(v) || 0);
+  const maxV = Math.max(...data, 1);
+  const barCount = data.length;
+  const barWidth = (w - 40) / Math.max(barCount, 1);
+  const barGap = barWidth * 0.2;
+  const actualBarWidth = barWidth - barGap;
+  const chartBottom = y + h - 30;
+  const chartTop = y + 20;
+  const chartHeight = chartBottom - chartTop;
+
+  ctx.font = "11px Inter, sans-serif";
+  ctx.fillStyle = "#8b949e";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+
+  data.forEach((val, i) => {
+    const bx = x + 20 + i * barWidth + barGap / 2;
+    const barH = (val / maxV) * chartHeight;
+    const by = chartBottom - barH;
+
+    const grad = ctx.createLinearGradient(bx, by, bx, chartBottom);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, color + "80");
+    ctx.fillStyle = grad;
+    ctx.fillRect(bx, by, actualBarWidth, barH);
+
+    ctx.fillStyle = color;
+    ctx.fillRect(bx, by, actualBarWidth, barH);
+
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillText(val.toString(), bx + actualBarWidth / 2, by - 18, actualBarWidth);
+
+    ctx.fillStyle = "#8b949e";
+    ctx.fillText((labels[i] || String(i + 1)).toString(), bx + actualBarWidth / 2, chartBottom + 4, actualBarWidth);
+  });
+
+  ctx.strokeStyle = "#30363d";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + 20, chartTop);
+  ctx.lineTo(x + 20, chartBottom);
+  ctx.lineTo(x + 20 + w - 40, chartBottom);
+  ctx.stroke();
+}
+
+function drawLineChart(ctx, el, x, y, w, h) {
+  const { labels = [], values = [], color = "#22d3ee" } = el;
+  const data = values.map((v) => Number(v) || 0);
+  const maxV = Math.max(...data, 1);
+  const minV = Math.min(...data, 0);
+  const range = maxV - minV || 1;
+  const barCount = data.length;
+  const chartLeft = x + 50;
+  const chartRight = x + w - 20;
+  const chartTop = y + 20;
+  const chartBottom = y + h - 40;
+  const chartWidth = chartRight - chartLeft;
+  const chartHeight = chartBottom - chartTop;
+
+  ctx.strokeStyle = "#30363d";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(chartLeft, chartTop);
+  ctx.lineTo(chartLeft, chartBottom);
+  ctx.lineTo(chartRight, chartBottom);
+  ctx.stroke();
+
+  ctx.font = "11px Inter, sans-serif";
+  ctx.fillStyle = "#8b949e";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const val = minV + (range * i) / 4;
+    const py = chartBottom - (i / 4) * chartHeight;
+    ctx.fillText(val.toFixed(1), chartLeft - 8, py);
+  }
+
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  data.forEach((val, i) => {
+    const px = chartLeft + (i / Math.max(barCount - 1, 1)) * chartWidth;
+    const py = chartBottom - ((val - minV) / range) * chartHeight;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  data.forEach((val, i) => {
+    const px = chartLeft + (i / Math.max(barCount - 1, 1)) * chartWidth;
+    const py = chartBottom - ((val - minV) / range) * chartHeight;
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#e2e8f0";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(val.toString(), px, py - 8);
+    ctx.fillStyle = color;
+  });
+
+  ctx.fillStyle = "#8b949e";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  data.forEach((_, i) => {
+    const px = chartLeft + (i / Math.max(barCount - 1, 1)) * chartWidth;
+    ctx.fillText((labels[i] || String(i + 1)).toString(), px, chartBottom + 4);
+  });
+}
+
+function drawPieChart(ctx, el, x, y, w, h) {
+  const { labels = [], values = [], color = "#22d3ee" } = el;
+  const data = values.map((v) => Number(v) || 0);
+  const total = data.reduce((a, b) => a + b, 0);
+  if (total === 0) return;
+
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const r = Math.min(w, h) / 2 - 30;
+  let acc = 0;
+
+  const colors = [
+    "#22d3ee", "#f472b6", "#86efac", "#fcd34d", "#a78bfa",
+    "#fb923c", "#60a5fa", "#34d399", "#f87171", "#c084fc"
+  ];
+
+  data.forEach((val, i) => {
+    const sliceAngle = (val / total) * Math.PI * 2;
+    const start = acc - Math.PI / 2;
+    const end = acc + sliceAngle - Math.PI / 2;
+    acc += sliceAngle;
+
+    const sliceColor = colors[i % colors.length];
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, end);
+    ctx.closePath();
+    ctx.fillStyle = sliceColor;
+    ctx.fill();
+    ctx.strokeStyle = "#0d1117";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const mid = (start + end) / 2;
+    const labelR = r * 0.65;
+    const lx = cx + Math.cos(mid) * labelR;
+    const ly = cy + Math.sin(mid) * labelR;
+    const pct = ((val / total) * 100).toFixed(1);
+
+    ctx.font = "bold 12px Inter, sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${pct}%`, lx, ly);
+  });
+
+  const legendX = x + w - 120;
+  let legendY = y + 20;
+  ctx.font = "11px Inter, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  data.forEach((val, i) => {
+    const sliceColor = colors[i % colors.length];
+    ctx.fillStyle = sliceColor;
+    ctx.fillRect(legendX, legendY - 6, 12, 12);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillText(`${labels[i] || "Item " + (i + 1)}: ${val}`, legendX + 18, legendY);
+    legendY += 18;
+  });
+}
+
+export function renderChartElement(ctx, el) {
+  const { x, y, width = 240, height = 160, chartType = "bar" } = el;
+  switch (chartType) {
+    case "bar":
+      drawBarChart(ctx, el, x, y, width, height);
+      break;
+    case "line":
+      drawLineChart(ctx, el, x, y, width, height);
+      break;
+    case "pie":
+      drawPieChart(ctx, el, x, y, width, height);
+      break;
+    default:
+      drawBarChart(ctx, el, x, y, width, height);
+  }
+}
+
 export function renderElements(ctx, elements, mapById, scale = 1, zoomIndependent = false) {
   // Camada 1: conectores
   for (const el of elements) {
@@ -332,7 +585,19 @@ export function renderElements(ctx, elements, mapById, scale = 1, zoomIndependen
   for (const el of elements) {
     if (el.type === "text") renderTextElement(ctx, el);
   }
-  // Camada 5: nos
+  // Camada 5: fórmulas
+  for (const el of elements) {
+    if (el.type === "formula") renderFormulaElement(ctx, el);
+  }
+  // Camada 6: tabelas
+  for (const el of elements) {
+    if (el.type === "table") renderTableElement(ctx, el);
+  }
+  // Camada 7: gráficos
+  for (const el of elements) {
+    if (el.type === "chart") renderChartElement(ctx, el);
+  }
+  // Camada 8: nos
   for (const el of elements) {
     if (el.type === "node") renderNodeElement(ctx, el, false);
   }

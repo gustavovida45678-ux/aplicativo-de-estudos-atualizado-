@@ -636,7 +636,7 @@ function App() {
               <JudgePanel />
             </div>
             ) : activeTab === "whiteboard" ? (
-              <VirtualWhiteboard />
+              <VirtualWhiteboard onExit={() => setActiveTab("dashboard")} />
             ) : activeTab === "moodle" ? (
               <div className="mx-auto max-w-5xl px-4 py-8">
                 <MoodlePage onClose={() => setActiveTab("dashboard")} />

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import axios from 'axios';
 import { toast } from 'sonner';
 import {
   BookOpen, ExternalLink, RefreshCw, Loader2, Calendar, AlertTriangle,
@@ -24,21 +25,44 @@ export function MoodlePage({ onClose }) {
   const [activeTab, setActiveTab] = useState('activities');
   const [lastSync, setLastSync] = useState(null);
   const [moodleConfigured, setMoodleConfigured] = useState(false);
+  const [configChecked, setConfigChecked] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [connecting, setConnecting] = useState(false);
 
-  useEffect(() => {
-    checkMoodleConfig();
-    if (moodleConfigured) {
-      fetchAll();
+  const connectMoodle = async () => {
+    if (!tokenInput.trim() || connecting) return;
+    setConnecting(true);
+    try {
+      const res = await axios.post(`${API}/token`, { token: tokenInput.trim() });
+      if (res.data.valid) {
+        toast.success('Moodle conectado com sucesso!');
+        setMoodleConfigured(true);
+        setTokenInput('');
+        setLastSync(new Date());
+        await fetchAll();
+      } else {
+        toast.error('Token inválido. Verifique o token e tente novamente.');
+      }
+    } catch (e) {
+      console.error('Erro ao conectar ao Moodle:', e);
+      toast.error('Não foi possível conectar ao Moodle. Verifique o token.');
+    } finally {
+      setConnecting(false);
     }
-  }, []);
+  };
 
   const checkMoodleConfig = async () => {
     try {
       const res = await axios.get(`${API}/status`);
-      setMoodleConfigured(res.data.configured);
+      const configured = !!res.data.configured;
+      setMoodleConfigured(configured);
       if (res.data.last_sync) setLastSync(new Date(res.data.last_sync));
+      return configured;
     } catch (e) {
       console.error('Erro ao verificar configuração do Moodle:', e);
+      return false;
+    } finally {
+      setConfigChecked(true);
     }
   };
 
@@ -49,6 +73,32 @@ export function MoodlePage({ onClose }) {
       fetchDeadlines(),
       fetchAnnouncements(),
     ]);
+  }, []);
+
+  const didAutoSync = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const configured = await checkMoodleConfig();
+      if (cancelled) return;
+      if (configured) {
+        await fetchAll();
+        const hasData =
+          (courses.length || activities.length || deadlines.length || announcements.length) > 0;
+        if (!hasData && !didAutoSync.current) {
+          didAutoSync.current = true;
+          try {
+            await axios.post(`${API}/sync`);
+          } catch (e) {
+            console.error('Auto-sync do Moodle falhou:', e);
+          }
+          await fetchAll();
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchCourses = async () => {
@@ -161,11 +211,19 @@ export function MoodlePage({ onClose }) {
           </div>
         </div>
 
-        {!moodleConfigured && (
+        {!configChecked && (
+          <div className="moodle-not-configured">
+            <Loader2 size={48} className="spin" color="#3b82f6" />
+            <h3>Conectando ao Moodle...</h3>
+            <p>Verificando a configuração da integração.</p>
+          </div>
+        )}
+
+        {configChecked && !moodleConfigured && (
           <div className="moodle-not-configured">
             <Shield size={48} color="#f59e0b" />
-            <h3>Moodle não configurado</h3>
-            <p>Para usar a integração, configure seu token da API do Moodle nas configurações.</p>
+            <h3>Moodle não conectado</h3>
+            <p>Conecte sua conta do Moodle IFG para ver atividades, prazos, disciplinas e avisos direto no app.</p>
             <div className="config-steps">
               <div className="step">
                 <span className="step-num">1</span>
@@ -181,15 +239,21 @@ export function MoodlePage({ onClose }) {
                   <p>Perfil > Preferências > Tokens de serviço web > Criar token</p>
                 </div>
               </div>
-              <div className="step">
-                <span className="step-num">3</span>
-                <div>
-                  <strong>Configure no app</strong>
-                  <p>Vá em Configurações > Integrações > Moodle e cole o token</p>
-                </div>
-              </div>
             </div>
-            <button className="moodle-btn primary" onClick={openMoodle}>
+            <div className="moodle-token-form">
+              <input
+                type="text"
+                placeholder="Cole aqui o token do Moodle"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') connectMoodle(); }}
+                disabled={connecting}
+              />
+              <button className="moodle-btn primary" onClick={connectMoodle} disabled={connecting || !tokenInput.trim()}>
+                {connecting ? <><Loader2 size={16} className="spin" /> Conectando...</> : <><Unlock size={16} /> Conectar</>}
+              </button>
+            </div>
+            <button className="moodle-btn secondary" onClick={openMoodle}>
               <ExternalLink size={16} /> Abrir Moodle IFG
             </button>
           </div>

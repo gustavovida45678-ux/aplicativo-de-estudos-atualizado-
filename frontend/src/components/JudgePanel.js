@@ -160,18 +160,6 @@ const JudgePanel = () => {
   };
 
   const openProblem = (p) => {
-    const tp = p.topic || 'default';
-    const progress = getTopicProgress(tp);
-    if (!progress.successes && progress.total === 0) {
-      // First attempt on this topic, allow opening
-    } else if (progress.successRate < 90) {
-      toast.warning(
-        `Sua taxa de acerto em "${tp}" e de apenas ${progress.successRate}% (${progress.successes}/${progress.total}). ` +
-        'Estude os topicos de erro e faca as revoes antes de avancar.',
-        { duration: 7000 }
-      );
-      return;
-    }
     const saved = localStorage.getItem(`judge_code_${p.id}_${language}`);
     setSelected(p);
     setCode(saved || STARTERS[language]);

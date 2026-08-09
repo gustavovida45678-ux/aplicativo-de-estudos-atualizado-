@@ -287,37 +287,60 @@ def _load_config(user_id=None):
     return None
 
 
-def _save_config(cfg, user_id=None):
-    try:
-        sb = get_supabase_admin()
-        now = datetime.utcnow().isoformat()
-        existing = (
-            sb.table(MOODLE_TABLE).select("id").eq("user_id", user_id).limit(1).execute()
-        )
-        if existing.data:
-            sb.table(MOODLE_TABLE).update(
-                {
-                    "url": cfg["url"],
-                    "token": cfg["token"],
-                    "is_active": True,
-                    "updated_at": now,
-                }
-            ).eq("id", existing.data[0]["id"]).execute()
-        else:
-            sb.table(MOODLE_TABLE).insert(
-                {
-                    "user_id": user_id,
-                    "name": "Moodle IFG",
-                    "url": cfg["url"],
-                    "token": cfg["token"],
-                    "is_active": True,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            ).execute()
-        return cfg
-    except Exception:
-        pass
+def _save_config(cfg, user_id=None, email=None, name=None):
+    if user_id:
+        try:
+            sb = get_supabase_admin()
+            now = datetime.utcnow().isoformat()
+            # Garante que o usuario exista em profiles (FK de moodle_integrations.user_id -> profiles.id)
+            try:
+                prof = (
+                    sb.table("profiles")
+                    .select("id")
+                    .eq("id", user_id)
+                    .limit(1)
+                    .execute()
+                )
+                if not prof.data:
+                    sb.table("profiles").insert(
+                        {
+                            "id": user_id,
+                            "email": email or f"{user_id}@app.local",
+                            "name": name or "Usuário do App",
+                            "is_active": True,
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                    ).execute()
+            except Exception:
+                pass
+            existing = (
+                sb.table(MOODLE_TABLE).select("id").eq("user_id", user_id).limit(1).execute()
+            )
+            if existing.data:
+                sb.table(MOODLE_TABLE).update(
+                    {
+                        "url": cfg["url"],
+                        "token": cfg["token"],
+                        "is_active": True,
+                        "updated_at": now,
+                    }
+                ).eq("id", existing.data[0]["id"]).execute()
+            else:
+                sb.table(MOODLE_TABLE).insert(
+                    {
+                        "user_id": user_id,
+                        "name": "Moodle IFG",
+                        "url": cfg["url"],
+                        "token": cfg["token"],
+                        "is_active": True,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ).execute()
+            return cfg
+        except Exception:
+            pass
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f)
@@ -381,7 +404,11 @@ def _sync_all(user_id=None):
     base = _base(cfg["url"])
     token = cfg["token"]
 
-    raw_courses = _call(base, token, "core_enrol_get_users_courses") or []
+    raw_courses = []
+    try:
+        raw_courses = _call(base, token, "core_enrol_get_users_courses") or []
+    except HTTPException:
+        raw_courses = []
     courses = []
     for c in raw_courses if isinstance(raw_courses, list) else []:
         courses.append({
@@ -536,7 +563,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
         )
     if isinstance(data, dict) and data.get("token"):
         cfg = {"url": base, "token": data["token"]}
-        _save_config(cfg, user_id)
+        _save_config(cfg, user_id, current_user.get("email"), current_user.get("name"))
         try:
             info = _call(base, data["token"], "core_webservice_get_site_info")
         except HTTPException:
@@ -564,7 +591,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
 def moodle_save_token(req: TokenRequest, current_user: dict = Depends(get_current_user)):
     user_id = current_user.get("id")
     cfg = {"url": req.url, "token": req.token}
-    _save_config(cfg, user_id)
+    _save_config(cfg, user_id, current_user.get("email"), current_user.get("name"))
     base = _base(cfg["url"])
     try:
         info = _call(base, cfg["token"], "core_webservice_get_site_info")

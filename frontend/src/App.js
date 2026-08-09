@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import "./App.css";
 import "@/styles/studySchedule.css";
+import "./styles/virtualWhiteboard.css";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -19,6 +20,7 @@ import SmartDashboard from "./components/SmartDashboard";
 import FeedbackForm from "./components/FeedbackForm";
 import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
 import JudgePanel from "./components/JudgePanel";
+import VirtualWhiteboard from "./components/VirtualWhiteboard";
 // import DebugPanel from "./components/DebugPanel"; // Removed
 
 import { BACKEND_URL } from "./lib/backendUrl";
@@ -559,6 +561,18 @@ function App() {
             </div>
 
             <div className="nav-group">
+              <span className="nav-group-label">Lousa</span>
+              <button
+                onClick={() => setActiveTab("whiteboard")}
+                className={`nav-tab ${activeTab === "whiteboard" ? "active" : ""}`}
+                data-testid="tab-whiteboard"
+              >
+                <PenTool size={18} />
+                <span className="nav-tab-text">Lousa Virtual</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
               <span className="nav-group-label">Conta</span>
               <button
                 onClick={() => setActiveTab("feedback")}
@@ -607,6 +621,8 @@ function App() {
             <div className="mx-auto max-w-5xl px-4 py-8">
               <JudgePanel />
             </div>
+          ) : activeTab === "whiteboard" ? (
+            <VirtualWhiteboard />
           ) : (
         <>
           {/* Drag and drop overlay */}

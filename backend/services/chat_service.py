@@ -81,8 +81,17 @@ class ChatService:
         msg = str(error).lower()
         return "429" in str(error) or "rate limit" in msg or "rate_limit" in msg or "too many requests" in msg
 
-    def _ordered_providers(self, primary: ProviderType, custom_key: Optional[str] = None) -> List[ProviderType]:
-        """Providers disponiveis (com chave), primary primeiro, depois por prioridade."""
+    def _ordered_providers(self, primary: ProviderType, custom_key: Optional[str] = None, allow_fallback: bool = True) -> List[ProviderType]:
+        """Providers disponiveis (com chave), primary primeiro, depois por prioridade.
+        
+        Se allow_fallback=False, retorna apenas o primary (se tiver chave).
+        """
+        if not allow_fallback:
+            # Só tenta o provider solicitado
+            if get_provider_config(primary) and (self.provider_keys.get(primary) or custom_key):
+                return [primary]
+            return []
+        
         available = [
             p for p in AUTO_PRIORITY
             if get_provider_config(p) and (self.provider_keys.get(p) or (p == primary and custom_key))
@@ -113,13 +122,18 @@ class ChatService:
         """
         Send a chat message to the specified provider/model.
 
-        Se o provedor principal falhar, tenta automaticamente os demais
-        provedores configurados (fallback) para nunca deixar o chat sem resposta.
+        Se provider_type != "auto", usa APENAS esse provedor (sem fallback).
+        Se "auto", tenta provedores em ordem de prioridade.
         """
+        is_auto = provider_type == ProviderType.FREE_AI  # placeholder, será verificado pelo valor string
+        
+        # Se custom_api_key foi passado, usa para o provider solicitado
         if custom_api_key:
             self.provider_keys[provider_type] = [custom_api_key]
 
-        candidates = self._ordered_providers(provider_type, custom_api_key)
+        # NÃO faz fallback quando provider específico é solicitado
+        allow_fallback = (provider_type.value == "auto")
+        candidates = self._ordered_providers(provider_type, custom_api_key, allow_fallback)
         if not candidates:
             configured = [f"{p['name']} ({p.get('env_var', '')})" for p in self.get_available_providers() if p.get("has_key")]
             hint = f" Chaves disponíveis: {', '.join(configured)}." if configured else ""

@@ -10,10 +10,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# MongoDB connection
-mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME', 'study_app')]
+# Lazy MongoDB connection - only connect when needed
+_client = None
+_db = None
+
+def get_db():
+    global _client, _db
+    if _client is None:
+        mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
+        if mongo_url:
+            _client = AsyncIOMotorClient(mongo_url)
+            _db = _client[os.environ.get('DB_NAME', 'study_app')]
+        else:
+            _db = None
+    return _db
 
 # Initial subjects data
 INITIAL_SUBJECTS = [
@@ -152,6 +162,10 @@ INITIAL_TASKS = [
 
 async def initialize_data():
     """Initialize database with default data (idempotent upsert)"""
+    db = get_db()
+    if db is None:
+        logger.warning("MongoDB not configured, skipping data initialization")
+        return
     try:
         # Upsert each subject, preserving any existing topic completion state
         for subject_data in INITIAL_SUBJECTS:
@@ -228,6 +242,9 @@ async def startup_event():
 @router.get("/subjects", response_model=List[Subject])
 async def get_subjects():
     """Get all subjects with topics"""
+    db = get_db()
+    if db is None:
+        return []
     try:
         subjects = await db.subjects.find({"user_id": "default"}, {"_id": 0, "user_id": 0}).to_list(100)
         return subjects
@@ -238,6 +255,9 @@ async def get_subjects():
 @router.put("/subjects/{subject_id}/topics/{topic_id}/toggle")
 async def toggle_topic(subject_id: str, topic_id: int):
     """Toggle topic completion status"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         # Find the subject
         subject = await db.subjects.find_one({"user_id": "default", "subject_id": subject_id})
@@ -278,6 +298,9 @@ async def toggle_topic(subject_id: str, topic_id: int):
 @router.get("/tasks", response_model=List[TaskResponse])
 async def get_tasks():
     """Get all tasks"""
+    db = get_db()
+    if db is None:
+        return []
     try:
         tasks = await db.tasks.find({"user_id": "default"}, {"_id": 0, "user_id": 0}).to_list(1000)
         return tasks
@@ -288,6 +311,9 @@ async def get_tasks():
 @router.post("/tasks", response_model=TaskResponse)
 async def create_task(task: Task):
     """Create a new task"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         # Get the highest task ID
         all_tasks = await db.tasks.find({"user_id": "default"}).to_list(1000)
@@ -311,6 +337,9 @@ async def create_task(task: Task):
 @router.put("/tasks/{task_id}/toggle")
 async def toggle_task(task_id: int):
     """Toggle task completion status"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         task = await db.tasks.find_one({"user_id": "default", "id": task_id})
         if not task:
@@ -336,6 +365,9 @@ async def toggle_task(task_id: int):
 @router.delete("/tasks/{task_id}")
 async def delete_task(task_id: int):
     """Delete a task"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         result = await db.tasks.delete_one({"user_id": "default", "id": task_id})
         if result.deleted_count == 0:

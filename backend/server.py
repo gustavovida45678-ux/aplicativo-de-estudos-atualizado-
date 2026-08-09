@@ -16,8 +16,10 @@ if str(ROOT_DIR) not in sys.path:
 if str(ROOT_DIR.parent) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR.parent))
 
-from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
+load_dotenv(ROOT_DIR / '.env')
+
+from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict
@@ -35,8 +37,6 @@ from routes.moodle import router as moodle_router
 from routes.judge import router as judge_router
 from routes.adaptive import router as adaptive_router
 from services.adaptive_store import configure_store
-
-load_dotenv(ROOT_DIR / '.env')
 
 logging.basicConfig(
     level=logging.INFO,

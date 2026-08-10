@@ -566,7 +566,7 @@ function App() {
               <span className="nav-group-label">Lousa</span>
               <button
                 onClick={() => setActiveTab("whiteboard")}
-                className={`nav-tab ${activeTab === "whiteboard" ? "active" : ""}`}
+                className={`nav-tab whiteboard ${activeTab === "whiteboard" ? "active" : ""}`}
                 data-testid="tab-whiteboard"
               >
                 <PenTool size={18} />

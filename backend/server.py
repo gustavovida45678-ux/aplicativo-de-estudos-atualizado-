@@ -139,6 +139,7 @@ app.include_router(schedule_api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://aplicativo-de-estudos-atualizado-9ixn.onrender.com",
         "https://aplicativo-de-estudos-atualizado.onrender.com",
         "https://frontend-*.onrender.com",
         "http://localhost:3000",

@@ -10,5 +10,5 @@ export const BACKEND_URL = (() => {
   if (envUrl && /^https?:\/\/.+/.test(envUrl)) {
     return envUrl.replace(/\/+$/, "");
   }
-  return "https://aplicativo-de-estudos-atualizado-ee.onrender.com";
+  return "https://aplicativo-de-estudos-atualizado-9ixn.onrender.com";
 })();

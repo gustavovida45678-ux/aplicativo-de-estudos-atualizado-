@@ -937,7 +937,8 @@ code, pre {
 .nav-tab.active,
 .nav-tab.exercises.active,
 .nav-tab.schedule.active,
-.nav-tab.feedback.active {
+.nav-tab.feedback.active,
+.nav-tab.whiteboard.active {
   color: #fff;
   background: var(--blue-primary);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);

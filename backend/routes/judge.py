@@ -947,19 +947,97 @@ SELECIONADO:
     return {"explanation": data, "examples": data.get("examples", []), "concepts": data.get("concepts", [])}
 
 
+_explain_compile_cache = {}
+_explain_compile_in_progress = set()
+
+
+def _explain_compile_status(language: str, code: str, custom_key: Optional[str] = None):
+    """Checa compilacao e corrige o codigo se preciso. Cacheado por (linguagem, codigo)."""
+    key = (language, code)
+    if key in _explain_compile_cache:
+        return _explain_compile_cache[key]
+    if key in _explain_compile_in_progress:
+        return None
+    _explain_compile_in_progress.add(key)
+    try:
+        error = None
+        if language == "python":
+            try:
+                import ast
+                ast.parse(code)
+            except SyntaxError as e:
+                error = f"Erro de sintaxe (linha {e.lineno}): {e.msg}"
+        else:
+            try:
+                run_result = _run(language, code, "")
+                if run_result and isinstance(run_result, dict):
+                    compile_res = run_result.get("compile") or {}
+                    if compile_res.get("code") not in (0, None, -1):
+                        error = (compile_res.get("stderr") or "Erro de compilacao.").strip()[:800]
+            except HTTPException:
+                pass
+            except Exception as e:
+                logger.warning(f"Falha ao checar compilacao no explain-line: {e}")
+        corrected = _fix_code_ai(code, language, error, custom_key) if error else None
+        result = (error, corrected)
+        if len(_explain_compile_cache) > 100:
+            _explain_compile_cache.clear()
+        _explain_compile_cache[key] = result
+        return result
+    finally:
+        _explain_compile_in_progress.discard(key)
+
+
 @router.post("/explain-line")
 async def explain_line(req: LineRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
     lang_name = _educ_lang_name(req.language)
     lines = req.code.split("\n")
     line_text = lines[req.lineNumber - 1] if 1 <= req.lineNumber <= len(lines) else ""
+
+    compile_error = corrected_code = None
+    key = (req.language, req.code)
+    if req.code.strip() and key not in _explain_compile_cache:
+        import threading
+        t = threading.Thread(target=_explain_compile_status, args=(req.language, req.code, x_custom_api_key), daemon=True)
+        t.start()
+        t.join(timeout=4)
+    if key in _explain_compile_cache:
+        compile_error, corrected_code = _explain_compile_cache[key]
+
     system = f"""Voce e um professor de {lang_name}. Explique a LINHA {req.lineNumber} do codigo para um aluno iniciante.
 {PEDAGOGY_RULES}
 Responda APENAS com JSON: {{"what": "...", "syntax": "...", "purpose": "...", "commonError": "..."}}. Campos opcionais.
-ENUNCIADO: {req.statement or '(nao informado)'}
-LINHA: {line_text}"""
+ENUNCIADO: {req.statement or '(nao informado)'}"""
+    user = f"LINHA {req.lineNumber}: {line_text}"
+    if compile_error:
+        user += f"""
+
+ERRO DE COMPILACAO DO CODIGO (pode ser nesta linha ou em outra):
+{compile_error[:600]}
+
+CODIGO CORRIGIDO:
+```{req.language}
+{corrected_code or "(correcao indisponivel)"}
+```
+
+SE esta linha tiver relacao com o erro, explique o que esta errado nela, por que, e como ela fica na versao corrigida."""
     fallback = {"what": "Processa ou manipula dados conforme o enunciado.", "syntax": "Sintaxe propria da linguagem.", "purpose": "Contribui para a resolucao do exercicio.", "commonError": "Erros comuns incluem esquecer ponto e virgula ou declarar variavel."}
-    data = _educ_json(_call_ai(system, "", x_custom_api_key), fallback)
-    return {"explanation": data}
+    data = _educ_json(_call_ai(system, user, x_custom_api_key), fallback)
+    return {"explanation": data, "compile_error": compile_error, "corrected_code": corrected_code}
+
+
+@router.post("/check-compile")
+async def check_compile(req: LineRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+    if not req.code.strip():
+        return {"compile_error": None, "corrected_code": None}
+    import threading
+    key = (req.language, req.code)
+    if key not in _explain_compile_cache:
+        t = threading.Thread(target=_explain_compile_status, args=(req.language, req.code, x_custom_api_key), daemon=True)
+        t.start()
+        t.join(timeout=8)
+    compile_error, corrected_code = _explain_compile_cache.get(key, (None, None))
+    return {"compile_error": compile_error, "corrected_code": corrected_code}
 
 
 def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool, custom_key: Optional[str] = None) -> Optional[dict]:

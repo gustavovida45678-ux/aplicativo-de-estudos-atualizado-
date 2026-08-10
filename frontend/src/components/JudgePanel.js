@@ -1560,6 +1560,11 @@ const JudgePanel = () => {
             problem={problem}
             isOpen={showLineByLine}
             onClose={() => setShowLineByLine(false)}
+            onApplyCorrected={(fixed) => {
+              setCode(fixed);
+              saveCode(activeExercise.id || 'custom', language, fixed);
+              toast.success('Código corrigido aplicado ao editor');
+            }}
           />
         )}
         </div>

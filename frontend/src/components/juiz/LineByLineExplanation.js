@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { BookOpen, Code2, HelpCircle, X, Sparkles, Brain, Zap } from 'lucide-react';
+import { BookOpen, Code2, HelpCircle, X, Sparkles, Brain, Zap, AlertTriangle, Wand2 } from 'lucide-react';
 import { BACKEND_URL } from '../../lib/backendUrl';
 
 const API = `${BACKEND_URL}/api/judge`;
@@ -10,6 +10,7 @@ export function LineByLineExplanation({
   language, 
   problem, 
   onClose,
+  onApplyCorrected,
   isOpen 
 }) {
   const [explanations, setExplanations] = useState({});
@@ -17,6 +18,8 @@ export function LineByLineExplanation({
   const [loadingLines, setLoadingLines] = useState(new Set());
   const [enabled, setEnabled] = useState(true);
   const [tooltipsVisible, setTooltipsVisible] = useState({});
+  const [compileInfo, setCompileInfo] = useState({ error: null, corrected: null });
+  const [checkingCompile, setCheckingCompile] = useState(false);
   const editorRef = useRef(null);
   const linesRef = useRef(code.split('\n'));
   const tooltipTimeoutRef = useRef(null);
@@ -24,6 +27,31 @@ export function LineByLineExplanation({
   useEffect(() => {
     linesRef.current = code.split('\n');
   }, [code]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    if (!code.trim()) return;
+    setCheckingCompile(true);
+    axios.post(`${API}/check-compile`, {
+      language,
+      code,
+      lineNumber: 1,
+      totalLines: linesRef.current.length,
+      statement: problem?.statement || '',
+      topic: problem?.topic || '',
+    }).then((res) => {
+      if (!cancelled) {
+        setCompileInfo({
+          error: res.data.compile_error || null,
+          corrected: res.data.corrected_code || null,
+        });
+      }
+    }).catch(() => {}).finally(() => {
+      if (!cancelled) setCheckingCompile(false);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, code, language, problem]);
 
   const generateLineExplanation = useCallback(async (lineNumber) => {
     if (!code.trim() || explanations[lineNumber] || loadingLines.has(lineNumber)) return;
@@ -46,6 +74,13 @@ export function LineByLineExplanation({
         ...prev,
         [lineNumber]: res.data.explanation
       }));
+      
+      if (res.data.compile_error) {
+        setCompileInfo(prev => ({
+          error: res.data.compile_error,
+          corrected: res.data.corrected_code || prev.corrected,
+        }));
+      }
       
       setTooltipsVisible(prev => ({ ...prev, [lineNumber]: true }));
     } catch (e) {
@@ -158,6 +193,26 @@ export function LineByLineExplanation({
             {Object.keys(explanations).length} de {lines.length} linhas explicadas
           </span>
         </div>
+
+        {checkingCompile && (
+          <div className="line-explanation-checking">
+            <Zap size={13} className="spin" color="#f59e0b" /> Verificando se o código compila...
+          </div>
+        )}
+        {compileInfo.error && (
+          <div className="line-explanation-error-banner">
+            <AlertTriangle size={16} color="#fbbf24" />
+            <div className="banner-text">
+              <strong>Seu código não compilou:</strong>{' '}
+              <span className="err-msg">{compileInfo.error.slice(0, 300)}</span>
+            </div>
+            {compileInfo.corrected && onApplyCorrected && (
+              <button className="apply-fix-btn" onClick={() => onApplyCorrected(compileInfo.corrected)}>
+                <Wand2 size={13} /> Usar código corrigido
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="code-with-explanations">
           {lines.map((line, idx) => {

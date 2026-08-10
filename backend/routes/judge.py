@@ -6,10 +6,41 @@ import json
 import re
 import os
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/judge", tags=["judge"])
+
+
+def _user_id_from_auth(authorization: Optional[str]) -> Optional[str]:
+    """Extrai o user_id (email) do JWT do app, se presente. Nunca lanca erro."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        from utils.auth import decode_access_token
+        return decode_access_token(authorization.replace("Bearer ", "", 1))
+    except Exception:
+        return None
+
+
+def _save_submission(user_id, problem_id, language, code, status, result):
+    """Salva a resolucao (com detalhes e explicacoes) no Supabase. Falha silenciosa."""
+    if not user_id:
+        return
+    try:
+        from utils.supabase import get_supabase_admin
+        sb = get_supabase_admin()
+        sb.table("judge_submissions").insert({
+            "user_id": user_id,
+            "problem_id": problem_id or "",
+            "language": language,
+            "code": code,
+            "status": status,
+            "result": result,
+        }).execute()
+    except Exception as e:
+        logger.warning(f"Falha ao salvar submissao no Supabase: {e}")
 
 PISTON_URL = "https://emkc.org/api/v2/piston/execute"
 SANDBOX_URL = "https://api.sandboxapi.dev/v1/execute"
@@ -122,6 +153,7 @@ class SubmitRequest(BaseModel):
     language: str
     code: str
     test_cases: List[TestCase] = []
+    problem_id: str = ""
 
 
 class ExerciseRequest(BaseModel):
@@ -1375,11 +1407,12 @@ def _fallback_explanation(code: str, language: str, stderr: str, stdout: str, ex
 
 
 @router.post("/submit")
-async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key")):
+async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Header(None, alias="X-Custom-API-Key"), authorization: Optional[str] = Header(None)):
     if not req.code.strip():
         raise HTTPException(status_code=400, detail="Codigo vazio.")
     if not req.test_cases:
         raise HTTPException(status_code=400, detail="Nenhum caso de teste enviado.")
+    user_id = _user_id_from_auth(authorization)
 
     first_result = _run(req.language, req.code, req.test_cases[0].input)
 
@@ -1390,6 +1423,11 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
             ai_explanation = _fallback_explanation(req.code, req.language, compile_stderr, "", "", True)
         _enrich_explanation(ai_explanation, req.language)
         ai_explanation["youtube_videos"] = _get_youtube_videos("compilacao", req.language, req.code)
+        _save_submission(user_id, req.problem_id, req.language, req.code, "compile_error", {
+            "compile": {"ok": False, "stderr": compile_stderr},
+            "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
+            "explanation": ai_explanation,
+        })
         return {
             "compile": {"ok": False, "stderr": compile_stderr},
             "tests": [],
@@ -1404,6 +1442,12 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
             ai_explanation = _fallback_explanation(req.code, req.language, stderr_val, "", "", True)
         _enrich_explanation(ai_explanation, req.language)
         ai_explanation["youtube_videos"] = _get_youtube_videos("execucao", req.language, req.code)
+        _save_submission(user_id, req.problem_id, req.language, req.code, "runtime_error", {
+            "compile": {"ok": True, "stderr": ""},
+            "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
+            "error": "Falha ao executar o codigo.",
+            "explanation": ai_explanation,
+        })
         return {
             "compile": {"ok": True, "stderr": ""},
             "tests": [],

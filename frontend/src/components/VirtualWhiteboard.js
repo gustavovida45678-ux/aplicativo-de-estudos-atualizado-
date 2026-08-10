@@ -140,6 +140,75 @@ function VirtualWhiteboard({ onExit }) {
   const marqueeRef = useRef(null);
   const moveDragRef = useRef(null);
   const resizeDragRef = useRef(null);
+
+  const getResizeHandles = useCallback(() => {
+    const selected = selectedIdsRef.current;
+    if (selected.length !== 1 || moveDragRef.current || resizeDragRef.current) return [];
+    const map = mapById();
+    const el = map[selected[0]];
+    if (!el || el.type === "connector" || el.type === "stroke" || el.type === "group") return [];
+    const b = elementBBox(el, elementsRef.current);
+    const hs = 12 / scaleRef.current;
+    return [
+      { key: "nw", x: b.x, y: b.y },
+      { key: "n", x: b.x + b.width / 2, y: b.y },
+      { key: "ne", x: b.x + b.width, y: b.y },
+      { key: "e", x: b.x + b.width, y: b.y + b.height / 2 },
+      { key: "se", x: b.x + b.width, y: b.y + b.height },
+      { key: "s", x: b.x + b.width / 2, y: b.y + b.height },
+      { key: "sw", x: b.x, y: b.y + b.height },
+      { key: "w", x: b.x, y: b.y + b.height / 2 },
+    ];
+  }, [mapById]);
+
+  const hitTestResizeHandle = useCallback(
+    (point) => {
+      const hs = 12 / scaleRef.current;
+      for (const h of getResizeHandles()) {
+        if (Math.abs(point.x - h.x) <= hs && Math.abs(point.y - h.y) <= hs) return h.key;
+      }
+      return null;
+    },
+    [getResizeHandles, scaleRef]
+  );
+
+  const applyResizeToElement = useCallback(
+    (el, handle, dx, dy, min = 30) => {
+      const next = { ...el };
+      let b = elementBBox(el, elementsRef.current);
+      let { x, y, width, height } = b;
+      const onX = handle.includes("w");
+      const onY = handle.includes("n");
+      const onRight = handle.includes("e");
+      const onBottom = handle.includes("s");
+      if (onX) {
+        const nx = Math.min(x + dx, x + width - min);
+        width += x - nx;
+        x = nx;
+      } else if (onRight) {
+        width = Math.max(min, width + dx);
+      }
+      if (onY) {
+        const ny = Math.min(y + dy, y + height - min);
+        height += y - ny;
+        y = ny;
+      } else if (onBottom) {
+        height = Math.max(min, height + dy);
+      }
+      next.x = x;
+      next.y = y;
+      next.width = Math.max(40, width);
+      next.height = Math.max(24, height);
+      if (el.type === "text") {
+        next.width = Math.max(60, width);
+        delete next.height;
+      }
+      return next;
+    },
+    []
+  );
+
+
   const pendingConnectorRef = useRef(null);
   const polygonRef = useRef(null);
   const historyRef = useRef(new HistoryManager(150));
@@ -1186,6 +1255,23 @@ function VirtualWhiteboard({ onExit }) {
       }
 
       if (t === TOOLS.SELECT) {
+        const handleKey = hitTestResizeHandle(point);
+        if (handleKey) {
+          const selId = selectedIdsRef.current[0];
+          const el = mapById()[selId];
+          if (el) {
+            beginGesture();
+            const b = elementBBox(el, elementsRef.current);
+            resizeDragRef.current = {
+              id: selId,
+              handle: handleKey,
+              start: { x: point.x, y: point.y },
+              startBox: { ...b },
+              changed: false,
+            };
+            return;
+          }
+        }
         const hit = hitTest(point);
         if (hit) {
           if (e.shiftKey) {
@@ -1531,6 +1617,22 @@ function VirtualWhiteboard({ onExit }) {
       }
 
       if (t === TOOLS.SELECT) {
+        if (resizeDragRef.current) {
+          const r = resizeDragRef.current;
+          const dx = point.x - r.start.x;
+          const dy = point.y - r.start.y;
+          const el = mapById()[r.id];
+          if (el) {
+            const resized = applyResizeToElement(el, r.handle, dx, dy);
+            const next = elementsRef.current.map((e) => (e.id === r.id ? resized : e));
+            elementsRef.current = next;
+            markStaticDirty();
+            requestFrame();
+            r.changed = true;
+          }
+          ptr.moved = true;
+          return;
+        }
         if (moveDragRef.current) {
           const drag = moveDragRef.current;
           drag.dx = point.x - drag.start.x;
@@ -1679,6 +1781,15 @@ function VirtualWhiteboard({ onExit }) {
       }
 
       if (t === TOOLS.SELECT) {
+        if (resizeDragRef.current) {
+          const r = resizeDragRef.current;
+          const changed = r.changed;
+          resizeDragRef.current = null;
+          commitElements(elementsRef.current);
+          endGesture(changed || ptr.moved);
+          requestFrame();
+          return;
+        }
         if (moveDragRef.current) {
           const drag = moveDragRef.current;
           const changed = applyMoveToElements(drag);

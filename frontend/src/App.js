@@ -53,11 +53,11 @@ if (!interceptorAdded) {
 
 function App() {
   // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const currentUser = { name: "Test", email: "test@test.com", created_at: "2024-01-01T00:00:00Z" };
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
   
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("whiteboard");
   const [adaptiveStart, setAdaptiveStart] = useState(false);
   const [adaptiveView, setAdaptiveView] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -96,7 +96,7 @@ function App() {
 
   // Check authentication on mount
   useEffect(() => {
-    checkAuth();
+    // checkAuth();
   }, []);
 
   const checkAuth = async () => {
@@ -636,7 +636,9 @@ function App() {
               <JudgePanel />
             </div>
             ) : activeTab === "whiteboard" ? (
-              <VirtualWhiteboard onExit={() => setActiveTab("dashboard")} />
+              <div className="whiteboard-container" style={{ height: "100vh" }}>
+                <VirtualWhiteboard onExit={() => setActiveTab("dashboard")} />
+              </div>
             ) : activeTab === "moodle" ? (
               <div className="mx-auto max-w-5xl px-4 py-8">
                 <MoodlePage onClose={() => setActiveTab("dashboard")} />

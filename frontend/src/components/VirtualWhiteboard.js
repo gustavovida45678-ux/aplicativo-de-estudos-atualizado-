@@ -44,9 +44,15 @@ import {
   Sigma,
   Table,
   BarChart3,
+  Video,
+  Camera,
+  CameraOff,
+  Zap,
+  AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import "../styles/virtualWhiteboard.css";
+import { CameraHandTracking, GestureGuide } from "./CameraHandTracking";
 
 import {
   TOOLS,
@@ -320,6 +326,16 @@ function VirtualWhiteboard({ onExit }) {
 
   const clipboardRef = useRef([]);
 
+  // ---------------- Camera Hand Tracking ----------------
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState("inactive");
+  const [handStatus, setHandStatus] = useState("none");
+  const [currentGesture, setCurrentGesture] = useState("none");
+  const [handPosition, setHandPosition] = useState(null);
+  const videoRef = useRef(null);
+  const cameraDrawingRef = useRef(false);
+  const lastHandPointRef = useRef(null);
+
   // ---------------- Helpers de atualizacao ----------------
   const markStaticDirty = useCallback(() => {
     staticDirtyRef.current = true;
@@ -365,6 +381,86 @@ function VirtualWhiteboard({ onExit }) {
     },
     [markStaticDirty, snapshot, updateUndoRedo]
   );
+
+  // ---------------- Camera Hand Tracking Handlers ----------------
+  const handleCameraGesture = useCallback((gesture, landmarks) => {
+    setCurrentGesture(gesture);
+    setHandStatus("detected");
+
+    const indexTip = landmarks[8];
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+
+    const x = (indexTip.x * canvasRect.width - panRef.current.x) / scaleRef.current;
+    const y = (indexTip.y * canvasRect.height - panRef.current.y) / scaleRef.current;
+
+    setHandPosition({ x, y });
+
+    switch (gesture) {
+      case "point":
+      case "pinch":
+        if (toolRef.current === TOOLS.PEN || toolRef.current === TOOLS.ERASER) {
+          if (!cameraDrawingRef.current) {
+            cameraDrawingRef.current = true;
+            lastHandPointRef.current = { x, y };
+            beginGesture();
+          } else if (lastHandPointRef.current) {
+            const newStroke = makeStroke(
+              lastHandPointRef.current.x,
+              lastHandPointRef.current.y,
+              x,
+              y,
+              strokeColorRef.current,
+              strokeWidthRef.current,
+              toolRef.current === TOOLS.ERASER ? "eraser" : "pen"
+            );
+            commitElements([...elementsRef.current, newStroke]);
+            lastHandPointRef.current = { x, y };
+          }
+        }
+        break;
+
+      case "fist":
+        if (toolRef.current !== TOOLS.ERASER) {
+          setTool(TOOLS.ERASER);
+        }
+        if (!cameraDrawingRef.current) {
+          cameraDrawingRef.current = true;
+          lastHandPointRef.current = { x, y };
+          beginGesture();
+        } else if (lastHandPointRef.current) {
+          const newStroke = makeStroke(
+            lastHandPointRef.current.x,
+            lastHandPointRef.current.y,
+            x,
+            y,
+            "#000000",
+            strokeWidthRef.current * 3,
+            "eraser"
+          );
+          commitElements([...elementsRef.current, newStroke]);
+          lastHandPointRef.current = { x, y };
+        }
+        break;
+
+      case "open":
+        cameraDrawingRef.current = false;
+        lastHandPointRef.current = null;
+        break;
+
+      default:
+        cameraDrawingRef.current = false;
+        lastHandPointRef.current = null;
+    }
+  }, [beginGesture, commitElements, makeStroke]);
+
+  const handleCameraStatusChange = useCallback((status, message) => {
+    setCameraStatus(status);
+  }, []);
+
+  const toggleCamera = useCallback(() => {
+    setCameraActive((prev) => !prev);
+  }, []);
 
   // ---------------- Espelhar refs de estado ----------------
   useEffect(() => {
@@ -2433,6 +2529,23 @@ function VirtualWhiteboard({ onExit }) {
 
         <div className="toolbar-divider" />
 
+        {/* Camera Hand Tracking */}
+        <div className="toolbar-group">
+          <button
+            className={`tool-btn camera-toggle-btn ${cameraActive ? "active" : ""}`}
+            onClick={toggleCamera}
+            title={cameraActive ? "Parar câmera e reconhecimento de gestos" : "Iniciar câmera para desenhar com gestos (dedo indicador)"}
+          >
+            {cameraActive ? <CameraOff size={20} /> : <Video size={20} />}
+          </button>
+          <div className="toolbar-camera-status">
+            <span className={`status-dot ${cameraStatus === "active" ? "active" : ""}`} />
+            <span>{cameraStatus === "active" ? "Câmera ativa" : cameraStatus === "connecting" ? "Conectando..." : cameraStatus === "error" ? "Erro" : "Câmera parada"}</span>
+          </div>
+        </div>
+
+        <div className="toolbar-divider" />
+
         <div className="toolbar-group actions">
           <button className="action-btn" onClick={undo} title="Desfazer (Ctrl+Z)" disabled={!canUndo}>
             <Undo size={20} />
@@ -2903,6 +3016,71 @@ function VirtualWhiteboard({ onExit }) {
 
       {/* ---------- Canvas ---------- */}
       <div className="whiteboard-canvas-wrapper">
+        {cameraActive && (
+          <CameraHandTracking
+            isActive={cameraActive}
+            onGesture={handleCameraGesture}
+            onStatusChange={handleCameraStatusChange}
+            videoRef={videoRef}
+          />
+        )}
+
+        {/* Camera video preview in corner */}
+        {cameraActive && videoRef.current && (
+          <div className="video-preview-container" style={{
+            position: "absolute",
+            top: "10px",
+            right: "10px",
+            zIndex: 50,
+            width: "160px",
+            borderRadius: "10px",
+            overflow: "hidden",
+            border: "2px solid #30363d",
+            background: "#0d1117",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+          }}>
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="video-preview"
+              style={{ transform: "scaleX(-1)", width: "100%", height: "auto", display: "block" }}
+            />
+            <div className="video-overlay" style={{
+              position: "absolute",
+              bottom: "8px",
+              left: "8px",
+              right: "8px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "6px 12px",
+              background: "rgba(13, 17, 23, 0.9)",
+              border: "1px solid #30363d",
+              borderRadius: "20px",
+              backdropFilter: "blur(10px)",
+              fontSize: "11px",
+              color: "#e2e8f0",
+              pointerEvents: "none"
+            }}>
+              <Zap size={12} style={{ color: "#58a6ff", marginRight: "6px" }} />
+              <span id="currentGesture">{currentGesture === "none" ? "Aguardando gesto..." : `Gesto: ${currentGesture}`}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Hand cursor overlay on canvas */}
+        {cameraActive && handPosition && (
+          <div
+            className={`hand-cursor-overlay ${tool === TOOLS.ERASER ? "eraser" : ""}`}
+            style={{
+              left: handPosition.x * scale + pan.x,
+              top: handPosition.y * scale + pan.y,
+            }}
+          />
+        )}
+
         <canvas
           ref={canvasRef}
           className="whiteboard-canvas"
@@ -2970,6 +3148,19 @@ function VirtualWhiteboard({ onExit }) {
                 placeholder="Digite seu texto... (Ctrl+Enter para finalizar)"
               />
             )}
+          </div>
+        )}
+
+        {/* Gesture Guide Panel - only when camera is active */}
+        {cameraActive && (
+          <div style={{
+            position: "absolute",
+            bottom: "20px",
+            left: "20px",
+            zIndex: 30,
+            maxWidth: "280px"
+          }}>
+            <GestureGuide />
           </div>
         )}
 

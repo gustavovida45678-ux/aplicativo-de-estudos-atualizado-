@@ -732,6 +732,244 @@
     transition: none;
   }
 }
+
+/* Camera Hand Tracking Styles */
+.camera-hand-tracking {
+  position: relative;
+  width: 100%;
+}
+
+.camera-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+.camera-error button {
+  margin-left: auto;
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 6px;
+  color: #fca5a5;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.camera-error button:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+.video-preview-container {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #30363d;
+  background: #0d1117;
+}
+
+.video-preview {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.video-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 10px;
+}
+
+.gesture-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(13, 17, 23, 0.9);
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.gesture-indicator svg {
+  color: #58a6ff;
+}
+
+.camera-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #7d8590;
+  gap: 12px;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.gesture-guide {
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.gesture-guide h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #58a6ff;
+}
+
+.gesture-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: background 0.2s;
+}
+
+.gesture-item:last-child {
+  margin-bottom: 0;
+}
+
+.gesture-item:hover {
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.gesture-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 18px;
+}
+
+.gesture-item strong {
+  display: block;
+  font-size: 13px;
+  color: #e2e8f0;
+  margin-bottom: 2px;
+}
+
+.gesture-item span {
+  font-size: 12px;
+  color: #7d8590;
+}
+
+/* Camera toggle in toolbar */
+.camera-toggle-btn {
+  position: relative;
+}
+
+.camera-toggle-btn.active {
+  background: rgba(16, 185, 129, 0.25);
+  color: #10b981;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
+}
+
+.camera-toggle-btn.active::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+/* Hand cursor overlay on canvas */
+.hand-cursor-overlay {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 217, 255, 0.3);
+  border: 2px solid #00d9ff;
+  pointer-events: none;
+  z-index: 50;
+  transform: translate(-50%, -50%);
+  animation: handPulse 1.5s infinite;
+  box-shadow: 0 0 12px rgba(0, 217, 255, 0.5), 0 0 24px rgba(0, 217, 255, 0.3);
+}
+
+.hand-cursor-overlay.eraser {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.5), 0 0 24px rgba(239, 68, 68, 0.3);
+}
+
+@keyframes handPulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+  50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+}
+
+/* Toolbar camera status */
+.toolbar-camera-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(13, 17, 23, 0.8);
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  font-size: 11px;
+  color: #7d8590;
+}
+
+.toolbar-camera-status .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+.toolbar-camera-status .status-dot.active {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
 /* Subject selector & management */
 .subject-select {
   min-width: 150px;

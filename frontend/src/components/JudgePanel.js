@@ -88,6 +88,12 @@ const JudgePanel = () => {
 
   const activeExercise = selected || newExercise;
 
+  const exerciseTopic = (ex) => {
+    const t = ex?.topic;
+    if (typeof t === 'string') return t;
+    return t?.name || t?.id || '';
+  };
+
   useEffect(() => {
     if (!walkPlay || !walk) return;
     const t = setInterval(() => {
@@ -247,8 +253,6 @@ const JudgePanel = () => {
   const generateFromText = async () => {
     if (!createDescription.trim()) { toast.warning('Descreva o exercício que você quer criar'); return; }
     setCreatingFromText(true);
-    setNewExercise(null);
-    setSelected(null);
     try {
       const res = await axios.post(`${API}/generate-from-text`, {
         description: createDescription.trim(),
@@ -256,6 +260,7 @@ const JudgePanel = () => {
         difficulty: createDifficulty,
       });
       setNewExercise(res.data);
+      setSelected(null);
       setCode(res.data.starter_code || STARTERS[language]);
       setNotes(localStorage.getItem(notesKey(res.data.id)) || '');
       setNotesSavedAt(null);
@@ -272,8 +277,6 @@ const JudgePanel = () => {
     const stmt = (selected || newExercise)?.statement || '';
     if (!stmt.trim()) { toast.warning('Selecione um exercicio com enunciado primeiro.'); return; }
     setCreatingFromText(true);
-    setNewExercise(null);
-    setSelected(null);
     try {
       const res = await axios.post(`${API}/generate-from-text`, {
         description: `Crie um novo exercicio de programacao parecido com este enunciado (nao repita o mesmo problema): ${stmt}`,
@@ -281,6 +284,7 @@ const JudgePanel = () => {
         difficulty: (selected || newExercise)?.difficulty || createDifficulty,
       });
       setNewExercise(res.data);
+      setSelected(null);
       setCode(res.data.starter_code || STARTERS[language]);
       setNotes(localStorage.getItem(notesKey(res.data.id)) || '');
       setNotesSavedAt(null);
@@ -324,7 +328,7 @@ const JudgePanel = () => {
   const generateSimilar = async () => {
     setGeneratingSimilar(true);
     try {
-      const topic = (selected || newExercise)?.topic || createTopic;
+      const topic = exerciseTopic(selected || newExercise) || createTopic;
       const baseDiff = (selected || newExercise)?.difficulty || createDifficulty;
       const diff = Math.min(5, baseDiff + 1);
       const title = (selected || newExercise)?.title || '';
@@ -392,7 +396,7 @@ const JudgePanel = () => {
         language,
         code,
         statement: ex?.statement || '',
-        topic: ex?.topic || '',
+        topic: exerciseTopic(ex) || '',
         question,
       });
       const assistantMsg = {
@@ -421,8 +425,8 @@ const JudgePanel = () => {
     if (!ex) return;
     try {
       const res = await axios.post(`${API}/review-calendar`, {
-        topic: ex.topic || 'variaveis',
-        topic_name: ex.title || ex.topic,
+        topic: exerciseTopic(ex) || 'variaveis',
+        topic_name: ex.title || exerciseTopic(ex),
         difficulty: ex.difficulty || 1,
         failed: !result?.summary?.accepted,
       });
@@ -435,7 +439,7 @@ const JudgePanel = () => {
   };
 
   const detectWrongTopics = (exercise, result) => {
-    const topic = exercise?.topic || '';
+    const topic = exerciseTopic(exercise) || '';
     const errorType = result?.explanation?.error_type || '';
     const stderr = result?.compile?.stderr || '';
     const testInfo = result?.tests?.filter(t => !t.passed) || [];
@@ -486,7 +490,7 @@ const JudgePanel = () => {
 
     const report = {
       exerciseTitle: exercise?.title || 'Exercicio',
-      topic: exercise?.topic || '',
+      topic: exerciseTopic(exercise) || '',
       difficulty: exercise?.difficulty || 1,
       errorType,
       wrongTopics,
@@ -502,7 +506,7 @@ const JudgePanel = () => {
 
   if (activeExercise) {
     const explanation = result?.explanation;
-    const problem = { id: activeExercise.id, title: activeExercise.title, topic: activeExercise.topic, statement: activeExercise.statement };
+    const problem = { id: activeExercise.id, title: activeExercise.title, topic: exerciseTopic(activeExercise), statement: activeExercise.statement };
     return (
       <div className="materials-judge">
         <button className="materials-judge-back" onClick={() => { setSelected(null); setNewExercise(null); setResult(null); setShowExplanation(false); setShowAnswer(false); }}>
@@ -513,7 +517,7 @@ const JudgePanel = () => {
           <div>
             <span className="materials-judge-problem-id">{(activeExercise.id || 'CUSTOM').toUpperCase()}</span>
             <h3>{activeExercise.title}</h3>
-            <p>{activeExercise.topic} - Dificuldade: {[1,2,3,4,5].map(i => <Star key={i} size={13} className={i <= activeExercise.difficulty ? 'filled' : ''} />)}</p>
+            <p>{exerciseTopic(activeExercise)} - Dificuldade: {[1,2,3,4,5].map(i => <Star key={i} size={13} className={i <= activeExercise.difficulty ? 'filled' : ''} />)}</p>
           </div>
           {progress[activeExercise.id]?.solved && <span className="materials-judge-solved-badge"><CheckCircle2 size={15} /> Resolvido</span>}
         </div>
@@ -1381,7 +1385,7 @@ const JudgePanel = () => {
               const has90 = successRate >= 90;
 
               const recordAttempt = () => {
-                const topicKey = activeExercise.topic || 'default';
+                const topicKey = exerciseTopic(activeExercise) || 'default';
                 const attemptsStr = localStorage.getItem('judgeAttempts') || '{}';
                 let attempts;
                 try { attempts = JSON.parse(attemptsStr); } catch { attempts = {}; }

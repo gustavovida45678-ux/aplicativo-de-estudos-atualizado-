@@ -928,7 +928,13 @@ async def hint(req: HintRequest, x_custom_api_key: Optional[str] = Header(None, 
         3: "Forneca apenas o trecho de codigo necessario entre crases simples.",
     }
     guidance = levels.get(req.level, levels[1])
-    system = f"Voce e um professor de {lang_name}. Gere uma dica de nivel {req.level}. {guidance}\nPEDAGOGY: {PEDAGOGY_RULES}\nENUNCIADO: {req.statement or '(nao informado)'}\nPASSO/EXPRESSAO: {req.step}\nCODIGO:\n```\n{req.code}\n```"
+    if req.level == 1:
+        style_rule = "MAXIMO 2 FRASES curtas e diretas, em portugues. PROIBIDO listas, PROIBIDO numeracao, PROIBIDO analisar expressoes, variaveis ou linhas do codigo. Apenas diga O QUE o aluno deve fazer no passo atual, como uma instrucao."
+    elif req.level == 2:
+        style_rule = "MAXIMO 3 FRASES direcionadas. Sem codigo. Mencione pontualmente o que falta no raciocinio do aluno, sem analisar cada expressao."
+    else:
+        style_rule = "Responda SOMENTE com o trecho de codigo necessario entre crases simples, sem nenhuma explicacao fora das crases."
+    system = f"Voce e um professor de {lang_name}. Gere uma dica de nivel {req.level}. {guidance}\n{style_rule}\nPEDAGOGY: {PEDAGOGY_RULES}\nENUNCIADO: {req.statement or '(nao informado)'}\nPASSO/EXPRESSAO: {req.step}\nCODIGO:\n```\n{req.code}\n```"
     fallbacks = {
         1: "Reflite sobre o passo atual e relacione-o com a entrada e saida do problema.",
         2: "Identifique qual dado falta processar nesse passo e como a linguagem le/calcula/imprime.",

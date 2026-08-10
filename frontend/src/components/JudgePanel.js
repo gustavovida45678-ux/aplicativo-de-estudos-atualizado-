@@ -7,7 +7,7 @@ import {
   Lightbulb, ChevronDown, ChevronUp, Wand2, BookOpen, AlertTriangle,
   Brain, ExternalLink, RefreshCw, StepBack, StepForward, Pause, X, ListChecks,
   HelpCircle, MessageSquare, Calendar as CalendarIcon, TrendingUp,
-  NotebookPen, Trash2, FilePlus2,
+  NotebookPen, Trash2, FilePlus2, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';

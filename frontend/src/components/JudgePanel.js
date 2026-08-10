@@ -7,7 +7,7 @@ import {
   Lightbulb, ChevronDown, ChevronUp, Wand2, BookOpen, AlertTriangle,
   Brain, ExternalLink, RefreshCw, StepBack, StepForward, Pause, X, ListChecks,
   HelpCircle, MessageSquare, Calendar as CalendarIcon, TrendingUp,
-  NotebookPen, Trash2,
+  NotebookPen, Trash2, FilePlus2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { JUDGE_PROBLEMS } from '../data/judgeProblems';
@@ -265,6 +265,33 @@ const JudgePanel = () => {
     } catch (e) {
       console.error(e);
       toast.error(e.response?.data?.detail || 'Erro ao criar exercicio a partir do texto.');
+    } finally { setCreatingFromText(false); }
+  };
+
+  const generateFromStatement = async () => {
+    const stmt = (selected || newExercise)?.statement || '';
+    if (!stmt.trim()) { toast.warning('Selecione um exercicio com enunciado primeiro.'); return; }
+    setCreatingFromText(true);
+    setNewExercise(null);
+    setSelected(null);
+    try {
+      const res = await axios.post(`${API}/generate-from-text`, {
+        description: `Crie um novo exercicio de programacao parecido com este enunciado (nao repita o mesmo problema): ${stmt}`,
+        language,
+        difficulty: (selected || newExercise)?.difficulty || createDifficulty,
+      });
+      setNewExercise(res.data);
+      setCode(res.data.starter_code || STARTERS[language]);
+      setNotes(localStorage.getItem(notesKey(res.data.id)) || '');
+      setNotesSavedAt(null);
+      setShowNotesTab(false);
+      setResult(null);
+      setShowExplanation(false);
+      setShowAnswer(true);
+      toast.success(`Nova questao criada a partir do enunciado! (${res.data.title})`);
+    } catch (e) {
+      console.error(e);
+      toast.error(e.response?.data?.detail || 'Erro ao criar nova questao a partir do enunciado.');
     } finally { setCreatingFromText(false); }
   };
 
@@ -543,15 +570,24 @@ const JudgePanel = () => {
                {vismoLoading ? <Loader2 size={14} className="materials-spin" /> : <Youtube size={14} />}
                Video (Vismo)
              </button>
-             <button
-               onClick={generateSimilar}
-               disabled={generatingSimilar}
-               className="materials-judge-similar"
-               title="Gerar exercicio similar com dificuldade +1"
-             >
-               {generatingSimilar ? <Loader2 size={14} className="materials-spin" /> : <RefreshCw size={14} />}
-               Exercicio Parecido
-             </button>
+              <button
+                onClick={generateSimilar}
+                disabled={generatingSimilar}
+                className="materials-judge-similar"
+                title="Gerar exercicio similar com dificuldade +1"
+              >
+                {generatingSimilar ? <Loader2 size={14} className="materials-spin" /> : <RefreshCw size={14} />}
+                Exercicio Parecido
+              </button>
+              <button
+                onClick={generateFromStatement}
+                disabled={creatingFromText}
+                className="materials-judge-newquestion"
+                title="Criar nova questao de acordo com o enunciado deste exercicio"
+              >
+                {creatingFromText ? <Loader2 size={14} className="materials-spin" /> : <FilePlus2 size={14} />}
+                Nova Questao
+              </button>
              <button
                onClick={() => setShowQuestionTab(!showQuestionTab)}
                className="materials-judge-question"

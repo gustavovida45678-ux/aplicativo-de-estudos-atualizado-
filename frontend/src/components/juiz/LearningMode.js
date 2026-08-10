@@ -57,7 +57,7 @@ export function LearningMode({
           level: 1,
         };
         setSteps(prev => [...prev, newStep]);
-        setCurrentStep(prev => prev + 1);
+        setCurrentStep(steps.length);
         setHint(null);
         setShowHint(false);
         setHintLevel(1);
@@ -126,7 +126,7 @@ export function LearningMode({
         generateHint(3);
       } else {
         e.preventDefault();
-        if (steps.length === 0 || currentStep < steps.length - 1) {
+        if (steps.length === 0 || currentStep >= steps.length - 1) {
           generateNextStep();
         }
       }

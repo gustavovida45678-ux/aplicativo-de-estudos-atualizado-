@@ -429,6 +429,19 @@ def _local_walkthrough(code: str, language: str, stdin: str) -> list:
     return steps
 
 
+def _salvage_json(raw: str):
+    """Recupera JSON truncado: corta no ultimo ']' ou '}' e tenta parsear (perde passos incompletos do final)."""
+    if not raw:
+        return None
+    for i in range(len(raw) - 1, -1, -1):
+        if raw[i] in "}]":
+            try:
+                return json.loads(raw[:i + 1])
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
 def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False, custom_key: Optional[str] = None, compile_error: Optional[str] = None):
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
     if is_template:
@@ -451,11 +464,7 @@ REGRAS:
 - Primeiro passo: explique que o codigo enviado estava vazio e que a solucao foi preenchida automaticamente
 - Depois, simule CADA linha da solucao preenchida usando os valores reais da entrada
 - `line` deve corresponder a linha correspondente dentro do corrected_code (1-based)
-- IMPORTANTE: em TODO passo que envolver variaveis (declaracao, leitura, calculo, impressao), preencha `variable_details` explicando COM MAXIMO DETALHE:
-  * purpose: o que essa variavel guarda e para que ela serve no programa
-  * why: por que escolhemos esse tipo (int para inteiros, float/double para decimais) e por que ela precisa existir
-  * used_in: onde essa variavel sera usada nas proximas linhas
-- IMPORTANTE: em TODO passo que envolver expressoes importantes (input, scanf, print, if, for, operadores, variaveis), preencha `expressions` seguindo o PEDAGOGY_RULES (por que, o que aconteceria sem ela, quando usar, alternativas)
+- Preencha `variable_details` e `expressions` apenas nos passos mais importantes (declaracao de variaveis, leitura, calculo, impressao) - sem repeticao nos demais passos
 - Seja MUITO didatico, como aula particular para alguem que nunca programou
 - No maximo 8 passos"""
     elif compile_error:
@@ -510,7 +519,7 @@ REGRAS:
     context_parts.append(f"CODIGO:\n```{language}\n{code}\n```")
     context = "\n\n".join(context_parts)
 
-    raw = _call_ai(system_prompt, context, custom_key, max_tokens=1800)
+    raw = _call_ai(system_prompt, context, custom_key, max_tokens=3000)
     if not raw:
         return None, None
     try:
@@ -545,6 +554,29 @@ REGRAS:
         return (steps if steps else None), corrected_code
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         logger.error(f"Falha ao parsear walkthrough da IA: {e}: {raw[:300]}")
+        salvaged = _salvage_json(cleaned)
+        if salvaged is not None:
+            logger.info("JSON truncado recuperado parcialmente")
+            corrected_code = None
+            if isinstance(salvaged, dict):
+                corrected_code = salvaged.get("corrected_code") or salvaged.get("template_code")
+                salvaged = salvaged.get("steps") or salvaged.get("step_by_step") or []
+            if isinstance(salvaged, list) and salvaged:
+                steps = []
+                for i, s in enumerate(salvaged):
+                    if not isinstance(s, dict):
+                        continue
+                    steps.append({
+                        "line": int(s.get("line") or i + 1),
+                        "code": s.get("code") or "",
+                        "explanation": s.get("explanation") or s.get("detail") or "",
+                        "variables": s.get("variables") or {},
+                        "variable_details": s.get("variable_details") if isinstance(s.get("variable_details"), list) else [],
+                        "expressions": s.get("expressions") if isinstance(s.get("expressions"), list) else [],
+                        "output": s.get("output") or "",
+                    })
+                if steps:
+                    return steps, corrected_code
         return None, None
 
 
@@ -950,6 +982,25 @@ SELECIONADO:
 _explain_compile_cache = {}
 _explain_compile_in_progress = set()
 
+# Caches em memoria para NAO gastar creditos de IA repetindo geracoes iguais.
+_gen_cache = {}
+_walkthrough_cache = {}
+_ai_explain_cache = {}
+
+
+def _cache_get(store, key):
+    return store.get(key)
+
+
+def _cache_put(store, key, value, maxsize=200):
+    if key in store:
+        store[key] = value
+        return
+    if len(store) >= maxsize:
+        oldest = next(iter(store))
+        del store[oldest]
+    store[key] = value
+
 
 def _explain_compile_status(language: str, code: str, custom_key: Optional[str] = None):
     """Checa compilacao e corrige o codigo se preciso. Cacheado por (linguagem, codigo)."""
@@ -1041,6 +1092,11 @@ async def check_compile(req: LineRequest, x_custom_api_key: Optional[str] = Head
 
 
 def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool, custom_key: Optional[str] = None) -> Optional[dict]:
+    explain_key = ("explain", language, code, stderr, stdout, expected, compile_error)
+    cached = _cache_get(_ai_explain_cache, explain_key)
+    if cached is not None:
+        logger.info(f"Explicacao de erro reutilizada do cache (sem gastar creditos)")
+        return cached
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
 
     system_prompt = f"""Voce e um professor de programacao {lang_name} expert e detalhista. Analise o codigo do aluno, identifique TODOS os erros e explique passo a passo de forma MUITO detalhada e didatica.
@@ -1156,6 +1212,7 @@ IMPORTANTE: Analise o erro detalhadamente:
 
     raw = _call_ai(system_prompt, context, custom_key)
     if not raw:
+        _cache_put(_ai_explain_cache, explain_key, None)
         return None
 
     try:
@@ -1163,10 +1220,11 @@ IMPORTANTE: Analise o erro detalhadamente:
             raw = re.sub(r"^```\w*\n?", "", raw)
             raw = re.sub(r"\n?```$", "", raw)
         parsed = json.loads(raw)
+        _cache_put(_ai_explain_cache, explain_key, parsed)
         return parsed
     except json.JSONDecodeError:
         logger.error(f"Failed to parse AI response as JSON: {raw[:500]}")
-        return {
+        fallback = {
             "error_type": "explicacao da IA",
             "analysis": raw[:1000],
             "step_by_step": [{"step": 1, "title": "Analise da IA", "detail": raw[:1000], "code_hint": None, "concept": None}],
@@ -1174,6 +1232,8 @@ IMPORTANTE: Analise o erro detalhadamente:
             "corrected_code": None,
             "youtube_search": f"{language} programacao erros comuns",
         }
+        _cache_put(_ai_explain_cache, explain_key, fallback)
+        return fallback
 
 
 def _get_youtube_videos(error_type: str, language: str, code: str = "") -> list:
@@ -1645,6 +1705,13 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
         raise HTTPException(status_code=400, detail="Codigo vazio.")
     stdin = req.input or (req.test_cases[0].input if req.test_cases else "")
     expected = req.expected or (req.test_cases[0].expected if req.test_cases else "")
+
+    walk_key = ("walk", req.language, req.code, req.statement, stdin, expected)
+    cached = _cache_get(_walkthrough_cache, walk_key)
+    if cached:
+        logger.info("Walkthrough reutilizado do cache (sem gastar creditos)")
+        return cached
+
     is_template = _is_template(req.code, req.language)
     compile_error = None
 
@@ -1721,7 +1788,7 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
             steps = _local_walkthrough(req.code, req.language, stdin)
     # Garante que cada passo detalhe TODAS as expressoes do dicionario presentes na linha
     _enrich_steps(steps, req.language)
-    return {
+    response = {
         "steps": steps,
         "total": len(steps),
         "language": req.language,
@@ -1730,6 +1797,8 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
         "corrected_code": corrected_code,
         "compile_error": compile_error,
     }
+    _cache_put(_walkthrough_cache, walk_key, response)
+    return response
 
 
 class VismoPromptRequest(BaseModel):
@@ -2049,6 +2118,12 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
     req.language = req.language if req.language in ("python", "c", "cpp") else "python"
     req.difficulty = max(1, min(5, req.difficulty or 1))
 
+    gen_key = ("from_text", description, req.language, req.difficulty)
+    cached = _cache_get(_gen_cache, gen_key)
+    if cached:
+        logger.info("Exercicio reutilizado do cache de geracao (sem gastar creditos)")
+        return cached
+
     topic = _detect_topic(description)
     try:
         generated = _generate_from_text_ai(description, req.language, x_custom_api_key)
@@ -2058,7 +2133,7 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
 
     if generated:
         topic_meta = {"id": topic, "name": topic, "description": ""}
-        return {
+        result = {
             "id": f"text_{abs(hash(description)) % 100000}",
             "title": generated["title"],
             "statement": generated["statement"],
@@ -2077,6 +2152,8 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
             "explanation": generated["explanation"],
             "mode": "ia",
         }
+        _cache_put(_gen_cache, gen_key, result)
+        return result
 
     base = _generate_new_exercise(topic, req.difficulty, req.language)
     explanation = (
@@ -2085,7 +2162,7 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
         "A solução abaixo já atende aos casos de teste do exercício. "
         "Para fixar: execute, confira a saída esperada e tente reescrever do zero sem olhar."
     )
-    return {
+    result = {
         "id": f"text_{abs(hash(description)) % 100000}",
         "title": base["title"],
         "statement": base["statement"],
@@ -2100,6 +2177,8 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
         "explanation": explanation,
         "mode": "banco",
     }
+    _cache_put(_gen_cache, gen_key, result)
+    return result
 
 
 @router.get("/topics")

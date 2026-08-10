@@ -246,7 +246,7 @@ export function LineByLineExplanation({
                 )}
                 
                 {showTooltip && hasExplanation && (
-                  <div className="line-tooltip" style={{ top: idx * 22 }}>
+                  <div className="line-tooltip">
                     <div className="tooltip-header">
                       <BookOpen size={14} color="#60a5fa" />
                       <span>Linha {lineNum}</span>

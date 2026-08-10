@@ -1002,6 +1002,59 @@ def _cache_put(store, key, value, maxsize=200):
     store[key] = value
 
 
+# --- Cache persistente no Supabase (L2) para nao gastar creditos de IA ---
+# Tabela: generated_content (cache_key text primary key, payload jsonb, created_at timestamptz)
+# Se a tabela nao existir, as chamadas falham silenciosamente e so o cache em memoria atua.
+import hashlib as _hashlib
+
+
+def _db_cache_key(kind: str, parts) -> str:
+    raw = kind + "|" + "|".join(str(p) for p in parts)
+    return f"{kind}:{_hashlib.sha1(raw.encode('utf-8')).hexdigest()}"
+
+
+def _db_cache_get(key: str):
+    try:
+        from utils.supabase import get_supabase_admin
+        sb = get_supabase_admin()
+        res = sb.table("generated_content").select("payload").eq("cache_key", key).limit(1).execute()
+        rows = getattr(res, "data", res)
+        if rows:
+            return rows[0].get("payload")
+    except Exception as e:
+        logger.warning(f"DB cache get falhou ({type(e).__name__}): {str(e)[:120]}")
+    return None
+
+
+def _db_cache_put(key: str, payload: dict):
+    try:
+        from utils.supabase import get_supabase_admin
+        sb = get_supabase_admin()
+        sb.table("generated_content").upsert(
+            {"cache_key": key, "payload": payload},
+            on_conflict="cache_key",
+        ).execute()
+    except Exception as e:
+        logger.warning(f"DB cache put falhou ({type(e).__name__}): {str(e)[:120]}")
+
+
+def _cache_lookup(mem_store, mem_key, db_key):
+    """L1 memoria -> L2 Supabase. Retorna o payload ou None."""
+    cached = _cache_get(mem_store, mem_key)
+    if cached is not None:
+        return cached
+    db_val = _db_cache_get(db_key)
+    if db_val is not None:
+        _cache_put(mem_store, mem_key, db_val)
+        logger.info(f"Cache Supabase acertou para {db_key[:40]}")
+    return db_val
+
+
+def _cache_store(mem_store, mem_key, db_key, value):
+    _cache_put(mem_store, mem_key, value)
+    _db_cache_put(db_key, value)
+
+
 def _explain_compile_status(language: str, code: str, custom_key: Optional[str] = None):
     """Checa compilacao e corrige o codigo se preciso. Cacheado por (linguagem, codigo)."""
     key = (language, code)
@@ -1093,9 +1146,9 @@ async def check_compile(req: LineRequest, x_custom_api_key: Optional[str] = Head
 
 def _ai_explain(code: str, language: str, stderr: str, stdout: str, expected: str, compile_error: bool, custom_key: Optional[str] = None) -> Optional[dict]:
     explain_key = ("explain", language, code, stderr, stdout, expected, compile_error)
-    cached = _cache_get(_ai_explain_cache, explain_key)
+    cached = _cache_lookup(_ai_explain_cache, explain_key, _db_cache_key("explain", (language, code, stderr, stdout, expected, compile_error)))
     if cached is not None:
-        logger.info(f"Explicacao de erro reutilizada do cache (sem gastar creditos)")
+        logger.info("Explicacao de erro reutilizada do cache (sem gastar creditos)")
         return cached
     lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
 
@@ -1220,7 +1273,7 @@ IMPORTANTE: Analise o erro detalhadamente:
             raw = re.sub(r"^```\w*\n?", "", raw)
             raw = re.sub(r"\n?```$", "", raw)
         parsed = json.loads(raw)
-        _cache_put(_ai_explain_cache, explain_key, parsed)
+        _cache_store(_ai_explain_cache, explain_key, _db_cache_key("explain", (language, code, stderr, stdout, expected, compile_error)), parsed)
         return parsed
     except json.JSONDecodeError:
         logger.error(f"Failed to parse AI response as JSON: {raw[:500]}")
@@ -1232,7 +1285,7 @@ IMPORTANTE: Analise o erro detalhadamente:
             "corrected_code": None,
             "youtube_search": f"{language} programacao erros comuns",
         }
-        _cache_put(_ai_explain_cache, explain_key, fallback)
+        _cache_store(_ai_explain_cache, explain_key, _db_cache_key("explain", (language, code, stderr, stdout, expected, compile_error)), fallback)
         return fallback
 
 
@@ -1707,7 +1760,7 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
     expected = req.expected or (req.test_cases[0].expected if req.test_cases else "")
 
     walk_key = ("walk", req.language, req.code, req.statement, stdin, expected)
-    cached = _cache_get(_walkthrough_cache, walk_key)
+    cached = _cache_lookup(_walkthrough_cache, walk_key, _db_cache_key("walk", (req.language, req.code, req.statement, stdin, expected)))
     if cached:
         logger.info("Walkthrough reutilizado do cache (sem gastar creditos)")
         return cached
@@ -1797,7 +1850,7 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
         "corrected_code": corrected_code,
         "compile_error": compile_error,
     }
-    _cache_put(_walkthrough_cache, walk_key, response)
+    _cache_store(_walkthrough_cache, walk_key, _db_cache_key("walk", (req.language, req.code, req.statement, stdin, expected)), response)
     return response
 
 
@@ -2119,9 +2172,9 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
     req.difficulty = max(1, min(5, req.difficulty or 1))
 
     gen_key = ("from_text", description, req.language, req.difficulty)
-    cached = _cache_get(_gen_cache, gen_key)
+    cached = _cache_lookup(_gen_cache, gen_key, _db_cache_key("from_text", (description, req.language, req.difficulty)))
     if cached:
-        logger.info("Exercicio reutilizado do cache de geracao (sem gastar creditos)")
+        logger.info("Exercicio reutilizado do cache (sem gastar creditos)")
         return cached
 
     topic = _detect_topic(description)
@@ -2152,7 +2205,7 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
             "explanation": generated["explanation"],
             "mode": "ia",
         }
-        _cache_put(_gen_cache, gen_key, result)
+        _cache_store(_gen_cache, gen_key, _db_cache_key("from_text", (description, req.language, req.difficulty)), result)
         return result
 
     base = _generate_new_exercise(topic, req.difficulty, req.language)
@@ -2177,7 +2230,7 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
         "explanation": explanation,
         "mode": "banco",
     }
-    _cache_put(_gen_cache, gen_key, result)
+    _cache_store(_gen_cache, gen_key, _db_cache_key("from_text", (description, req.language, req.difficulty)), result)
     return result
 
 

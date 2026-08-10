@@ -39,6 +39,12 @@ export function LearningMode({
     lastCodeRef.current = code;
   }, [code]);
 
+  useEffect(() => {
+    if (steps.length > 0 && currentStep > steps.length - 1) {
+      setCurrentStep(steps.length - 1);
+    }
+  }, [steps, currentStep]);
+
   const generateNextStep = useCallback(async () => {
     if (!code.trim()) return;
     setLoading(true);

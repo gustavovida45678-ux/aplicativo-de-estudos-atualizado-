@@ -1249,6 +1249,52 @@ input[type="range"].stroke-slider {
   height: 100%;
   cursor: crosshair;
   touch-action: none;
+  background: #0d1117;
+}
+
+.subjects-group {
+  gap: 6px;
+}
+
+.subjects-icon {
+  color: #8b949e;
+}
+
+.subject-select,
+.subject-input {
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  outline: none;
+  max-width: 160px;
+  font-family: inherit;
+}
+
+.subject-select:focus,
+.subject-input:focus {
+  border-color: #1f6feb;
+}
+
+.subject-input {
+  width: 110px;
+  max-width: 150px;
+}
+
+.subject-select option {
+  background: #0d1117;
+  color: #e2e8f0;
+}
+
+.subject-save-btn {
+  background: rgba(63, 185, 80, 0.12);
+  color: #3fb950;
+}
+.subject-save-btn:hover {
+  background: rgba(63, 185, 80, 0.25);
+  color: #7ee787;
 }
 
 .whiteboard-container {

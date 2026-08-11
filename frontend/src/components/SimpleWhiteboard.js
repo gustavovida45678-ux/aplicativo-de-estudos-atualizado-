@@ -1,6 +1,25 @@
 import { useRef, useEffect, useState } from "react";
-import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2 } from "lucide-react";
+import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const SUBJECT_KEY_PREFIX = "lousa_subject_v1_";
+const subjectKey = (name) => `${SUBJECT_KEY_PREFIX}${name}`;
+
+const listSavedSubjects = () => {
+  try {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(SUBJECT_KEY_PREFIX)) {
+        out.push(key.replace(SUBJECT_KEY_PREFIX, ""));
+      }
+    }
+    if (!out.includes("default")) out.push("default");
+    return out.sort((a, b) => a.localeCompare(b));
+  } catch {
+    return ["default"];
+  }
+};
 
 function SimpleWhiteboard({ onExit }) {
   const { toast } = useToast();
@@ -16,6 +35,11 @@ function SimpleWhiteboard({ onExit }) {
   const [fontFamily, setFontFamily] = useState("Inter");
   const [textBold, setTextBold] = useState(false);
   const [textAlign, setTextAlign] = useState("left");
+
+  // Materia (salvamento por disciplina)
+  const [currentSubject, setCurrentSubject] = useState("default");
+  const [subjectList, setSubjectList] = useState(listSavedSubjects);
+  const [newSubjectName, setNewSubjectName] = useState("");
   
   // Text editing state
   const [editingText, setEditingText] = useState(null);
@@ -223,6 +247,102 @@ function SimpleWhiteboard({ onExit }) {
     redraw();
   };
 
+  // ── Salvamento por materia ──────────────────────────────────
+  const persistBoard = () => {
+    try {
+      localStorage.setItem(
+        subjectKey(currentSubject),
+        JSON.stringify({
+          strokes: strokesRef.current,
+          texts: textsRef.current,
+          savedAt: new Date().toISOString(),
+        })
+      );
+    } catch (e) {
+      console.error("Erro ao salvar lousa:", e);
+    }
+  };
+
+  const saveBoardToSubject = (subject = currentSubject) => {
+    const target = subject || "default";
+    try {
+      localStorage.setItem(
+        subjectKey(target),
+        JSON.stringify({
+          strokes: strokesRef.current,
+          texts: textsRef.current,
+          savedAt: new Date().toISOString(),
+        })
+      );
+      setSubjectList(listSavedSubjects());
+      toast({ title: "Quadro salvo", description: `Salvo na matéria "${target}"` });
+    } catch (e) {
+      toast({ title: "Erro ao salvar", description: "Não foi possível salvar o quadro" });
+      console.error(e);
+    }
+  };
+
+  const loadSubjectBoard = (subject) => {
+    const target = subject || "default";
+    try {
+      const raw = localStorage.getItem(subjectKey(target));
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      strokesRef.current = Array.isArray(data.strokes) ? data.strokes : [];
+      textsRef.current = Array.isArray(data.texts) ? data.texts : [];
+      redraw();
+      return true;
+    } catch (e) {
+      console.error("Erro ao carregar lousa:", e);
+      return false;
+    }
+  };
+
+  const switchSubject = (next) => {
+    if (next === currentSubject) return;
+    persistBoard();
+    setCurrentSubject(next);
+    const loaded = loadSubjectBoard(next);
+    if (!loaded) {
+      strokesRef.current = [];
+      textsRef.current = [];
+      redraw();
+    }
+    toast({ title: next, description: loaded ? "Quadro carregado" : "Matéria vazia" });
+  };
+
+  const createSubject = () => {
+    const name = newSubjectName.trim();
+    if (!name) {
+      toast({ title: "Digite um nome", description: "Informe o nome da matéria" });
+      return;
+    }
+    persistBoard();
+    setCurrentSubject(name);
+    strokesRef.current = [];
+    textsRef.current = [];
+    redraw();
+    saveBoardToSubject(name);
+    setNewSubjectName("");
+    toast({ title: "Matéria criada", description: `"${name}" criada e selecionada` });
+  };
+
+  const deleteSubject = (subject) => {
+    if (subject === "default") {
+      toast({ title: "Não é possível excluir", description: "A matéria padrão não pode ser excluída" });
+      return;
+    }
+    localStorage.removeItem(subjectKey(subject));
+    setSubjectList(listSavedSubjects());
+    if (currentSubject === subject) {
+      setCurrentSubject("default");
+      strokesRef.current = [];
+      textsRef.current = [];
+      redraw();
+    }
+    toast({ title: "Matéria excluída", description: `"${subject}" foi excluída` });
+  };
+
   // Handle click outside text input to finish editing
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -247,13 +367,13 @@ function SimpleWhiteboard({ onExit }) {
 
       <div className="whiteboard-toolbar">
         <div className="tool-group">
-          <button className={tool === "pen" ? "active" : ""} onClick={() => setTool("pen")} title="Caneta (P)">
+          <button className={`tool-btn ${tool === "pen" ? "active" : ""}`} onClick={() => setTool("pen")} title="Caneta (P)">
             <PenTool size={20} />
           </button>
-          <button className={tool === "eraser" ? "active" : ""} onClick={() => setTool("eraser")} title="Borracha (E)">
+          <button className={`tool-btn ${tool === "eraser" ? "active" : ""}`} onClick={() => setTool("eraser")} title="Borracha (E)">
             <Eraser size={20} />
           </button>
-          <button className={tool === "text" ? "active" : ""} onClick={() => setTool("text")} title="Texto (T)">
+          <button className={`tool-btn ${tool === "text" ? "active" : ""}`} onClick={() => setTool("text")} title="Texto (T)">
             <Type size={20} />
           </button>
         </div>
@@ -309,6 +429,39 @@ function SimpleWhiteboard({ onExit }) {
             <span>{Math.round(scale * 100)}%</span>
             <Plus size={16} onClick={() => setScale(s => Math.min(s * 1.25, 4))} />
           </div>
+        </div>
+
+        <div className="tool-divider" />
+
+        <div className="tool-group subjects-group">
+          <BookMarked size={18} className="subjects-icon" />
+          <select
+            className="subject-select"
+            value={currentSubject}
+            onChange={(e) => switchSubject(e.target.value)}
+            title="Matéria do quadro (cada matéria tem seu quadro salvo)"
+          >
+            {subjectList.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <input
+            className="subject-input"
+            value={newSubjectName}
+            onChange={(e) => setNewSubjectName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && createSubject()}
+            placeholder="Nova matéria..."
+            title="Nome da nova matéria"
+          />
+          <button className="tool-btn" onClick={createSubject} title="Criar matéria">
+            <Plus size={18} />
+          </button>
+          <button className="tool-btn subject-save-btn" onClick={() => saveBoardToSubject(currentSubject)} title="Salvar quadro nesta matéria">
+            <Save size={18} />
+          </button>
+          <button className="tool-btn danger" onClick={() => deleteSubject(currentSubject)} title="Excluir matéria atual">
+            <Trash2 size={18} />
+          </button>
         </div>
       </div>
 

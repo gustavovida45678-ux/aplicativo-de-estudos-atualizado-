@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import {
   Upload, FileText, Brain, Loader2, X, ChevronDown, ChevronUp,
   CheckCircle2, Circle, AlertTriangle, BookOpen, Sparkles,
-  ListChecks, Clock, Target, Lightbulb, Copy, Download,
+  ListChecks, Clock, Target, Lightbulb, Copy, Download, Printer,
 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -154,6 +154,90 @@ export default function SummaryGenerator() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Exportado como Markdown!");
+  };
+
+  const handlePrint = () => {
+    if (!result) return;
+    const s = result.summary;
+    const esc = (v) =>
+      String(v ?? "").replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+
+    const topics = (s.topics || []).map((t, i) => `
+      <section class="topic">
+        <h3>${i + 1}. ${esc(t.name)} <span class="pill">${esc(t.priority || "")}</span></h3>
+        <p>${esc(t.explanation)}</p>
+        ${t.key_concepts?.length ? `<p><strong>Conceitos-chave:</strong> ${t.key_concepts.map(esc).join("; ")}</p>` : ""}
+        ${t.formulas?.length ? `<p><strong>Fórmulas:</strong></p><ul>${t.formulas.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+        ${t.examples?.length ? `<p><strong>Exemplos:</strong></p><ul>${t.examples.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : ""}
+        ${t.common_errors?.length ? `<p><strong>Erros comuns:</strong></p><ul>${t.common_errors.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : ""}
+        ${t.observations?.length ? `<p><strong>Observações:</strong></p><ul>${t.observations.map((o) => `<li>${esc(o)}</li>`).join("")}</ul>` : ""}
+        ${t.subtopics?.length ? `<p><strong>Subtópicos:</strong></p><ul>${t.subtopics.map((st) => `<li><em>${esc(st.name)}</em> — ${esc(st.explanation)}</li>`).join("")}</ul>` : ""}
+      </section>`).join("");
+
+    const keywords = (s.keywords || []).map((k) => `
+      <li><strong>${esc(k.word)}:</strong> ${esc(k.definition)}${k.example ? ` <em>(ex: ${esc(k.example)})</em>` : ""}</li>`).join("");
+
+    const tips = (s.study_tips || []).map((t) => `<li>${esc(t)}</li>`).join("");
+
+    const exercises = (result.exercises || []).map((ex, i) => `
+      <section class="exercise">
+        <h3>Exercício ${i + 1} <span class="tag">${esc(ex.difficulty || "Médio")}</span></h3>
+        <p class="question">${esc(ex.question)}</p>
+        ${ex.options?.length ? `<ul class="options">${ex.options.map((o) => `<li>${esc(o)}</li>`).join("")}</ul>` : ""}
+        <p class="answer"><strong>Resposta correta:</strong> ${esc(ex.correct_answer)}</p>
+        <p><strong>Explicação:</strong> ${esc(ex.explanation)}</p>
+        ${ex.solution_steps?.length ? `<p><strong>Passo a passo:</strong></p><ol>${ex.solution_steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : ""}
+        <p class="topic-ref"><strong>Tópico:</strong> ${esc(ex.topic || "")} · <strong>Conceito:</strong> ${esc(ex.concept_used || "")}</p>
+      </section>`).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>${esc(s.title)} — Resumo e Exercícios</title>
+<style>
+  @page { margin: 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, "Times New Roman", serif; color: #111; line-height: 1.55; max-width: 190mm; margin: 0 auto; padding: 0 4mm; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 24px 0 8px; border-bottom: 2px solid #111; padding-bottom: 4px; }
+  h3 { font-size: 16px; margin: 16px 0 4px; }
+  .meta { font-size: 13px; color: #444; margin-bottom: 16px; }
+  .meta span { margin-right: 12px; }
+  .general { white-space: pre-wrap; }
+  .pill, .tag { font-size: 11px; font-weight: 700; text-transform: uppercase; border: 1px solid #111; padding: 1px 6px; border-radius: 3px; vertical-align: middle; }
+  ul, ol { margin: 4px 0 8px; padding-left: 20px; }
+  .options { list-style: upper-alpha; }
+  .topic, .exercise { break-inside: avoid; }
+</style>
+</head>
+<body>
+  <h1>${esc(s.title)}</h1>
+  <div class="meta">
+    ${s.discipline ? `<span><strong>Disciplina:</strong> ${esc(s.discipline)}</span>` : ""}
+    ${s.estimated_study_time ? `<span><strong>Tempo estimado:</strong> ${esc(s.estimated_study_time)}</span>` : ""}
+    <span><strong>Arquivos:</strong> ${(result.files || []).join(", ")}</span>
+  </div>
+
+  <h2>Resumo Geral</h2>
+  <p class="general">${esc(s.general_summary)}</p>
+
+  ${topics ? `<h2>Tópicos</h2>${topics}` : ""}
+  ${keywords ? `<h2>Palavras-chave</h2><ul>${keywords}</ul>` : ""}
+  ${tips ? `<h2>Dicas de Estudo</h2><ul>${tips}</ul>` : ""}
+  ${exercises ? `<h2>Exercícios</h2>${exercises}` : ""}
+
+  <script>window.onload = function() { window.print(); };</script>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (!win) {
+      toast.error("Permita pop-ups para imprimir");
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
   };
 
   const renderScore = () => {
@@ -401,6 +485,12 @@ export default function SummaryGenerator() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <h2 style={{ fontSize: 22, color: "#e2e8f0", margin: 0 }}>{result.summary?.title}</h2>
                 <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={handlePrint}
+                    style={{ background: "#2d2a3e", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", color: "#94a3b8" }}
+                    title="Imprimir resumo e exercícios"
+                  >
+                    <Printer size={16} />
+                  </button>
                   <button onClick={() => copyToClipboard(JSON.stringify(result.summary, null, 2))}
                     style={{ background: "#2d2a3e", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", color: "#94a3b8" }}
                     title="Copiar JSON"

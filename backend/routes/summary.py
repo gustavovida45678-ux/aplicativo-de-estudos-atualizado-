@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from typing import Optional, List
 from pydantic import BaseModel, Field
+import asyncio
 import logging
 import json
 import re
@@ -9,6 +10,29 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Groq free tier do llama-3.3-70b-versatile tem limite de 12.000 tokens/min (TPM).
+# ~15k caracteres mantem a requisicao (material + prompt JSON) bem abaixo desse limite.
+MAX_MATERIAL_CHARS = 15000
+
+
+async def _chat_with_rate_limit_retry(chat_service, **kwargs):
+    """Chama a IA com nova tentativa quando o provedor responde rate limit (ex: TPM do Groq)."""
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            return await chat_service.chat(**kwargs)
+        except Exception as e:
+            msg = str(e).lower()
+            is_rate_limit = "rate limit" in msg or "rate_limit" in msg or "429" in msg
+            if not is_rate_limit or attempt == max_attempts - 1:
+                raise
+            wait = 20 * (attempt + 1)
+            logger.warning(
+                f"Rate limit do provedor de IA (tentativa {attempt + 1}/{max_attempts}); "
+                f"aguardando {wait}s e tentando novamente..."
+            )
+            await asyncio.sleep(wait)
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
@@ -219,9 +243,9 @@ async def analyze_material(
                 detail="Não foi possível extrair texto dos arquivos enviados. Verifique os formatos."
             )
 
-        # Truncate to ~30k chars for LLM context
-        if len(combined_text) > 30000:
-            combined_text = combined_text[:30000] + "\n\n[... texto truncado para processamento ...]"
+        # Truncar para caber no TPM do Groq free tier (~12k tokens/min)
+        if len(combined_text) > MAX_MATERIAL_CHARS:
+            combined_text = combined_text[:MAX_MATERIAL_CHARS] + "\n\n[... texto truncado para processamento ...]"
 
         # ── 2. Build AI prompts ─────────────────────────────────────────────
         if mode == "quick":
@@ -240,7 +264,8 @@ async def analyze_material(
         from backend.services.providers import ProviderType
 
         logger.info("🤖 Generating summary via AI...")
-        summary_response = await chat_service.chat(
+        summary_response = await _chat_with_rate_limit_retry(
+            chat_service,
             message=summary_prompt,
             provider_type=ProviderType.GROQ,
             system_prompt="Você é um professor expert que analisa materiais de estudo e cria resumos inteligentes, completos e didáticos. Retorne APENAS JSON válido, sem markdown.",
@@ -258,7 +283,8 @@ async def analyze_material(
 
         # ── 4. Call AI for exercises ────────────────────────────────────────
         logger.info("🤖 Generating exercises via AI...")
-        exercises_response = await chat_service.chat(
+        exercises_response = await _chat_with_rate_limit_retry(
+            chat_service,
             message=exercises_prompt,
             provider_type=ProviderType.GROQ,
             system_prompt="Você é um professor expert em criar exercícios educacionais de altíssima qualidade. Retorne APENAS JSON válido, sem markdown.",
@@ -311,8 +337,8 @@ async def generate_more_exercises(
     try:
         logger.info(f"📝 Extra exercises: count={exercise_count}, difficulty={difficulty}")
 
-        if len(content_text) > 20000:
-            content_text = content_text[:20000]
+        if len(content_text) > MAX_MATERIAL_CHARS:
+            content_text = content_text[:MAX_MATERIAL_CHARS]
 
         exercises_prompt = _build_exercises_prompt(
             content_text, exercise_count, difficulty, is_simulado
@@ -321,7 +347,8 @@ async def generate_more_exercises(
         from backend.services.chat_service import chat_service
         from backend.services.providers import ProviderType
 
-        response = await chat_service.chat(
+        response = await _chat_with_rate_limit_retry(
+            chat_service,
             message=exercises_prompt,
             provider_type=ProviderType.GROQ,
             system_prompt="Você é um professor expert em criar exercícios educacionais. Retorne APENAS JSON válido, sem markdown.",

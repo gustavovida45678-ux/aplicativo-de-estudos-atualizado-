@@ -28,7 +28,7 @@ services:
     publishPath: build
     envVars:
       - key: REACT_APP_BACKEND_URL
-        value: https://backend.onrender.com
+        value: https://aplicativo-de-estudos-atualizado-s.onrender.com
       - key: REACT_APP_SUPABASE_URL
         value: https://pwiefrivtdypnvqzimwv.supabase.co
       - key: REACT_APP_SUPABASE_ANON_KEY

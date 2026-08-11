@@ -23,6 +23,7 @@ import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
 import JudgePanel from "./components/JudgePanel";
 import MoodlePage from "./components/moodle/MoodlePage";
 import SimpleWhiteboard from "./components/SimpleWhiteboard";
+import SummaryGenerator from "./components/SummaryGenerator";
 // import DebugPanel from "./components/DebugPanel"; // Removed
 
 import { BACKEND_URL } from "./lib/backendUrl";
@@ -500,6 +501,14 @@ function App() {
                 <Library size={18} />
                 <span className="nav-tab-text">Materiais</span>
               </button>
+              <button
+                onClick={() => setActiveTab("summary")}
+                className={`nav-tab summary ${activeTab === "summary" ? "active" : ""}`}
+                data-testid="tab-summary"
+              >
+                <Sparkles size={18} />
+                <span className="nav-tab-text">Resumos</span>
+              </button>
             </div>
 
             <div className="nav-group">
@@ -631,6 +640,8 @@ function App() {
             <ExerciseSystem />
           ) : activeTab === "math" ? (
             <MathExplainer />
+          ) : activeTab === "summary" ? (
+            <SummaryGenerator />
           ) : activeTab === "judge" ? (
             <div className="mx-auto max-w-5xl px-4 py-8">
               <JudgePanel />

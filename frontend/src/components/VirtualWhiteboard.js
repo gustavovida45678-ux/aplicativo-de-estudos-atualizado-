@@ -147,6 +147,17 @@ function VirtualWhiteboard({ onExit }) {
   const moveDragRef = useRef(null);
   const resizeDragRef = useRef(null);
 
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const panRef = useRef(pan);
+  const [scale, setScale] = useState(1);
+  const scaleRef = useRef(scale);
+
+  const mapById = useCallback(() => {
+    const m = {};
+    for (const el of elementsRef.current) m[el.id] = el;
+    return m;
+  }, []);
+
   const getResizeHandles = useCallback(() => {
     const selected = selectedIdsRef.current;
     if (selected.length !== 1 || moveDragRef.current || resizeDragRef.current) return [];
@@ -248,11 +259,6 @@ function VirtualWhiteboard({ onExit }) {
   const [textBold, setTextBold] = useState(false);
   const [textItalic, setTextItalic] = useState(false);
   const [textAlign, setTextAlign] = useState("left");
-
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const panRef = useRef(pan);
-  const [scale, setScale] = useState(1);
-  const scaleRef = useRef(scale);
 
   const [gridMode, setGridMode] = useState(GRID_MODES.NONE);
   const gridModeRef = useRef(gridMode);
@@ -540,12 +546,6 @@ function VirtualWhiteboard({ onExit }) {
   }, [autoExpandCanvas]);
 
   // ---------------- Render loop ----------------
-  const mapById = useCallback(() => {
-    const m = {};
-    for (const el of elementsRef.current) m[el.id] = el;
-    return m;
-  }, []);
-
   const drawStaticScene = useCallback(() => {
     const sc = staticCanvasRef.current;
     const canvas = canvasRef.current;

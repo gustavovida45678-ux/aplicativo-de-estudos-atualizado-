@@ -1653,8 +1653,33 @@ const JudgePanel = () => {
             padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff',
             fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
           }}>
-            {creatingExercise ? <Loader2 size={14} className="materials-spin" /> : <Sparkles size={14} />} Gerar
+            {creatingExercise ? <Loader2 size={14} className="materials-spin" /> : <Sparkles size={14} />} Gerar pelo Tema
           </button>
+        </div>
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #333' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#a3a3a3', marginBottom: 8 }}>
+            <FilePlus2 size={15} color="#a78bfa" />
+            Gerar a partir de uma descricao
+          </label>
+          <textarea
+            value={createDescription}
+            onChange={(e) => setCreateDescription(e.target.value)}
+            placeholder="Descreva o exercicio que deseja. Ex: 'Ler um numero N e imprimir a soma de 1 ate N' ou 'Verificar se uma palavra e um palindromo'"
+            style={{
+              width: '100%', minHeight: 64, padding: '10px 12px', borderRadius: 8,
+              border: '1px solid #444', background: '#1a1a1a', color: '#fff',
+              fontSize: 13, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit',
+            }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <button onClick={generateFromText} disabled={creatingFromText} style={{
+              padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff',
+              fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
+            }}>
+              {creatingFromText ? <Loader2 size={14} className="materials-spin" /> : <FilePlus2 size={14} />} Gerar pelo Texto
+            </button>
+          </div>
         </div>
       </div>
 

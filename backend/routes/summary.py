@@ -12,27 +12,54 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Groq free tier do llama-3.3-70b-versatile tem limite de 12.000 tokens/min (TPM).
-# ~15k caracteres mantem a requisicao (material + prompt JSON) bem abaixo desse limite.
-MAX_MATERIAL_CHARS = 15000
+# 8k caracteres + prompt JSON (~800 tokens) ficam perto de ~7.5k tokens, com margem segura.
+MAX_MATERIAL_CHARS = 8000
 
 
-async def _chat_with_rate_limit_retry(chat_service, **kwargs):
-    """Chama a IA com nova tentativa quando o provedor responde rate limit (ex: TPM do Groq)."""
+async def _chat_with_rate_limit_retry(chat_service, message_fn, **kwargs):
+    """Chama a IA com nova tentativa quando o provedor responde rate limit (ex: TPM do Groq).
+
+    message_fn(max_chars) gera o prompt com o texto truncado no tamanho dado.
+    A cada rate limit, o texto e reduzido em 50% antes de tentar de novo
+    (8000 -> 4000 -> 2000 caracteres).
+    """
     max_attempts = 3
+    max_chars = MAX_MATERIAL_CHARS
     for attempt in range(max_attempts):
         try:
-            return await chat_service.chat(**kwargs)
+            message = message_fn(max_chars)
+            return await chat_service.chat(message=message, **kwargs)
         except Exception as e:
             msg = str(e).lower()
             is_rate_limit = "rate limit" in msg or "rate_limit" in msg or "429" in msg
             if not is_rate_limit or attempt == max_attempts - 1:
                 raise
-            wait = 20 * (attempt + 1)
+            max_chars = max_chars * 50 // 100
+            wait = 15 * (attempt + 1)
             logger.warning(
                 f"Rate limit do provedor de IA (tentativa {attempt + 1}/{max_attempts}); "
-                f"aguardando {wait}s e tentando novamente..."
+                f"reduzindo material para {max_chars} chars, aguardando {wait}s..."
             )
             await asyncio.sleep(wait)
+
+
+async def _chat_with_emergent_fallback(chat_service, message_fn, **kwargs):
+    """Tenta o provider principal; se falhar (rate limit, timeout, TPM), tenta o EMERGENT."""
+    try:
+        return await _chat_with_rate_limit_retry(chat_service, message_fn, **kwargs)
+    except Exception as e:
+        from backend.services.providers import ProviderType
+        logger.warning(
+            f"Provider {kwargs.get('provider_type')} falhou ({type(e).__name__}: {str(e)[:200]}); "
+            f"tentando EMERGENT..."
+        )
+        try:
+            kwargs = dict(kwargs)
+            kwargs["provider_type"] = ProviderType.EMERGENT
+            return await _chat_with_rate_limit_retry(chat_service, message_fn, **kwargs)
+        except Exception as e2:
+            logger.warning(f"EMERGENT tambem falhou ({type(e2).__name__}: {str(e2)[:200]})")
+            raise e2
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
@@ -247,26 +274,21 @@ async def analyze_material(
         if len(combined_text) > MAX_MATERIAL_CHARS:
             combined_text = combined_text[:MAX_MATERIAL_CHARS] + "\n\n[... texto truncado para processamento ...]"
 
-        # ── 2. Build AI prompts ─────────────────────────────────────────────
-        if mode == "quick":
-            summary_prompt = _build_quick_summary_prompt(combined_text)
-        elif mode == "study_focus":
-            summary_prompt = _build_study_focus_prompt(combined_text)
-        else:
-            summary_prompt = _build_full_summary_prompt(combined_text)
-
-        exercises_prompt = _build_exercises_prompt(
-            combined_text, exercise_count, difficulty, is_simulado
-        )
-
         # ── 3. Call AI for summary ──────────────────────────────────────────
         from backend.services.chat_service import chat_service
         from backend.services.providers import ProviderType
 
         logger.info("🤖 Generating summary via AI...")
-        summary_response = await _chat_with_rate_limit_retry(
+        summary_prompt_fn = lambda mc: (
+            _build_quick_summary_prompt(combined_text[:mc])
+            if mode == "quick"
+            else _build_study_focus_prompt(combined_text[:mc])
+            if mode == "study_focus"
+            else _build_full_summary_prompt(combined_text[:mc])
+        )
+        summary_response = await _chat_with_emergent_fallback(
             chat_service,
-            message=summary_prompt,
+            summary_prompt_fn,
             provider_type=ProviderType.GROQ,
             system_prompt="Você é um professor expert que analisa materiais de estudo e cria resumos inteligentes, completos e didáticos. Retorne APENAS JSON válido, sem markdown.",
             temperature=0.3,
@@ -283,9 +305,11 @@ async def analyze_material(
 
         # ── 4. Call AI for exercises ────────────────────────────────────────
         logger.info("🤖 Generating exercises via AI...")
-        exercises_response = await _chat_with_rate_limit_retry(
+        exercises_response = await _chat_with_emergent_fallback(
             chat_service,
-            message=exercises_prompt,
+            lambda mc: _build_exercises_prompt(
+                combined_text[:mc], exercise_count, difficulty, is_simulado
+            ),
             provider_type=ProviderType.GROQ,
             system_prompt="Você é um professor expert em criar exercícios educacionais de altíssima qualidade. Retorne APENAS JSON válido, sem markdown.",
             temperature=0.4,
@@ -340,16 +364,14 @@ async def generate_more_exercises(
         if len(content_text) > MAX_MATERIAL_CHARS:
             content_text = content_text[:MAX_MATERIAL_CHARS]
 
-        exercises_prompt = _build_exercises_prompt(
-            content_text, exercise_count, difficulty, is_simulado
-        )
-
         from backend.services.chat_service import chat_service
         from backend.services.providers import ProviderType
 
-        response = await _chat_with_rate_limit_retry(
+        response = await _chat_with_emergent_fallback(
             chat_service,
-            message=exercises_prompt,
+            lambda mc: _build_exercises_prompt(
+                content_text[:mc], exercise_count, difficulty, is_simulado
+            ),
             provider_type=ProviderType.GROQ,
             system_prompt="Você é um professor expert em criar exercícios educacionais. Retorne APENAS JSON válido, sem markdown.",
             temperature=0.4,

@@ -3,6 +3,19 @@
 
 export const JUDGE_PROBLEMS = [
   {
+    id: 'beecrowd-1000',
+    title: 'Hello World! (Beecrowd 1000)',
+    topic: 'Aquecimento',
+    difficulty: 1,
+    statement:
+      'O seu primeiro programa em qualquer linguagem de programação normalmente é o "Hello World!". Neste primeiro problema tudo o que você precisa fazer é imprimir esta mensagem na tela.',
+    inputFormat: 'Este problema não possui nenhuma entrada.',
+    outputFormat:
+      'Você deve imprimir a mensagem "Hello World!" e em seguida o final de linha, conforme o exemplo abaixo.',
+    examples: [{ input: '', output: 'Hello World!' }],
+    test_cases: [{ input: '', expected: 'Hello World!\n' }],
+  },
+  {
     id: 'edj-1',
     title: 'Soma Simples',
     topic: 'Aquecimento',

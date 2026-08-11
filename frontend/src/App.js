@@ -9,7 +9,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -22,6 +22,7 @@ import FeedbackForm from "./components/FeedbackForm";
 import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
 import JudgePanel from "./components/JudgePanel";
 import MoodlePage from "./components/moodle/MoodlePage";
+import SimpleWhiteboard from "./components/SimpleWhiteboard";
 // import DebugPanel from "./components/DebugPanel"; // Removed
 
 import { BACKEND_URL } from "./lib/backendUrl";
@@ -562,6 +563,18 @@ function App() {
             </div>
 
             <div className="nav-group">
+              <span className="nav-group-label">Lousa</span>
+              <button
+                onClick={() => setActiveTab("whiteboard")}
+                className={`nav-tab ${activeTab === "whiteboard" ? "active" : ""}`}
+                data-testid="tab-whiteboard"
+              >
+                <PenTool size={18} />
+                <span className="nav-tab-text">Lousa Digital</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
               <span className="nav-group-label">Moodle</span>
               <button
                 onClick={() => setActiveTab("moodle")}
@@ -622,6 +635,10 @@ function App() {
             <div className="mx-auto max-w-5xl px-4 py-8">
               <JudgePanel />
             </div>
+            ) : activeTab === "whiteboard" ? (
+              <div className="whiteboard-container" style={{ height: "100vh" }}>
+                <SimpleWhiteboard onExit={() => setActiveTab("dashboard")} />
+              </div>
             ) : activeTab === "moodle" ? (
               <div className="mx-auto max-w-5xl px-4 py-8">
                 <MoodlePage onClose={() => setActiveTab("dashboard")} />

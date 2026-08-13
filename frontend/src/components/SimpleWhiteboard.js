@@ -45,6 +45,7 @@ function SimpleWhiteboard({ onExit }) {
   const [editingText, setEditingText] = useState(null);
   const textInputRef = useRef(null);
   const lastPointRef = useRef(null);
+  const textJustCreatedRef = useRef(false);
 
   const COLORS = ["#ffffff", "#58a6ff", "#f78166", "#3fb950", "#d2a8ff", "#ffa657", "#ff7b72", "#79c0ff"];
   const FONTS = ["Inter", "Arial", "Georgia", "Courier New", "Comic Sans MS", "Times New Roman"];
@@ -129,6 +130,9 @@ function SimpleWhiteboard({ onExit }) {
 
   const startDrawing = (e) => {
     if (tool === "text") {
+      // Impede o default do mousedown (mover foco p/ body), senao
+      // o textarea recém-focado perde o foco na mesma hora e o overlay fecha
+      e.preventDefault();
       const pt = getPoint(e);
       startTextEdit(pt.x, pt.y);
       return;
@@ -176,6 +180,7 @@ function SimpleWhiteboard({ onExit }) {
     };
     textsRef.current.push(newText);
     setEditingText(newText);
+    textJustCreatedRef.current = true;
     
     // Focus the textarea after render
     setTimeout(() => textInputRef.current?.focus(), 0);
@@ -183,7 +188,13 @@ function SimpleWhiteboard({ onExit }) {
 
   const handleTextChange = (e) => {
     if (!editingText) return;
-    editingText.content = e.target.value;
+    // React 19 restaura inputs controlados ao valor do ultimo render;
+    // mutar o objeto nao dispara re-render -> o texto digitado sumia.
+    // Aqui atualizamos via setState e mantemos textsRef sincronizado.
+    const updated = { ...editingText, content: e.target.value };
+    const idx = textsRef.current.indexOf(editingText);
+    if (idx !== -1) textsRef.current[idx] = updated;
+    setEditingText(updated);
     redraw();
   };
 
@@ -346,6 +357,12 @@ function SimpleWhiteboard({ onExit }) {
   // Handle click outside text input to finish editing
   useEffect(() => {
     const handleClickOutside = (e) => {
+      // Ignora o proprio mousedown que criou o input de texto,
+      // senao o overlay fecha no mesmo clique em que abre
+      if (textJustCreatedRef.current) {
+        textJustCreatedRef.current = false;
+        return;
+      }
       if (editingText && !e.target.closest(".text-input-overlay")) {
         finishTextEdit();
       }

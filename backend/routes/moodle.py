@@ -456,23 +456,68 @@ def _event_course_name(event, courses_by_id):
     return ""
 
 
+def _fetch_course_list(base, token):
+    """Lista todas as disciplinas do usuário.
+
+    O Moodle do IFG devolve `invalidparameter` para
+    `core_enrol_get_users_courses` em algumas contas, então tentamos também
+    `core_course_get_enrolled_courses_by_timeline_classification`
+    (a listagem usada pelo Moodle Mobile App). Retorna: (raw_courses, falhas)."""
+    fails = []
+
+    # 1) Método clássico
+    try:
+        raw = _call(base, token, "core_enrol_get_users_courses")
+        if isinstance(raw, list) and len(raw) > 0:
+            return raw, []
+        fails.append("core_enrol_get_users_courses devolveu lista vazia")
+    except HTTPException as e:
+        fails.append(f"core_enrol_get_users_courses: {e.detail}")
+
+    # 2) Timeline classification (Moodle Mobile App)
+    try:
+        out, offset = [], 0
+        for _ in range(4):
+            data = _call(
+                base, token,
+                "core_course_get_enrolled_courses_by_timeline_classification",
+                classification="all", limit=100, offset=offset,
+            )
+            courses = (data or {}).get("courses", []) if isinstance(data, dict) else []
+            if not courses:
+                break
+            out.extend(courses)
+            nxt = data.get("nextoffset")
+            if isinstance(nxt, int) and nxt > offset:
+                offset = nxt
+                continue
+            break
+        if out:
+            return out, []
+        fails.append("core_course_get_enrolled_courses_by_timeline_classification: lista vazia")
+    except HTTPException as e:
+        fails.append(f"core_course_get_enrolled_courses_by_timeline_classification: {e.detail}")
+
+    return [], fails
+
+
 def _sync_all(user_id=None):
     cfg = _load_config(user_id)
     if not cfg:
         return {
             "courses": [], "activities": [], "deadlines": [],
             "announcements": [], "errors": ["Moodle não configurado."],
+            "warnings": [],
         }
     base = _base(cfg["url"])
     token = cfg["token"]
     errors = []
+    warnings = []
 
-    # 1) Todas as disciplinas do usuário
-    raw_courses = []
-    try:
-        raw_courses = _call(base, token, "core_enrol_get_users_courses") or []
-    except HTTPException as e:
-        errors.append(f"disciplinas: {e.detail}")
+    # 1) Todas as disciplinas do usuário (com fallback de método)
+    raw_courses, course_fails = _fetch_course_list(base, token)
+    if not raw_courses and course_fails:
+        errors.append("disciplinas: " + "; ".join(course_fails))
     courses = []
     for c in raw_courses if isinstance(raw_courses, list) else []:
         cat = c.get("category") or c.get("categoryname") or ""
@@ -490,19 +535,33 @@ def _sync_all(user_id=None):
     courses_by_id = {c["id"]: c for c in courses if c.get("id")}
     course_ids = list(courses_by_id.keys())
 
-    # 2) Datas de entrega das tarefas (complementa o customdata)
+    # 2) Datas de entrega das tarefas + atividades (fallback caso o
+    #    course contents não esteja disponível no serviço web)
     assign_map = {}
+    assign_items = []
     if course_ids:
         try:
             payload = {f"courseids[{i}]": cid for i, cid in enumerate(course_ids)}
             data2 = _call(base, token, "mod_assign_get_assignments", **payload)
-            for course in data2.get("courses", []) or []:
+            courses_raw = data2.get("courses", []) if isinstance(data2, dict) else []
+            for course in courses_raw:
+                cname = course.get("fullname", "") or courses_by_id.get(course.get("id"), {}).get("fullname", "")
                 for a in course.get("assignments", []) or []:
                     cmid = a.get("cmid")
                     if cmid:
                         assign_map[cmid] = a.get("duedate") or 0
+                    assign_items.append({
+                        "id": a.get("id"),
+                        "cmid": cmid,
+                        "name": a.get("name", ""),
+                        "course_id": course.get("id"),
+                        "course_name": cname,
+                        "type": "assign",
+                        "due_date": _ts(a.get("duedate", 0)) if a.get("duedate") else None,
+                        "url": f"{base}/mod/assign/view.php?id={cmid}" if cmid else "",
+                    })
         except HTTPException as e:
-            errors.append(f"tarefas: {e.detail}")
+            warnings.append(f"tarefas: {e.detail}")
 
     # 3) TODAS as atividades de TODAS as disciplinas (todo tipo: assign,
     #    quiz, forum, resource, url, page, lesson, book, ...)
@@ -533,7 +592,7 @@ def _sync_all(user_id=None):
                 })
         return items, None
 
-    activities = []
+    contents_items = []
     course_errors = []
     if course_ids:
         with ThreadPoolExecutor(max_workers=8) as ex:
@@ -546,20 +605,50 @@ def _sync_all(user_id=None):
                     items, err = [], f"curso {cid}: {e}"
                 if err:
                     course_errors.append(err)
-                activities.extend(items)
+                contents_items.extend(items)
     if course_errors:
         extra = f" (+{len(course_errors) - 5} disciplinas mais)" if len(course_errors) > 5 else ""
         errors.append("; ".join(course_errors[:5]) + extra)
 
-    # 4) Eventos do calendário -> prazos e avisos
+    # Une atividades com o fallback de tarefas (sem duplicar por cmid)
+    activities = []
+    seen = set()
+    for item in contents_items + assign_items:
+        key = item.get("cmid") or (item.get("course_id"), item.get("name"), item.get("type"))
+        if key in seen:
+            continue
+        seen.add(key)
+        activities.append(item)
+
+    # 4) Prazos vêm das datas de entrega das atividades (não dependem do
+    #    calendário, que pode não existir no webservice) + eventos do
+    #    calendário quando disponíveis
+    act_deadlines = []
+    seen_dl = set()
+    for a in activities:
+        if not a.get("due_date"):
+            continue
+        key = (a.get("course_id"), a.get("name"), a.get("due_date"))
+        if key in seen_dl:
+            continue
+        seen_dl.add(key)
+        act_deadlines.append({
+            "id": f"act-{a.get('id') or a.get('cmid')}",
+            "name": a.get("name", ""),
+            "course_name": a.get("course_name", ""),
+            "due_date": a.get("due_date"),
+            "url": a.get("url", ""),
+        })
+
+    # 4b) Eventos do calendário -> prazos extras e avisos
     events = []
     try:
         cal = _call(base, token, "core_calendar_get_calendar_upcoming_events")
         events = (cal.get("events", []) or []) if isinstance(cal, dict) else []
     except HTTPException as e:
-        errors.append(f"calendário: {e.detail}")
+        warnings.append(f"calendário: {e.detail}")
 
-    deadlines = []
+    cal_deadlines = []
     announcements = []
     for e in events:
         eid = e.get("id")
@@ -568,7 +657,7 @@ def _sync_all(user_id=None):
         url = e.get("url", "")
         course_name = _event_course_name(e, courses_by_id)
         iso = _ts(ts)
-        deadlines.append({
+        cal_deadlines.append({
             "id": eid, "name": name, "course_name": course_name,
             "due_date": iso, "url": url,
         })
@@ -579,6 +668,7 @@ def _sync_all(user_id=None):
             "created": iso, "url": url,
         })
 
+    deadlines = act_deadlines + cal_deadlines
     activities.sort(key=lambda a: a.get("due_date") or "")
     deadlines.sort(key=lambda d: d.get("due_date") or "")
     return {
@@ -587,6 +677,7 @@ def _sync_all(user_id=None):
         "deadlines": deadlines,
         "announcements": announcements,
         "errors": errors,
+        "warnings": warnings,
     }
 
 
@@ -643,6 +734,7 @@ def moodle_sync(current_user: dict = Depends(get_current_user)):
         "synced": True,
         "last_sync": datetime.utcnow().isoformat(),
         "errors": data.get("errors", []),
+        "warnings": data.get("warnings", []),
         "counts": {
             "courses": len(data["courses"]),
             "activities": len(data["activities"]),
@@ -681,6 +773,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
         except HTTPException:
             info = {}
         errors = []
+        warnings = []
         try:
             synced = _sync_all(user_id)
             _cache_set("courses", synced["courses"], user_id)
@@ -688,6 +781,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
             _cache_set("deadlines", synced["deadlines"], user_id)
             _cache_set("announcements", synced["announcements"], user_id)
             errors = synced.get("errors", [])
+            warnings = synced.get("warnings", [])
         except Exception as e:
             errors = [str(e)]
         return {
@@ -697,6 +791,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
             "user": info.get("fullname", req.username.strip()),
             "last_sync": _cache_get("last_sync", user_id),
             "errors": errors,
+            "warnings": warnings,
             "counts": {
                 "courses": len(_cache_get("courses", user_id) or []),
                 "activities": len(_cache_get("activities", user_id) or []),

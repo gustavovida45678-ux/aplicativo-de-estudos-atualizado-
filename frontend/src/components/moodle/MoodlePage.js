@@ -36,10 +36,13 @@ export function MoodlePage({ onClose }) {
   const applySyncResult = (res) => {
     const counts = res.data?.counts || {};
     const errors = res.data?.errors || [];
-    setSyncInfo(errors.length ? { errors, counts } : null);
+    const warnings = res.data?.warnings || [];
+    setSyncInfo(errors.length ? { errors, counts, warnings } : (warnings.length ? { errors: [], counts, warnings } : null));
     const total = (counts.courses || 0) + (counts.activities || 0) + (counts.deadlines || 0) + (counts.announcements || 0);
     if (errors.length) {
       toast.warning('Conexão OK, mas o Moodle devolveu erros ao buscar dados.');
+    } else if (total === 0 && warnings.length) {
+      toast.warning('Conectado, mas o Moodle não liberou os dados para esta conta.');
     } else if (total === 0) {
       toast.warning('Conectado, mas nenhuma atividade/disciplina encontrada no Moodle.');
     }
@@ -345,6 +348,13 @@ export function MoodlePage({ onClose }) {
             <button className="moodle-btn secondary" onClick={syncMoodle} disabled={loading.sync}>
               <RefreshCw size={14} className={loading.sync ? 'spin' : ''} /> Tentar novamente
             </button>
+          </div>
+        )}
+
+        {moodleConfigured && syncInfo && syncInfo.errors.length === 0 && syncInfo.warnings && syncInfo.warnings.length > 0 && (
+          <div className="moodle-sync-warning">
+            <AlertTriangle size={14} color="#94a3b8" />
+            <span>Parte dos dados não está disponível no webservice do Moodle ({syncInfo.warnings.length} item(ns)). Os prazos das tarefas e as disciplinas continuam listados.</span>
           </div>
         )}
 

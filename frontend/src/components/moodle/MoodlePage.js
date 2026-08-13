@@ -32,6 +32,31 @@ export function MoodlePage({ onClose }) {
   const [connecting, setConnecting] = useState(false);
   const [useTokenOption, setUseTokenOption] = useState(false);
   const [syncInfo, setSyncInfo] = useState(null);
+  const [studyActivity, setStudyActivity] = useState(null);
+  const [studyTab, setStudyTab] = useState('solution');
+  const [studyLoading, setStudyLoading] = useState(false);
+  const [studyError, setStudyError] = useState(null);
+  const [studyData, setStudyData] = useState(null);
+
+  const startStudy = async (activity, force = false) => {
+    setStudyActivity(activity);
+    setStudyTab('solution');
+    setStudyLoading(true);
+    setStudyError(null);
+    setStudyData(null);
+    try {
+      const res = await axios.post(`${API}/study`, {
+        activity_id: String(activity.id || activity.cmid || ''),
+        force,
+      });
+      setStudyData(res.data);
+    } catch (e) {
+      console.error('Erro ao gerar estudo:', e);
+      setStudyError(e.response?.data?.detail || 'Não foi possível gerar o estudo da atividade.');
+    } finally {
+      setStudyLoading(false);
+    }
+  };
 
   const applySyncResult = (res) => {
     const counts = res.data?.counts || {};
@@ -392,9 +417,17 @@ export function MoodlePage({ onClose }) {
                           </span>
                         )}
                         {activity.type && <span className="activity-type">{activity.type}</span>}
+                        {activity.priority && <span className="priority-badge">Prioridade</span>}
                       </div>
                     </div>
                     <div className="activity-actions">
+                      <button
+                        className="moodle-btn small study-btn"
+                        onClick={() => startStudy(activity)}
+                        title="Escaneia a atividade e gera resolução passo a passo, resumo e 10 exercícios"
+                      >
+                        <GraduationCap size={14} /> Estudar
+                      </button>
                       {activity.url && (
                         <a href={activity.url} target="_blank" rel="noopener noreferrer" className="moodle-btn small">
                           <ArrowRight size={14} /> Abrir
@@ -476,6 +509,9 @@ export function MoodlePage({ onClose }) {
                       <h4>{course.fullname || course.shortname}</h4>
                       <span className="course-code">{course.shortname}</span>
                     </div>
+                    <div className="course-meta">
+                      {course.priority && <span className="priority-badge">Prioridade</span>}
+                    </div>
                     <p className="course-category">{course.category}</p>
                     {course.progress !== undefined && (
                       <div className="course-progress">
@@ -534,6 +570,168 @@ export function MoodlePage({ onClose }) {
         {lastSync && (
           <div className="moodle-footer">
             <Clock size={14} /> Última sincronização: {formatDate(lastSync.toISOString())}
+          </div>
+        )}
+
+        {studyActivity && (
+          <div className="moodle-study-overlay" onClick={() => setStudyActivity(null)}>
+            <div className="moodle-study-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="moodle-study-header">
+                <div>
+                  <h3>{studyData?.activity_name || studyActivity.name}</h3>
+                  <p>{studyData?.course_name || studyActivity.course_name}</p>
+                  {studyData?.files && studyData.files.length > 0 && (
+                    <p className="moodle-study-files">Arquivos escaneados: {studyData.files.join(', ')}</p>
+                  )}
+                </div>
+                <button className="moodle-close" onClick={() => setStudyActivity(null)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {studyLoading && (
+                <div className="moodle-loading">
+                  <Loader2 size={32} className="spin" />
+                  <p>Baixando e escaneando a atividade...</p>
+                  <p className="moodle-study-hint">Gerando resolução passo a passo, resumo e 10 exercícios (pode levar ~1 min).</p>
+                </div>
+              )}
+
+              {!studyLoading && studyError && (
+                <div className="moodle-sync-error">
+                  <AlertTriangle size={18} color="#f59e0b" />
+                  <div>
+                    <strong>Não foi possível gerar o estudo.</strong>
+                    <ul><li>{studyError}</li></ul>
+                  </div>
+                  <button className="moodle-btn secondary" onClick={() => startStudy(studyActivity, true)}>
+                    <RefreshCw size={14} /> Tentar novamente
+                  </button>
+                </div>
+              )}
+
+              {!studyLoading && !studyError && studyData && (
+                <>
+                  <div className="moodle-study-tabs">
+                    <button className={studyTab === 'solution' ? 'active' : ''} onClick={() => setStudyTab('solution')}>
+                      <Edit size={15} /> Resolução passo a passo
+                    </button>
+                    <button className={studyTab === 'summary' ? 'active' : ''} onClick={() => setStudyTab('summary')}>
+                      <FileText size={15} /> Resumo
+                    </button>
+                    <button className={studyTab === 'exercises' ? 'active' : ''} onClick={() => setStudyTab('exercises')}>
+                      <HelpCircle size={15} /> Exercícios ({studyData.exercises?.length || 0})
+                    </button>
+                  </div>
+
+                  <div className="moodle-study-content">
+                    {studyTab === 'solution' && (
+                      <div className="study-solution">
+                        {studyData.solution?.question_summary && (
+                          <p className="study-question-summary">{studyData.solution.question_summary}</p>
+                        )}
+                        {(studyData.solution?.solution || []).map((step, i) => (
+                          <div key={i} className="study-step">
+                            <span className="study-step-num">{i + 1}</span>
+                            <div>
+                              <strong>{step.step}</strong>
+                              <p>{step.explanation}</p>
+                            </div>
+                          </div>
+                        ))}
+                        {studyData.solution?.final_answer && (
+                          <div className="study-final-answer">
+                            <h4>Resposta final</h4>
+                            <p>{studyData.solution.final_answer}</p>
+                          </div>
+                        )}
+                        {studyData.solution?.khan_style && (
+                          <div className="study-khan">
+                            <h4>Explicação de colega</h4>
+                            <p>{studyData.solution.khan_style}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {studyTab === 'summary' && (
+                      <div className="study-summary">
+                        {studyData.summary?.title && <h3>{studyData.summary.title}</h3>}
+                        {studyData.summary?.general_summary && (
+                          <p className="study-general">{studyData.summary.general_summary}</p>
+                        )}
+                        {(studyData.summary?.topics || []).map((t, i) => (
+                          <div key={i} className="study-topic">
+                            <h4>{t.name}
+                              {t.priority && <span className={`topic-priority ${t.priority}`}>{t.priority}</span>}
+                            </h4>
+                            {t.explanation && <p>{t.explanation}</p>}
+                            {t.key_concepts?.length > 0 && (
+                              <ul>{t.key_concepts.map((k, j) => <li key={j}>• {k}</li>)}</ul>
+                            )}
+                            {t.formulas?.length > 0 && (
+                              <div className="study-formulas">{t.formulas.map((f, j) => <code key={j}>{f}</code>)}</div>
+                            )}
+                            {t.examples?.length > 0 && (
+                              <div className="study-examples">
+                                <strong>Exemplos:</strong>
+                                {t.examples.map((ex, j) => <p key={j}>– {ex}</p>)}
+                              </div>
+                            )}
+                            {t.common_errors?.length > 0 && (
+                              <div className="study-errors">
+                                <strong>Erros comuns:</strong>
+                                {t.common_errors.map((er, j) => <p key={j}>⚠ {er}</p>)}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {studyData.summary?.study_tips?.length > 0 && (
+                          <div className="study-tips">
+                            <h4>Dicas de estudo</h4>
+                            {studyData.summary.study_tips.map((tip, i) => <p key={i}>💡 {tip}</p>)}
+                          </div>
+                        )}
+                        {studyData.summary?.formulas_summary?.length > 0 && (
+                          <div className="study-formulas-all">
+                            <h4>Fórmulas</h4>
+                            {studyData.summary.formulas_summary.map((f, i) => <code key={i}>{f}</code>)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {studyTab === 'exercises' && (
+                      <div className="study-exercises">
+                        {(studyData.exercises || []).map((ex, i) => (
+                          <div key={i} className="study-exercise">
+                            <div className="study-exercise-head">
+                              <span className="study-exercise-num">{i + 1}</span>
+                              <span className="activity-type">{ex.type}</span>
+                              {ex.difficulty && <span className="topic-priority medio">{ex.difficulty}</span>}
+                            </div>
+                            <p className="study-exercise-q">{ex.question}</p>
+                            {ex.options?.length > 0 && (
+                              <div className="study-options">
+                                {ex.options.map((o, j) => <p key={j}>{o}</p>)}
+                              </div>
+                            )}
+                            <div className="study-answer">
+                              <strong>Resposta: {ex.correct_answer}</strong>
+                              {ex.explanation && <p>{ex.explanation}</p>}
+                              {ex.solution_steps?.length > 0 && (
+                                <ol>{ex.solution_steps.map((s, j) => <li key={j}>{s}</li>)}</ol>
+                              )}
+                            </div>
+                            {ex.topic && <p className="study-exercise-topic">Tópico: {ex.topic}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

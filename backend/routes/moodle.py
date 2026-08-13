@@ -507,6 +507,20 @@ def _uid(current_user):
     return str(raw)
 
 
+# Disciplinas prioritárias (aparecem primeiro, com selo "Prioridade" no app)
+PRIORITY_KEYWORDS = [
+    "sistemas digitais",
+    "álgebra linear",
+    "algebra linear",
+    "estrutura de dados",
+]
+
+
+def _is_priority_course(fullname):
+    name = (fullname or "").lower()
+    return any(kw in name for kw in PRIORITY_KEYWORDS)
+
+
 def _module_duedate(mod, assign_map):
     """Extrai a data de entrega do módulo. Fontes (por ordem):
     customdata (JSON) do próprio módulo, datas do módulo e mapa de
@@ -615,14 +629,17 @@ def _sync_all(user_id=None):
         cat = c.get("category") or c.get("categoryname") or ""
         if isinstance(cat, dict):
             cat = cat.get("name", "") or ""
+        fullname = c.get("fullname", "")
         courses.append({
             "id": c.get("id"),
-            "fullname": c.get("fullname", ""),
+            "fullname": fullname,
             "shortname": c.get("shortname", ""),
             "category": cat if isinstance(cat, str) else "",
             "progress": c.get("progress", 0) or 0,
+            "priority": _is_priority_course(fullname),
             "url": f"{base}/course/view.php?id={c.get('id')}" if c.get("id") else "",
         })
+    courses.sort(key=lambda c: (not c["priority"], c["fullname"].lower()))
 
     courses_by_id = {c["id"]: c for c in courses if c.get("id")}
     course_ids = list(courses_by_id.keys())
@@ -638,6 +655,7 @@ def _sync_all(user_id=None):
             courses_raw = data2.get("courses", []) if isinstance(data2, dict) else []
             for course in courses_raw:
                 cname = course.get("fullname", "") or courses_by_id.get(course.get("id"), {}).get("fullname", "")
+                cpriority = bool(courses_by_id.get(course.get("id"), {}).get("priority"))
                 for a in course.get("assignments", []) or []:
                     cmid = a.get("cmid")
                     if cmid:
@@ -650,6 +668,9 @@ def _sync_all(user_id=None):
                         "course_name": cname,
                         "type": "assign",
                         "due_date": _ts(a.get("duedate", 0)) if a.get("duedate") else None,
+                        "priority": cpriority,
+                        "description": (a.get("intro") or "")[:2000] or "",
+                        "files": [],
                         "url": f"{base}/mod/assign/view.php?id={cmid}" if cmid else "",
                     })
         except HTTPException as e:
@@ -665,6 +686,7 @@ def _sync_all(user_id=None):
         items = []
         c = courses_by_id.get(cid, {})
         cname = c.get("fullname", "")
+        priority = bool(c.get("priority"))
         for s in sections if isinstance(sections, list) else []:
             for m in s.get("modules", []) or []:
                 modname = m.get("modname", "")
@@ -672,6 +694,16 @@ def _sync_all(user_id=None):
                     continue
                 cmid = m.get("moduleid") or m.get("id")
                 duedate = _module_duedate(m, assign_map)
+                files = [
+                    {
+                        "filename": c2.get("filename", ""),
+                        "fileurl": c2.get("fileurl", ""),
+                        "mimetype": c2.get("mimetype", ""),
+                        "filesize": c2.get("filesize", 0),
+                    }
+                    for c2 in m.get("contents", []) or []
+                    if c2.get("fileurl")
+                ]
                 items.append({
                     "id": m.get("id"),
                     "cmid": cmid,
@@ -680,6 +712,9 @@ def _sync_all(user_id=None):
                     "course_name": cname,
                     "type": modname,
                     "due_date": _ts(duedate) if duedate else None,
+                    "priority": priority,
+                    "description": (m.get("description") or "")[:2000] or "",
+                    "files": files,
                     "url": m.get("url") or (f"{base}/mod/{modname}/view.php?id={cmid}" if cmid else ""),
                 })
         return items, None
@@ -761,7 +796,7 @@ def _sync_all(user_id=None):
         })
 
     deadlines = act_deadlines + cal_deadlines
-    activities.sort(key=lambda a: a.get("due_date") or "")
+    activities.sort(key=lambda a: (not a.get("priority"), a.get("due_date") or ""))
     deadlines.sort(key=lambda d: d.get("due_date") or "")
     return {
         "courses": courses,
@@ -912,3 +947,232 @@ def moodle_save_token(req: TokenRequest, current_user: dict = Depends(get_curren
 def moodle_delete_token(current_user: dict = Depends(get_current_user)):
     _delete_config(_uid(current_user))
     return {"success": True}
+
+
+# ===== Escanear atividades (baixar arquivos e extrair texto) =====
+
+class StudyRequest(BaseModel):
+    activity_id: str
+    force: bool = False
+
+
+def _find_activity(user_id, activity_id):
+    """Localiza a atividade no cache (por id numérico ou cmid)."""
+    cached = _cache_get("activities", user_id) or []
+    for a in cached:
+        sid = str(a.get("id") or "")
+        scmid = str(a.get("cmid") or "")
+        if sid == str(activity_id) or scmid == str(activity_id):
+            return a
+    return None
+
+
+def _download_file(base, token, fileurl):
+    """Baixa um arquivo do Moodle usando o token do webservice (pluginfile)."""
+    url = fileurl.strip()
+    if url.startswith("/"):
+        url = base + url
+    sep = "&" if "?" in url else "?"
+    r = requests.get(url + f"{sep}token={token}", timeout=40)
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Não foi possível baixar o arquivo (HTTP {r.status_code}).")
+    return r.content
+
+
+def _html_to_text(html):
+    if not html:
+        return ""
+    import re as _re
+
+    text = _re.sub(r"<br\s*/?>", "\n", html)
+    text = _re.sub(r"</p>|</div>|</li>|</tr>", "\n", text)
+    text = _re.sub(r"<style.*?</style>", "", text, flags=_re.S | _re.I)
+    text = _re.sub(r"<script.*?</script>", "", text, flags=_re.S | _re.I)
+    text = _re.sub(r"<[^>]+>", "", text)
+    return text.strip()
+
+
+def _scan_activity(user_id, activity):
+    """Baixa todos os arquivos da atividade e extrai o texto (PDF, OCR, docx...)."""
+    from backend.routes.summary import _extract_text_from_bytes
+
+    cfg = _load_config(user_id)
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Token do Moodle não configurado.")
+    base = _base(cfg["url"])
+    token = cfg["token"]
+
+    parts = []
+    names = []
+    for f in activity.get("files", []) or []:
+        fileurl = f.get("fileurl", "")
+        if not fileurl:
+            continue
+        try:
+            content = _download_file(base, token, fileurl)
+        except Exception as e:
+            names.append(f"{f.get('filename', 'arquivo')} (erro: {str(e)[:100]})")
+            continue
+        text = _extract_text_from_bytes(content, f.get("filename", "arquivo"))
+        if text and len(text.strip()) > 20:
+            parts.append(text)
+            names.append(f.get("filename", "arquivo"))
+        else:
+            names.append(f"{f.get('filename', 'arquivo')} (sem texto extraído)")
+
+    description = activity.get("description") or ""
+    if description:
+        clean_desc = _html_to_text(description)
+        if clean_desc:
+            parts.insert(0, clean_desc)
+
+    combined = "\n\n".join(parts)
+    if not combined.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Não foi possível extrair texto desta atividade (sem arquivos legíveis ou descrição).",
+        )
+    return combined[:12000], names
+
+
+@router.post("/scan")
+def moodle_scan(req: StudyRequest, current_user: dict = Depends(get_current_user)):
+    """Baixa e escaneia (extrai texto) os arquivos da atividade do Moodle."""
+    user_id = _uid(current_user)
+    activity = _find_activity(user_id, req.activity_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Atividade não encontrada. Clique em Atualizar e tente de novo.")
+
+    cache_key = f"scan__{req.activity_id}"
+    cached = _cache_get(cache_key, user_id)
+    if cached and not req.force:
+        return {"activity_id": req.activity_id, "text": cached["text"], "files": cached["names"], "cached": True}
+
+    try:
+        text, names = _scan_activity(user_id, activity)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao escanear atividade: {e}")
+    _cache_set(cache_key, {"text": text, "names": names}, user_id)
+    return {"activity_id": req.activity_id, "text": text, "files": names, "cached": False}
+
+
+# ===== Estudar atividade (resolução + resumo + exercícios via IA) =====
+
+SOLUTION_PROMPT = """Você é um professor de engenharia/graduação. Resolva a ATIVIDADE abaixo.
+
+ATIVIDADE:
+{topic}: {name}
+{text}
+
+Responda EXATAMENTE com este JSON (sem markdown, sem ```):
+
+{{
+  "question_summary": "O que a atividade pede, em 2-3 frases",
+  "solution": [
+    {{
+      "step": "Passo 1 - título curto",
+      "explanation": "Explicação detalhada do passo, com cálculos quando houver"
+    }}
+  ],
+  "final_answer": "Resposta final completa da atividade",
+  "khan_style": "Explicação alternativa mais simples, como se estivesse ensinando um colega"
+}}
+
+REGRAS:
+1. Se a atividade for um PROBLEMA (tarefa/quiz), resolva passo a passo com cálculos.
+2. Se for material de estudo (PDF/lição), transforme em explicação passo a passo do conteúdo.
+3. Não invente dados: use apenas o que está na atividade.
+4. Retorne APENAS o JSON válido."""
+
+
+@router.post("/study")
+async def moodle_study(req: StudyRequest, current_user: dict = Depends(get_current_user)):
+    """Escaneia a atividade e gera: resolução passo a passo + resumo + 10 exercícios."""
+    user_id = _uid(current_user)
+    activity = _find_activity(user_id, req.activity_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Atividade não encontrada. Clique em Atualizar e tente de novo.")
+
+    study_key = f"study__{req.activity_id}"
+    cached = _cache_get(study_key, user_id)
+    if cached and not req.force:
+        return cached
+
+    scan = _cache_get(f"scan__{req.activity_id}", user_id)
+    if not scan:
+        try:
+            text, names = _scan_activity(user_id, activity)
+            scan = {"text": text, "names": names}
+            _cache_set(f"scan__{req.activity_id}", scan, user_id)
+        except HTTPException:
+            raise
+    text = scan["text"]
+
+    from backend.routes.summary import (
+        _chat_with_emergent_fallback,
+        _extract_json,
+        _build_full_summary_prompt,
+        _build_exercises_prompt,
+    )
+    from backend.services.chat_service import chat_service
+    from backend.services.providers import ProviderType
+
+    topic = (activity.get("course_name") or "Disciplina")
+    name = activity.get("name") or "Atividade"
+    max_chars = 8000
+
+    # 1) Resolução passo a passo
+    resp = await _chat_with_emergent_fallback(
+        chat_service,
+        lambda mc: SOLUTION_PROMPT.format(topic=topic, name=name, text=text[:mc]),
+        provider_type=ProviderType.GROQ,
+        system_prompt="Você é um professor expert. Retorne APENAS JSON válido, sem markdown.",
+        temperature=0.3,
+        max_tokens=4096,
+    )
+    solution_text = resp.get("content", "")
+    solution_json = _extract_json(solution_text)
+    solution = json.loads(solution_json) if solution_json else {
+        "question_summary": "", "solution": [], "final_answer": "", "khan_style": ""
+    }
+
+    # 2) Resumo de estudos
+    resp2 = await _chat_with_emergent_fallback(
+        chat_service,
+        lambda mc: _build_full_summary_prompt(text[:mc]),
+        provider_type=ProviderType.GROQ,
+        system_prompt="Você é um professor expert que cria resumos didáticos. Retorne APENAS JSON válido.",
+        temperature=0.3,
+        max_tokens=8192,
+    )
+    summary_text = resp2.get("content", "")
+    summary_json = _extract_json(summary_text)
+    summary = json.loads(summary_json) if summary_json else {}
+
+    # 3) 10 exercícios do material
+    resp3 = await _chat_with_emergent_fallback(
+        chat_service,
+        lambda mc: _build_exercises_prompt(text[:mc], 10, "misto", False),
+        provider_type=ProviderType.GROQ,
+        system_prompt="Você é um professor expert em exercícios. Retorne APENAS JSON válido.",
+        temperature=0.4,
+        max_tokens=8192,
+    )
+    exercises_text = resp3.get("content", "")
+    exercises_json = _extract_json(exercises_text)
+    exercises = json.loads(exercises_json).get("exercises", []) if exercises_json else []
+
+    result = {
+        "activity_id": req.activity_id,
+        "activity_name": name,
+        "course_name": topic,
+        "files": scan.get("names", []),
+        "solution": solution,
+        "summary": summary,
+        "exercises": exercises,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    _cache_set(study_key, result, user_id)
+    return result

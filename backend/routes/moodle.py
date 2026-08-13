@@ -1063,6 +1063,24 @@ def _scan_activity(user_id, activity):
 
     combined = "\n\n".join(parts)
     if not combined.strip():
+        # Fallback: quando nao ha texto extraivel (ex: video, links,
+        # PDF escaneado sem OCR, arquivos sem texto), gera o contexto
+        # a partir dos metadados da atividade em vez de falhar.
+        meta_parts = []
+        if activity.get("course_name"):
+            meta_parts.append(f"Disciplina: {activity['course_name']}")
+        if activity.get("name"):
+            meta_parts.append(f"Atividade: {activity['name']}")
+        if activity.get("type"):
+            meta_parts.append(f"Tipo de atividade: {activity['type']}")
+        if names:
+            meta_parts.append("Arquivos anexados: " + ", ".join(names))
+        if activity.get("url"):
+            meta_parts.append(f"Link da atividade: {activity['url']}")
+        if meta_parts:
+            combined = "\n".join(meta_parts)
+            names.append("(sem texto extraido - estudo gerado a partir dos metadados da atividade)")
+            return combined[:12000], names
         raise HTTPException(
             status_code=400,
             detail="Não foi possível extrair texto desta atividade (sem arquivos legíveis ou descrição).",
@@ -1118,8 +1136,9 @@ Responda EXATAMENTE com este JSON (sem markdown, sem ```):
 REGRAS:
 1. Se a atividade for um PROBLEMA (tarefa/quiz), resolva passo a passo com cálculos.
 2. Se for material de estudo (PDF/lição), transforme em explicação passo a passo do conteúdo.
-3. Não invente dados: use apenas o que está na atividade.
-4. Retorne APENAS o JSON válido."""
+3. Se o conteúdo disponível for limitado (apenas metadados: título, disciplina, arquivos e link, sem texto do enunciado), diga isso claramente na question_summary e explique ao aluno: o que esse tipo de atividade costuma pedir, como abordá-la, passos para resolvê-la e o que estudar. Não invente dados, cálculos ou números específicos que não estejam no conteúdo.
+4. Não invente dados: use apenas o que está na atividade.
+5. Retorne APENAS o JSON válido."""
 
 
 @router.post("/study")

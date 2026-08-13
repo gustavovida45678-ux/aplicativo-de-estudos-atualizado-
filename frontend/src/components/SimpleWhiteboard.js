@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked } from "lucide-react";
+import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const SUBJECT_KEY_PREFIX = "lousa_subject_v1_";
@@ -21,7 +21,7 @@ const listSavedSubjects = () => {
   }
 };
 
-function SimpleWhiteboard({ onExit }) {
+function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   const { toast } = useToast();
   const canvasRef = useRef(null);
   const wrapperRef = useRef(null);
@@ -38,6 +38,7 @@ function SimpleWhiteboard({ onExit }) {
 
   // Materia (salvamento por disciplina)
   const [currentSubject, setCurrentSubject] = useState("default");
+  const currentSubjectRef = useRef("default");
   const [subjectList, setSubjectList] = useState(listSavedSubjects);
   const [newSubjectName, setNewSubjectName] = useState("");
   
@@ -47,6 +48,21 @@ function SimpleWhiteboard({ onExit }) {
   const lastPointRef = useRef(null);
   const textJustCreatedRef = useRef(false);
 
+  // Mapa mental
+  const nodesRef = useRef([]);
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const selectedNodeIdRef = useRef(null);
+  const setSelectedNode = (id) => {
+    selectedNodeIdRef.current = id;
+    setSelectedNodeId(id);
+  };
+  const dragNodeRef = useRef(null);
+  const dragOffsetRef = useRef(null);
+
+  // Tamanho do quadro (crescer)
+  const [boardExtra, setBoardExtra] = useState(0);
+  const boardExtraRef = useRef(0);
+
   const COLORS = ["#ffffff", "#58a6ff", "#f78166", "#3fb950", "#d2a8ff", "#ffa657", "#ff7b72", "#79c0ff"];
   const FONTS = ["Inter", "Arial", "Georgia", "Courier New", "Comic Sans MS", "Times New Roman"];
 
@@ -54,19 +70,24 @@ function SimpleWhiteboard({ onExit }) {
   const strokesRef = useRef([]);
   const textsRef = useRef([]);
 
-  useEffect(() => {
+  const applyCanvasSize = () => {
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const w = rect.width + boardExtraRef.current;
+    const h = rect.height + boardExtraRef.current;
+    canvas.width = w * window.devicePixelRatio;
+    canvas.height = h * window.devicePixelRatio;
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+  };
+
+  useEffect(() => {
+    applyCanvasSize();
+    redraw();
     const resize = () => {
-      const rect = wrapperRef.current.getBoundingClientRect();
-      canvas.width = rect.width * window.devicePixelRatio;
-      canvas.height = rect.height * window.devicePixelRatio;
-      canvas.style.width = rect.width + "px";
-      canvas.style.height = rect.height + "px";
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      applyCanvasSize();
       redraw();
     };
-    resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
@@ -85,11 +106,13 @@ function SimpleWhiteboard({ onExit }) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     const rect = wrapperRef.current.getBoundingClientRect();
+    const W = rect.width + boardExtraRef.current;
+    const H = rect.height + boardExtraRef.current;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#0d1117";
-    ctx.fillRect(0, 0, rect.width, rect.height);
+    ctx.fillRect(0, 0, W, H);
     ctx.restore();
 
     // Redraw all strokes
@@ -111,6 +134,61 @@ function SimpleWhiteboard({ onExit }) {
       ctx.stroke();
     });
 
+    // Redraw mind map nodes
+    nodesRef.current.forEach(node => {
+      if (!node.parentId) return;
+      const parent = nodesRef.current.find(n => n.id === node.parentId);
+      if (!parent) return;
+      const s = getNodeSize(ctx, node);
+      const ps = getNodeSize(ctx, parent);
+      const px = parent.x + ps.w / 2;
+      const py = parent.y + ps.h;
+      const cx = node.x + s.w / 2;
+      const cy = node.y;
+      ctx.strokeStyle = "#30363d";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.bezierCurveTo(px, py + (cy - py) * 0.4, cx, cy - (cy - py) * 0.4, cx, cy);
+      ctx.stroke();
+    });
+    nodesRef.current.forEach(node => {
+      const s = getNodeSize(ctx, node);
+      const isSel = node.id === selectedNodeIdRef.current;
+      const color = node.color || "#58a6ff";
+      const x = node.x;
+      const y = node.y;
+      const r = 8;
+      ctx.save();
+      if (isSel) {
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 14;
+      }
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + s.w, y, x + s.w, y + s.h, r);
+      ctx.arcTo(x + s.w, y + s.h, x, y + s.h, r);
+      ctx.arcTo(x, y + s.h, x, y, r);
+      ctx.arcTo(x, y, x + s.w, y, r);
+      ctx.closePath();
+      ctx.fillStyle = "#161b22";
+      ctx.fill();
+      ctx.strokeStyle = isSel ? color : "#30363d";
+      ctx.lineWidth = isSel ? 2.5 : 1.5;
+      ctx.stroke();
+      ctx.restore();
+      const lines = node.content.split("\n");
+      ctx.save();
+      ctx.font = `${node.bold ? "bold " : ""}${node.size}px Inter`;
+      ctx.fillStyle = node.content ? "#e6edf3" : "#57606a";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      lines.forEach((line, i) => {
+        ctx.fillText(line, x + s.w / 2, y + s.h / 2 + (i - (lines.length - 1) / 2) * 22);
+      });
+      ctx.restore();
+    });
+
     // Redraw all texts
     textsRef.current.forEach(text => {
       const fontStyle = (text.bold ? "bold " : "") + (text.italic ? "italic " : "") + `${text.size}px ${text.font}`;
@@ -128,7 +206,238 @@ function SimpleWhiteboard({ onExit }) {
     ctx.restore();
   };
 
+  const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+  const getNodeSize = (ctx, node) => {
+    const pad = 14;
+    ctx.font = `${node.bold ? "bold " : ""}${node.size}px Inter`;
+    const lines = (node.content || "").split("\n");
+    let w = 0;
+    lines.forEach(l => w = Math.max(w, ctx.measureText(l).width));
+    return { w: Math.max(w, 40) + pad * 2, h: Math.max(lines.length * 22, 30) + pad };
+  };
+
+  const hitTestNode = (pt) => {
+    const ctx = canvasRef.current.getContext("2d");
+    for (let i = nodesRef.current.length - 1; i >= 0; i--) {
+      const n = nodesRef.current[i];
+      const s = getNodeSize(ctx, n);
+      if (pt.x >= n.x && pt.x <= n.x + s.w && pt.y >= n.y && pt.y <= n.y + s.h) return n;
+    }
+    return null;
+  };
+
+  const hitTestText = (pt) => {
+    const ctx = canvasRef.current.getContext("2d");
+    for (let i = textsRef.current.length - 1; i >= 0; i--) {
+      const t = textsRef.current[i];
+      ctx.font = (t.bold ? "bold " : "") + (t.italic ? "italic " : "") + `${t.size}px ${t.font}`;
+      const lines = t.content.split("\n");
+      let w = 0;
+      lines.forEach(l => w = Math.max(w, ctx.measureText(l).width));
+      const h = lines.length * t.size * 1.3;
+      const x0 = t.align === "center" ? t.x - w / 2 : t.align === "right" ? t.x - w : t.x;
+      if (pt.x >= x0 - 6 && pt.x <= x0 + w + 6 && pt.y >= t.y - 6 && pt.y <= t.y + h + 6) return t;
+    }
+    return null;
+  };
+
+  const removeNodeSubtree = (id) => {
+    const dead = new Set([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      nodesRef.current.forEach(n => {
+        if (!dead.has(n.id) && n.parentId && dead.has(n.parentId)) {
+          dead.add(n.id);
+          changed = true;
+        }
+      });
+    }
+    nodesRef.current = nodesRef.current.filter(n => !dead.has(n.id));
+    if (dead.has(selectedNodeIdRef.current)) setSelectedNode(null);
+  };
+
+  const pointInNode = (pt, node) => {
+    const ctx = canvasRef.current.getContext("2d");
+    const s = getNodeSize(ctx, node);
+    return pt.x >= node.x && pt.x <= node.x + s.w && pt.y >= node.y && pt.y <= node.y + s.h;
+  };
+
+  const pointInText = (pt, t) => {
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.font = (t.bold ? "bold " : "") + (t.italic ? "italic " : "") + `${t.size}px ${t.font}`;
+    const lines = t.content.split("\n");
+    let w = 0;
+    lines.forEach(l => w = Math.max(w, ctx.measureText(l).width));
+    const h = lines.length * t.size * 1.3;
+    const x0 = t.align === "center" ? t.x - w / 2 : t.align === "right" ? t.x - w : t.x;
+    return pt.x >= x0 - 6 && pt.x <= x0 + w + 6 && pt.y >= t.y - 6 && pt.y <= t.y + h + 6;
+  };
+
+  const removeOrphans = () => {
+    const alive = new Set(nodesRef.current.map(n => n.id));
+    let removed = true;
+    while (removed) {
+      removed = false;
+      for (let i = nodesRef.current.length - 1; i >= 0; i--) {
+        const n = nodesRef.current[i];
+        if (n.parentId && !alive.has(n.parentId)) {
+          nodesRef.current.splice(i, 1);
+          alive.delete(n.id);
+          removed = true;
+        }
+      }
+    }
+  };
+
+  const eraseAt = (pt) => {
+    // Borracha apaga textos e tópicos por onde passar
+    textsRef.current = textsRef.current.filter(t => !pointInText(pt, t));
+    const before = nodesRef.current.length;
+    nodesRef.current = nodesRef.current.filter(n => !pointInNode(pt, n));
+    if (nodesRef.current.length !== before) {
+      removeOrphans();
+      if (selectedNodeIdRef.current && !nodesRef.current.some(n => n.id === selectedNodeIdRef.current)) {
+        setSelectedNode(null);
+      }
+    }
+  };
+
+  const openNodeEditor = (node) => {
+    textJustCreatedRef.current = true;
+    setEditingText(node);
+    setTimeout(() => textInputRef.current?.focus(), 0);
+  };
+
+  const openTextEditor = (t) => {
+    setEditingText(t);
+    setTimeout(() => textInputRef.current?.focus(), 0);
+  };
+
+  const createNodeAt = (x, y) => {
+    const node = {
+      id: uid(),
+      parentId: null,
+      x, y,
+      content: "",
+      color,
+      size: 16,
+      bold: false,
+      kind: "node"
+    };
+    nodesRef.current.push(node);
+    setSelectedNode(node.id);
+    openNodeEditor(node);
+    redraw();
+  };
+
+  const addChildToSelected = () => {
+    const p = nodesRef.current.find(n => n.id === selectedNodeIdRef.current);
+    if (!p) return;
+    const ctx = canvasRef.current.getContext("2d");
+    const ps = getNodeSize(ctx, p);
+    const sibs = nodesRef.current.filter(n => n.parentId === p.id);
+    const node = {
+      id: uid(),
+      parentId: p.id,
+      x: p.x + ps.w + 50,
+      y: p.y + sibs.length * 72,
+      content: "",
+      color,
+      size: 16,
+      bold: false,
+      kind: "node"
+    };
+    nodesRef.current.push(node);
+    setSelectedNode(node.id);
+    openNodeEditor(node);
+    redraw();
+  };
+
+  const addSiblingToSelected = () => {
+    const cur = nodesRef.current.find(n => n.id === selectedNodeIdRef.current);
+    if (!cur) return;
+    const ctx = canvasRef.current.getContext("2d");
+    let node;
+    if (cur.parentId) {
+      const p = nodesRef.current.find(n => n.id === cur.parentId);
+      const ps = getNodeSize(ctx, p);
+      const sibs = nodesRef.current.filter(n => n.parentId === p.id);
+      node = {
+        id: uid(),
+        parentId: p.id,
+        x: p.x + ps.w + 50,
+        y: p.y + sibs.length * 72,
+        content: "",
+        color,
+        size: 16,
+        bold: false,
+        kind: "node"
+      };
+    } else {
+      node = {
+        id: uid(),
+        parentId: null,
+        x: cur.x + 40,
+        y: cur.y + 80,
+        content: "",
+        color,
+        size: 16,
+        bold: false,
+        kind: "node"
+      };
+    }
+    nodesRef.current.push(node);
+    setSelectedNode(node.id);
+    openNodeEditor(node);
+    redraw();
+  };
+
+  const deleteSelectedNode = () => {
+    if (!selectedNodeIdRef.current) return;
+    removeNodeSubtree(selectedNodeIdRef.current);
+    redraw();
+    toast({ title: "Tópico excluído" });
+  };
+
+  const handleDoubleClick = (e) => {
+    e.preventDefault();
+    const pt = getPoint(e);
+    const node = hitTestNode(pt);
+    if (node) {
+      openNodeEditor(node);
+      redraw();
+      return;
+    }
+    const t = hitTestText(pt);
+    if (t) {
+      textsRef.current = textsRef.current.filter(x => x.content.trim());
+      const real = hitTestText(pt);
+      if (real) {
+        openTextEditor(real);
+        redraw();
+      }
+    }
+  };
+
   const startDrawing = (e) => {
+    if (tool === "mindmap") {
+      e.preventDefault();
+      const pt = getPoint(e);
+      const hit = hitTestNode(pt);
+      if (hit) {
+        if (hit.id === selectedNodeIdRef.current) {
+          dragNodeRef.current = hit;
+          dragOffsetRef.current = { x: pt.x - hit.x, y: pt.y - hit.y };
+        } else {
+          setSelectedNode(hit.id);
+        }
+        return;
+      }
+      createNodeAt(pt.x, pt.y);
+      return;
+    }
     if (tool === "text") {
       // Impede o default do mousedown (mover foco p/ body), senao
       // o textarea recém-focado perde o foco na mesma hora e o overlay fecha
@@ -139,6 +448,9 @@ function SimpleWhiteboard({ onExit }) {
     }
     e.preventDefault();
     const pt = getPoint(e);
+    if (tool === "eraser") {
+      eraseAt(pt);
+    }
     lastPointRef.current = pt;
     setIsDrawing(true);
     
@@ -152,9 +464,21 @@ function SimpleWhiteboard({ onExit }) {
   };
 
   const draw = (e) => {
+    if (dragNodeRef.current) {
+      e.preventDefault();
+      const pt = getPoint(e);
+      const n = dragNodeRef.current;
+      n.x = pt.x - dragOffsetRef.current.x;
+      n.y = pt.y - dragOffsetRef.current.y;
+      redraw();
+      return;
+    }
     if (!isDrawing || tool === "text") return;
     e.preventDefault();
     const pt = getPoint(e);
+    if (tool === "eraser") {
+      eraseAt(pt);
+    }
     const currentStroke = strokesRef.current[strokesRef.current.length - 1];
     if (currentStroke) {
       currentStroke.points.push(pt);
@@ -165,10 +489,13 @@ function SimpleWhiteboard({ onExit }) {
   const stopDrawing = () => {
     setIsDrawing(false);
     lastPointRef.current = null;
+    dragNodeRef.current = null;
+    dragOffsetRef.current = null;
   };
 
   const startTextEdit = (x, y) => {
     const newText = {
+      kind: "text",
       x, y,
       content: "",
       color,
@@ -192,8 +519,9 @@ function SimpleWhiteboard({ onExit }) {
     // mutar o objeto nao dispara re-render -> o texto digitado sumia.
     // Aqui atualizamos via setState e mantemos textsRef sincronizado.
     const updated = { ...editingText, content: e.target.value };
-    const idx = textsRef.current.indexOf(editingText);
-    if (idx !== -1) textsRef.current[idx] = updated;
+    const list = editingText.kind === "node" ? nodesRef.current : textsRef.current;
+    const idx = list.indexOf(editingText);
+    if (idx !== -1) list[idx] = updated;
     setEditingText(updated);
     redraw();
   };
@@ -210,8 +538,12 @@ function SimpleWhiteboard({ onExit }) {
   const finishTextEdit = () => {
     if (!editingText) return;
     if (!editingText.content.trim()) {
-      // Remove empty text
-      textsRef.current = textsRef.current.filter(t => t !== editingText);
+      if (editingText.kind === "node") {
+        removeNodeSubtree(editingText.id);
+      } else {
+        // Remove empty text
+        textsRef.current = textsRef.current.filter(t => t !== editingText);
+      }
     }
     setEditingText(null);
     redraw();
@@ -219,7 +551,11 @@ function SimpleWhiteboard({ onExit }) {
 
   const cancelTextEdit = () => {
     if (!editingText) return;
-    textsRef.current = textsRef.current.filter(t => t !== editingText);
+    if (editingText.kind === "node") {
+      removeNodeSubtree(editingText.id);
+    } else {
+      textsRef.current = textsRef.current.filter(t => t !== editingText);
+    }
     setEditingText(null);
     redraw();
   };
@@ -239,6 +575,8 @@ function SimpleWhiteboard({ onExit }) {
   const clearCanvas = () => {
     strokesRef.current = [];
     textsRef.current = [];
+    nodesRef.current = [];
+    setSelectedNode(null);
     redraw();
     toast({ title: "Lousa limpa" });
   };
@@ -258,14 +596,22 @@ function SimpleWhiteboard({ onExit }) {
     redraw();
   };
 
+  const growBoard = (delta) => {
+    boardExtraRef.current = Math.max(0, Math.min(6000, boardExtraRef.current + delta));
+    setBoardExtra(boardExtraRef.current);
+    applyCanvasSize();
+    redraw();
+  };
+
   // ── Salvamento por materia ──────────────────────────────────
   const persistBoard = () => {
     try {
       localStorage.setItem(
-        subjectKey(currentSubject),
+        subjectKey(currentSubjectRef.current),
         JSON.stringify({
           strokes: strokesRef.current,
           texts: textsRef.current,
+          nodes: nodesRef.current,
           savedAt: new Date().toISOString(),
         })
       );
@@ -282,6 +628,7 @@ function SimpleWhiteboard({ onExit }) {
         JSON.stringify({
           strokes: strokesRef.current,
           texts: textsRef.current,
+          nodes: nodesRef.current,
           savedAt: new Date().toISOString(),
         })
       );
@@ -301,6 +648,8 @@ function SimpleWhiteboard({ onExit }) {
       const data = JSON.parse(raw);
       strokesRef.current = Array.isArray(data.strokes) ? data.strokes : [];
       textsRef.current = Array.isArray(data.texts) ? data.texts : [];
+      nodesRef.current = Array.isArray(data.nodes) ? data.nodes : [];
+      setSelectedNode(null);
       redraw();
       return true;
     } catch (e) {
@@ -317,6 +666,8 @@ function SimpleWhiteboard({ onExit }) {
     if (!loaded) {
       strokesRef.current = [];
       textsRef.current = [];
+      nodesRef.current = [];
+      setSelectedNode(null);
       redraw();
     }
     toast({ title: next, description: loaded ? "Quadro carregado" : "Matéria vazia" });
@@ -332,6 +683,8 @@ function SimpleWhiteboard({ onExit }) {
     setCurrentSubject(name);
     strokesRef.current = [];
     textsRef.current = [];
+    nodesRef.current = [];
+    setSelectedNode(null);
     redraw();
     saveBoardToSubject(name);
     setNewSubjectName("");
@@ -349,6 +702,8 @@ function SimpleWhiteboard({ onExit }) {
       setCurrentSubject("default");
       strokesRef.current = [];
       textsRef.current = [];
+      nodesRef.current = [];
+      setSelectedNode(null);
       redraw();
     }
     toast({ title: "Matéria excluída", description: `"${subject}" foi excluída` });
@@ -357,6 +712,7 @@ function SimpleWhiteboard({ onExit }) {
   // Handle click outside text input to finish editing
   useEffect(() => {
     const handleClickOutside = (e) => {
+      if (minimized) return;
       // Ignora o proprio mousedown que criou o input de texto,
       // senao o overlay fecha no mesmo clique em que abre
       if (textJustCreatedRef.current) {
@@ -369,7 +725,54 @@ function SimpleWhiteboard({ onExit }) {
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [editingText]);
+  }, [editingText, minimized]);
+
+  // Apagar tópico selecionado com Delete/Backspace
+  useEffect(() => {
+    const onKey = (e) => {
+      if (minimized) return;
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+      if (selectedNodeIdRef.current && !editingText) {
+        e.preventDefault();
+        removeNodeSubtree(selectedNodeIdRef.current);
+        redraw();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [editingText, minimized]);
+
+  // Sincroniza tamanho quando a lousa volta a ficar visível; salva ao minimizar
+  useEffect(() => {
+    if (minimized) {
+      persistBoard();
+    } else {
+      applyCanvasSize();
+      redraw();
+    }
+  }, [minimized]);
+
+  // Autosave: salva a lousa periodicamente e ao sair/fechar
+  useEffect(() => {
+    const autosave = () => {
+      if (strokesRef.current.length || textsRef.current.length || nodesRef.current.length) {
+        persistBoard();
+      }
+    };
+    const id = setInterval(autosave, 4000);
+    window.addEventListener("pagehide", autosave);
+    window.addEventListener("beforeunload", autosave);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("pagehide", autosave);
+      window.removeEventListener("beforeunload", autosave);
+      autosave();
+    };
+  }, []);
+
+  const selectedNode = nodesRef.current.find(n => n.id === selectedNodeId) || null;
 
   return (
     <div className="simple-whiteboard" ref={wrapperRef} onWheel={handleWheel}>
@@ -378,6 +781,11 @@ function SimpleWhiteboard({ onExit }) {
           <button className="exit-btn" onClick={onExit} title="Sair">
             <X size={20} />
           </button>
+          {onMinimize && (
+            <button className="exit-btn" onClick={onMinimize} title="Minimizar lousa (usar o app)">
+              <Minimize2 size={20} />
+            </button>
+          )}
           <div className="whiteboard-title">Lousa Digital</div>
         </div>
       )}
@@ -392,6 +800,9 @@ function SimpleWhiteboard({ onExit }) {
           </button>
           <button className={`tool-btn ${tool === "text" ? "active" : ""}`} onClick={() => setTool("text")} title="Texto (T)">
             <Type size={20} />
+          </button>
+          <button className={`tool-btn ${tool === "mindmap" ? "active" : ""}`} onClick={() => setTool("mindmap")} title="Mapa Mental (M) - clique para criar tópico, arraste para mover, duplo clique para editar">
+            <Network size={20} />
           </button>
         </div>
 
@@ -418,6 +829,26 @@ function SimpleWhiteboard({ onExit }) {
           <span className="size-value">{size}px</span>
         </div>
 
+        {selectedNode && tool === "mindmap" && (
+          <>
+            <div className="tool-divider" />
+            <div className="tool-group node-actions">
+              <button className="tool-btn" onClick={addChildToSelected} title="Adicionar filho ao tópico selecionado">
+                <Plus size={18} />
+              </button>
+              <button className="tool-btn" onClick={addSiblingToSelected} title="Adicionar irmão">
+                <GitFork size={18} />
+              </button>
+              <button className="tool-btn" onClick={() => { const n = nodesRef.current.find(x => x.id === selectedNodeId); if (n) { openNodeEditor(n); redraw(); } }} title="Editar texto do tópico">
+                <Pencil size={18} />
+              </button>
+              <button className="tool-btn danger" onClick={deleteSelectedNode} title="Excluir tópico (Del)">
+                <Trash2 size={18} />
+              </button>
+            </div>
+          </>
+        )}
+
         {tool === "text" && (
           <>
             <div className="tool-divider" />
@@ -441,6 +872,8 @@ function SimpleWhiteboard({ onExit }) {
           <button onClick={clearCanvas} title="Limpar tudo"><Trash2 size={20} /></button>
           <button onClick={saveImage} title="Baixar PNG"><Download size={20} /></button>
           <button onClick={resetView} title="Resetar zoom (0)"><RotateCcw size={20} /></button>
+          <button onClick={() => growBoard(400)} title={`Crescer o quadro (atual: +${boardExtra}px)`}><Expand size={20} /></button>
+          <button onClick={() => growBoard(-400)} title="Diminuir o quadro (-400px)"><Shrink size={20} /></button>
           <div className="zoom-display">
             <Minus size={16} onClick={() => setScale(s => Math.max(s * 0.8, 0.25))} />
             <span>{Math.round(scale * 100)}%</span>
@@ -490,6 +923,7 @@ function SimpleWhiteboard({ onExit }) {
           onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
+          onDoubleClick={handleDoubleClick}
           onTouchStart={startDrawing}
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
@@ -526,7 +960,7 @@ function SimpleWhiteboard({ onExit }) {
                 textAlign: editingText.align,
                 width: "100%"
               }}
-              placeholder="Digite seu texto... (Ctrl+Enter para finalizar, Esc para cancelar)"
+              placeholder={editingText.kind === "node" ? "Título do tópico... (Ctrl+Enter finaliza, Esc cancela)" : "Digite seu texto... (Ctrl+Enter para finalizar, Esc para cancelar)"}
               rows={1}
             />
           </div>

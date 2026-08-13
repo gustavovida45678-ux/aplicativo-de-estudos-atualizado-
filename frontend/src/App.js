@@ -9,7 +9,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool, Network } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -59,6 +59,7 @@ function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(false);
   
   const [activeTab, setActiveTab] = useState("whiteboard");
+  const [whiteboardMinimized, setWhiteboardMinimized] = useState(false);
   const [adaptiveStart, setAdaptiveStart] = useState(false);
   const [adaptiveView, setAdaptiveView] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -647,9 +648,17 @@ function App() {
               <JudgePanel />
             </div>
             ) : activeTab === "whiteboard" ? (
-              <div className="whiteboard-container" style={{ height: "100vh" }}>
-                <SimpleWhiteboard onExit={() => setActiveTab("dashboard")} />
-              </div>
+              whiteboardMinimized ? (
+                <SmartDashboard
+                  currentUser={currentUser}
+                  onStartStudy={startStudyNow}
+                  onOpenErrors={() => openAdaptiveView("errors")}
+                  onOpenDomain={() => openAdaptiveView("domain")}
+                  onOpenStudy={openStudy}
+                />
+              ) : (
+                <div className="whiteboard-minimized-placeholder" />
+              )
             ) : activeTab === "moodle" ? (
               <div className="mx-auto max-w-5xl px-4 py-8">
                 <MoodlePage onClose={() => setActiveTab("dashboard")} />
@@ -911,6 +920,28 @@ function App() {
         </>
       )}
         </>
+      )}
+
+      {/* Lousa sempre montada (minimizável sem perder conteúdo) */}
+      <div
+        className="whiteboard-container"
+        style={{ height: "100vh", display: activeTab === "whiteboard" && !whiteboardMinimized ? undefined : "none" }}
+      >
+        <SimpleWhiteboard
+          onExit={() => setActiveTab("dashboard")}
+          onMinimize={() => setWhiteboardMinimized(true)}
+          minimized={activeTab !== "whiteboard" || whiteboardMinimized}
+        />
+      </div>
+      {whiteboardMinimized && activeTab === "whiteboard" && (
+        <button
+          className="whiteboard-restore-btn"
+          onClick={() => setWhiteboardMinimized(false)}
+          title="Reabrir Lousa Digital"
+        >
+          <Network size={22} />
+          <span>Lousa</span>
+        </button>
       )}
     </div>
   );

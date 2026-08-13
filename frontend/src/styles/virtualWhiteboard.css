@@ -1303,3 +1303,29 @@ input[type="range"].stroke-slider {
   height: 100%;
   width: 100%;
 }
+
+.whiteboard-minimized-placeholder {
+  display: none;
+}
+
+.whiteboard-restore-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #238636, #1a7f37);
+  color: #fff;
+  border: 1px solid #2ea043;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.whiteboard-restore-btn:hover {
+  background: linear-gradient(135deg, #2ea043, #238636);
+}

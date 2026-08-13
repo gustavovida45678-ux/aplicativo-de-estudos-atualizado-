@@ -515,10 +515,26 @@ PRIORITY_KEYWORDS = [
     "estrutura de dados",
 ]
 
+# Cursos prioritários conhecidos pelo ID no Moodle (course/view.php?id=N).
+# Mesmo que a listagem do webservice não retorne o curso, o sync busca as
+# atividades dele diretamente pelo id.
+PRIORITY_COURSE_IDS = {
+    57858: "Estrutura de Dados",
+}
 
-def _is_priority_course(fullname):
+
+def _is_priority_course(fullname, course_id=None):
     name = (fullname or "").lower()
-    return any(kw in name for kw in PRIORITY_KEYWORDS)
+    if any(kw in name for kw in PRIORITY_KEYWORDS):
+        return True
+    if course_id is not None:
+        try:
+            cid = int(course_id)
+        except (TypeError, ValueError):
+            cid = None
+        if cid and cid in PRIORITY_COURSE_IDS:
+            return True
+    return False
 
 
 def _module_duedate(mod, assign_map):
@@ -636,8 +652,24 @@ def _sync_all(user_id=None):
             "shortname": c.get("shortname", ""),
             "category": cat if isinstance(cat, str) else "",
             "progress": c.get("progress", 0) or 0,
-            "priority": _is_priority_course(fullname),
+            "priority": _is_priority_course(fullname, c.get("id")),
             "url": f"{base}/course/view.php?id={c.get('id')}" if c.get("id") else "",
+        })
+    courses.sort(key=lambda c: (not c["priority"], c["fullname"].lower()))
+
+    # Cursos prioritários fixos (por id): mesmo que a listagem do webservice
+    # não os retorne, as atividades deles são buscadas pelo id no passo 3.
+    for cid, pinned_name in PRIORITY_COURSE_IDS.items():
+        if cid in {c.get("id") for c in courses}:
+            continue
+        courses.append({
+            "id": cid,
+            "fullname": pinned_name,
+            "shortname": pinned_name,
+            "category": "",
+            "progress": 0,
+            "priority": True,
+            "url": f"{base}/course/view.php?id={cid}",
         })
     courses.sort(key=lambda c: (not c["priority"], c["fullname"].lower()))
 
@@ -721,6 +753,7 @@ def _sync_all(user_id=None):
 
     contents_items = []
     course_errors = []
+    pinned_ids = set(PRIORITY_COURSE_IDS)
     if course_ids:
         with ThreadPoolExecutor(max_workers=8) as ex:
             futs = {ex.submit(_fetch_course, cid): cid for cid in course_ids[:60]}
@@ -731,7 +764,9 @@ def _sync_all(user_id=None):
                 except Exception as e:  # pragma: no cover
                     items, err = [], f"curso {cid}: {e}"
                 if err:
-                    course_errors.append(err)
+                    # Curso fixo (por id) pode não ser do usuário atual: não vira erro no banner
+                    if cid not in pinned_ids:
+                        course_errors.append(err)
                 contents_items.extend(items)
     if course_errors:
         extra = f" (+{len(course_errors) - 5} disciplinas mais)" if len(course_errors) > 5 else ""

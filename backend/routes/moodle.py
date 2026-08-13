@@ -1177,46 +1177,67 @@ async def moodle_study(req: StudyRequest, current_user: dict = Depends(get_curre
     name = activity.get("name") or "Atividade"
     max_chars = 8000
 
+    # As 3 chamadas de IA rodam em paralelo (antes eram sequenciais e o
+    # tempo total estourava o limite de resposta do Render -> erro generico
+    # no app). Se uma falhar, as outras continuam e o erro vai no campo errors.
+    import asyncio
+
+    async def _gen(prompt_builder, system, temperature, max_tokens):
+        return await _chat_with_emergent_fallback(
+            chat_service,
+            lambda mc: prompt_builder(text[:mc]),
+            provider_type=ProviderType.GROQ,
+            system_prompt=system,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    ai_errors = []
+
+    def _ok(resp):
+        if isinstance(resp, Exception):
+            ai_errors.append(f"{type(resp).__name__}: {str(resp)[:200]}")
+            return {}
+        return resp or {}
+
+    try:
+        results = await asyncio.gather(
+            _gen(lambda mc: SOLUTION_PROMPT.format(topic=topic, name=name, text=mc),
+                 "Você é um professor expert. Retorne APENAS JSON válido, sem markdown.", 0.3, 4096),
+            _gen(_build_full_summary_prompt,
+                 "Você é um professor expert que cria resumos didáticos. Retorne APENAS JSON válido.", 0.3, 8192),
+            _gen(lambda mc: _build_exercises_prompt(mc, 10, "misto", False),
+                 "Você é um professor expert em exercícios. Retorne APENAS JSON válido.", 0.4, 8192),
+            return_exceptions=True,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Falha ao gerar o estudo com a IA: {e}")
+
+    solution_resp, summary_resp, exercises_resp = results
+
     # 1) Resolução passo a passo
-    resp = await _chat_with_emergent_fallback(
-        chat_service,
-        lambda mc: SOLUTION_PROMPT.format(topic=topic, name=name, text=text[:mc]),
-        provider_type=ProviderType.GROQ,
-        system_prompt="Você é um professor expert. Retorne APENAS JSON válido, sem markdown.",
-        temperature=0.3,
-        max_tokens=4096,
-    )
-    solution_text = resp.get("content", "")
+    solution_text = _ok(solution_resp).get("content", "")
     solution_json = _extract_json(solution_text)
     solution = json.loads(solution_json) if solution_json else {
         "question_summary": "", "solution": [], "final_answer": "", "khan_style": ""
     }
 
     # 2) Resumo de estudos
-    resp2 = await _chat_with_emergent_fallback(
-        chat_service,
-        lambda mc: _build_full_summary_prompt(text[:mc]),
-        provider_type=ProviderType.GROQ,
-        system_prompt="Você é um professor expert que cria resumos didáticos. Retorne APENAS JSON válido.",
-        temperature=0.3,
-        max_tokens=8192,
-    )
-    summary_text = resp2.get("content", "")
+    summary_text = _ok(summary_resp).get("content", "")
     summary_json = _extract_json(summary_text)
     summary = json.loads(summary_json) if summary_json else {}
 
     # 3) 10 exercícios do material
-    resp3 = await _chat_with_emergent_fallback(
-        chat_service,
-        lambda mc: _build_exercises_prompt(text[:mc], 10, "misto", False),
-        provider_type=ProviderType.GROQ,
-        system_prompt="Você é um professor expert em exercícios. Retorne APENAS JSON válido.",
-        temperature=0.4,
-        max_tokens=8192,
-    )
-    exercises_text = resp3.get("content", "")
+    exercises_text = _ok(exercises_resp).get("content", "")
     exercises_json = _extract_json(exercises_text)
     exercises = json.loads(exercises_json).get("exercises", []) if exercises_json else []
+
+    if not solution.get("solution") and not summary and not exercises:
+        detail = "A IA não conseguiu gerar o estudo desta atividade"
+        if ai_errors:
+            detail += f" ({ai_errors[0]})"
+        detail += ". Tente novamente em instantes."
+        raise HTTPException(status_code=502, detail=detail)
 
     result = {
         "activity_id": req.activity_id,
@@ -1226,6 +1247,7 @@ async def moodle_study(req: StudyRequest, current_user: dict = Depends(get_curre
         "solution": solution,
         "summary": summary,
         "exercises": exercises,
+        "errors": ai_errors,
         "created_at": datetime.utcnow().isoformat(),
     }
     _cache_set(study_key, result, user_id)

@@ -259,8 +259,50 @@ def _cache_key(key, user_id=None):
     return f"{user_id or 'global'}__{key}"
 
 
+# ===== Persistência em MongoDB (durável entre redeploys do Render) =====
+# O arquivo local e o Supabase podem não estar disponíveis (arquivo é
+# efêmero no Render; contas antigas não têm UUID para o profiles do
+# Supabase). O Mongo Atlas é a fonte durável de verdade da aplicação.
+MONGO_STATE = "moodle_state"
+_mongo_client = None
+_mongo_db_handle = None
+
+
+def _mongo_db():
+    global _mongo_client, _mongo_db_handle
+    if _mongo_db_handle is not None:
+        return _mongo_db_handle
+    url = os.environ.get("MONGO_URL") or os.environ.get("MONGODB_URI")
+    if not url:
+        return None
+    try:
+        from pymongo import MongoClient
+
+        _mongo_client = MongoClient(url, serverSelectionTimeoutMS=4000)
+        db = _mongo_client[os.environ.get("DB_NAME", "study_app")]
+        db.command("ping")
+        _mongo_db_handle = db
+        return db
+    except Exception:
+        return None
+
+
+def _mongo_doc(user_id):
+    try:
+        db = _mongo_db()
+        if db is None:
+            return None
+        return db[MONGO_STATE].find_one({"user_key": user_id or "global"})
+    except Exception:
+        return None
+
+
 def _load_config(user_id=None):
-    # Try Supabase first (persistent across restarts)
+    # MongoDB primeiro (durável para qualquer conta, inclusive as sem UUID)
+    doc = _mongo_doc(user_id)
+    if doc and doc.get("token") and doc.get("url"):
+        return {"url": doc["url"], "token": doc["token"]}
+    # Depois Supabase (só funciona quando o usuário existe no auth do Supabase)
     if user_id:
         try:
             sb = get_supabase_admin()
@@ -277,7 +319,7 @@ def _load_config(user_id=None):
                 return rows.data[0]
         except Exception:
             pass
-    # Fallback: file (single global config)
+    # Fallback: arquivo (config global única)
     try:
         with open(CONFIG_PATH, "r") as f:
             cfg = json.load(f)
@@ -289,6 +331,26 @@ def _load_config(user_id=None):
 
 
 def _save_config(cfg, user_id=None, email=None, name=None):
+    # MongoDB primeiro (durável, funciona para qualquer conta)
+    try:
+        db = _mongo_db()
+        if db is not None:
+            now = datetime.utcnow().isoformat()
+            db[MONGO_STATE].update_one(
+                {"user_key": user_id or "global"},
+                {"$set": {
+                    "url": cfg["url"],
+                    "token": cfg["token"],
+                    "email": email or "",
+                    "name": name or "",
+                    "updated_at": now,
+                }},
+                upsert=True,
+            )
+            return cfg
+    except Exception:
+        pass
+    # Supabase (caso o usuário exista no auth do Supabase)
     if user_id:
         try:
             sb = get_supabase_admin()
@@ -352,7 +414,12 @@ def _delete_config(user_id=None):
     try:
         sb = get_supabase_admin()
         sb.table(MOODLE_TABLE).delete().eq("user_id", user_id).execute()
-        return
+    except Exception:
+        pass
+    try:
+        db = _mongo_db()
+        if db is not None:
+            db[MONGO_STATE].delete_one({"user_key": user_id or "global"})
     except Exception:
         pass
     try:
@@ -363,6 +430,14 @@ def _delete_config(user_id=None):
 
 
 def _cache_get(key, user_id=None):
+    # MongoDB primeiro (durável)
+    doc = _mongo_doc(user_id)
+    if doc is not None:
+        cache = doc.get("cache") or {}
+        val = cache.get(_cache_key(key, user_id))
+        if val is not None:
+            return val
+    # Fallback: arquivo
     try:
         if os.path.exists(CACHE_PATH):
             with open(CACHE_PATH, "r") as f:
@@ -374,6 +449,23 @@ def _cache_get(key, user_id=None):
 
 
 def _cache_set(key, value, user_id=None):
+    try:
+        db = _mongo_db()
+        if db is not None:
+            now = datetime.utcnow().isoformat()
+            keyed = _cache_key(key, user_id)
+            db[MONGO_STATE].update_one(
+                {"user_key": user_id or "global"},
+                {"$set": {
+                    f"cache.{keyed}": value,
+                    "last_sync": now,
+                    f"cache.{_cache_key('last_sync', user_id)}": now,
+                }},
+                upsert=True,
+            )
+            return
+    except Exception:
+        pass
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
         cache = {}

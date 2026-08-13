@@ -2954,6 +2954,9 @@
 .moodle-loading { padding: 34px; text-align: center; color: #94a3b8; }
 .moodle-empty { padding: 34px; text-align: center; color: #64748b; }
 .moodle-empty h3 { margin: 10px 0 4px; font-size: 15px; }
+.moodle-sync-error { display: flex; align-items: center; gap: 10px; margin: 12px 16px 0; padding: 10px 12px; border: 1px solid #b45309; background: #2a1f0a; border-radius: 8px; color: #fbbf24; font-size: 12px; }
+.moodle-sync-error ul { margin: 4px 0 0; padding-left: 16px; }
+.moodle-sync-error .moodle-btn { flex-shrink: 0; margin-left: auto; }
 .activities-list, .deadlines-list, .announcements-list { display: flex; flex-direction: column; gap: 10px; }
 .activity-card, .deadline-card, .announcement-card, .course-card { display: flex; align-items: center; gap: 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
 .activity-card .activity-icon, .deadline-card .deadline-date, .course-card .course-header, .announcement-card .announcement-header { flex-shrink: 0; }

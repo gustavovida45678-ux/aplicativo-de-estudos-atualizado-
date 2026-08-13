@@ -5,6 +5,7 @@ import os
 import json
 from urllib.parse import urlparse
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from utils.auth import get_current_user
 from utils.supabase import get_supabase_admin
@@ -383,7 +384,9 @@ def _cache_set(key, value, user_id=None):
             except Exception:
                 cache = {}
         cache[_cache_key(key, user_id)] = value
-        cache["last_sync"] = datetime.utcnow().isoformat()
+        now = datetime.utcnow().isoformat()
+        cache["last_sync"] = now
+        cache[_cache_key("last_sync", user_id)] = now
         with open(CACHE_PATH, "w") as f:
             json.dump(cache, f)
     except Exception:
@@ -397,56 +400,164 @@ def _ts(ts):
         return None
 
 
+def _uid(current_user):
+    """ID estável do usuário (Mongo usa `id` ou `_id`). Nunca None: evita
+    que usuários diferentes compartilhem o mesmo cache/config global."""
+    if not current_user:
+        return None
+    raw = (
+        current_user.get("id")
+        or current_user.get("_id")
+        or current_user.get("email")
+    )
+    if raw is None:
+        return None
+    return str(raw)
+
+
+def _module_duedate(mod, assign_map):
+    """Extrai a data de entrega do módulo. Fontes (por ordem):
+    customdata (JSON) do próprio módulo, datas do módulo e mapa de
+    tarefas (mod_assign_get_assignments)."""
+    cmid = mod.get("moduleid") or mod.get("id")
+    custom = mod.get("customdata")
+    if isinstance(custom, str):
+        try:
+            cd = json.loads(custom)
+            dd = cd.get("duedate")
+            if dd:
+                return dd
+        except Exception:
+            pass
+    if assign_map and cmid in assign_map:
+        return assign_map.get(cmid)
+    for d in mod.get("dates", []) or []:
+        ts = d.get("timestart") or d.get("timestamp")
+        label = str(d.get("label") or "").lower()
+        if ts and any(k in label for k in ("entrega", "due", "fechamento", "close", "prazo")):
+            return ts
+    return None
+
+
+def _event_course_name(event, courses_by_id):
+    """Nome da disciplina do evento de calendário. O Moodle devolve tanto
+    `courseid` (int) quanto `course` (dict com id/fullname)."""
+    c = event.get("course")
+    if isinstance(c, dict):
+        name = c.get("fullname") or c.get("shortname") or ""
+        if name:
+            return name
+        cid = c.get("id")
+        if cid and courses_by_id.get(cid):
+            return courses_by_id[cid].get("fullname", "")
+    cid = event.get("courseid")
+    if isinstance(cid, int) and courses_by_id.get(cid):
+        return courses_by_id[cid].get("fullname", "")
+    return ""
+
+
 def _sync_all(user_id=None):
     cfg = _load_config(user_id)
     if not cfg:
-        return {"courses": [], "activities": [], "deadlines": [], "announcements": []}
+        return {
+            "courses": [], "activities": [], "deadlines": [],
+            "announcements": [], "errors": ["Moodle não configurado."],
+        }
     base = _base(cfg["url"])
     token = cfg["token"]
+    errors = []
 
+    # 1) Todas as disciplinas do usuário
     raw_courses = []
     try:
         raw_courses = _call(base, token, "core_enrol_get_users_courses") or []
-    except HTTPException:
-        raw_courses = []
+    except HTTPException as e:
+        errors.append(f"disciplinas: {e.detail}")
     courses = []
     for c in raw_courses if isinstance(raw_courses, list) else []:
+        cat = c.get("category") or c.get("categoryname") or ""
+        if isinstance(cat, dict):
+            cat = cat.get("name", "") or ""
         courses.append({
             "id": c.get("id"),
             "fullname": c.get("fullname", ""),
             "shortname": c.get("shortname", ""),
-            "category": c.get("category") if isinstance(c.get("category"), str) else "",
+            "category": cat if isinstance(cat, str) else "",
             "progress": c.get("progress", 0) or 0,
-            "url": "",
+            "url": f"{base}/course/view.php?id={c.get('id')}" if c.get("id") else "",
         })
 
-    course_ids = [c.get("id") for c in courses if c.get("id")]
-    assignments = []
+    courses_by_id = {c["id"]: c for c in courses if c.get("id")}
+    course_ids = list(courses_by_id.keys())
+
+    # 2) Datas de entrega das tarefas (complementa o customdata)
+    assign_map = {}
     if course_ids:
         try:
             payload = {f"courseids[{i}]": cid for i, cid in enumerate(course_ids)}
             data2 = _call(base, token, "mod_assign_get_assignments", **payload)
             for course in data2.get("courses", []) or []:
-                cname = course.get("fullname", "")
                 for a in course.get("assignments", []) or []:
                     cmid = a.get("cmid")
-                    assignments.append({
-                        "id": a.get("id"),
-                        "name": a.get("name", ""),
-                        "course_name": cname,
-                        "due_date": a.get("duedate", 0),
-                        "type": "assign",
-                        "url": f"{base}/mod/assign/view.php?id={cmid}" if cmid else "",
-                    })
-        except HTTPException:
-            pass
+                    if cmid:
+                        assign_map[cmid] = a.get("duedate") or 0
+        except HTTPException as e:
+            errors.append(f"tarefas: {e.detail}")
 
+    # 3) TODAS as atividades de TODAS as disciplinas (todo tipo: assign,
+    #    quiz, forum, resource, url, page, lesson, book, ...)
+    def _fetch_course(cid):
+        try:
+            sections = _call(base, token, "core_course_get_contents", courseid=cid) or []
+        except HTTPException as e:
+            return [], f"curso {cid}: {e.detail}"
+        items = []
+        c = courses_by_id.get(cid, {})
+        cname = c.get("fullname", "")
+        for s in sections if isinstance(sections, list) else []:
+            for m in s.get("modules", []) or []:
+                modname = m.get("modname", "")
+                if not modname or modname in ("label", "folder"):
+                    continue
+                cmid = m.get("moduleid") or m.get("id")
+                duedate = _module_duedate(m, assign_map)
+                items.append({
+                    "id": m.get("id"),
+                    "cmid": cmid,
+                    "name": m.get("name", ""),
+                    "course_id": cid,
+                    "course_name": cname,
+                    "type": modname,
+                    "due_date": _ts(duedate) if duedate else None,
+                    "url": m.get("url") or (f"{base}/mod/{modname}/view.php?id={cmid}" if cmid else ""),
+                })
+        return items, None
+
+    activities = []
+    course_errors = []
+    if course_ids:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(_fetch_course, cid): cid for cid in course_ids[:60]}
+            for fut in as_completed(futs):
+                cid = futs[fut]
+                try:
+                    items, err = fut.result()
+                except Exception as e:  # pragma: no cover
+                    items, err = [], f"curso {cid}: {e}"
+                if err:
+                    course_errors.append(err)
+                activities.extend(items)
+    if course_errors:
+        extra = f" (+{len(course_errors) - 5} disciplinas mais)" if len(course_errors) > 5 else ""
+        errors.append("; ".join(course_errors[:5]) + extra)
+
+    # 4) Eventos do calendário -> prazos e avisos
     events = []
     try:
         cal = _call(base, token, "core_calendar_get_calendar_upcoming_events")
-        events = cal.get("events", []) or []
-    except HTTPException:
-        pass
+        events = (cal.get("events", []) or []) if isinstance(cal, dict) else []
+    except HTTPException as e:
+        errors.append(f"calendário: {e.detail}")
 
     deadlines = []
     announcements = []
@@ -455,13 +566,7 @@ def _sync_all(user_id=None):
         name = e.get("name", "")
         ts = e.get("timestart", 0)
         url = e.get("url", "")
-        cid = e.get("courseid")
-        if isinstance(cid, dict):
-            course_name = cid.get("fullname", "") or cid.get("shortname", "")
-        elif cid:
-            course_name = str(cid)
-        else:
-            course_name = ""
+        course_name = _event_course_name(e, courses_by_id)
         iso = _ts(ts)
         deadlines.append({
             "id": eid, "name": name, "course_name": course_name,
@@ -474,14 +579,20 @@ def _sync_all(user_id=None):
             "created": iso, "url": url,
         })
 
-    assignments.sort(key=lambda a: a.get("due_date") or 0)
+    activities.sort(key=lambda a: a.get("due_date") or "")
     deadlines.sort(key=lambda d: d.get("due_date") or "")
-    return {"courses": courses, "activities": assignments, "deadlines": deadlines, "announcements": announcements}
+    return {
+        "courses": courses,
+        "activities": activities,
+        "deadlines": deadlines,
+        "announcements": announcements,
+        "errors": errors,
+    }
 
 
 @router.get("/status")
 def moodle_status(current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("id")
+    user_id = _uid(current_user)
     cfg = _load_config(user_id)
     if not cfg:
         return {"configured": False}
@@ -495,27 +606,27 @@ def moodle_status(current_user: dict = Depends(get_current_user)):
 
 @router.get("/courses")
 def moodle_get_courses(current_user: dict = Depends(get_current_user)):
-    return {"courses": _cache_get("courses", current_user.get("id")) or []}
+    return {"courses": _cache_get("courses", _uid(current_user)) or []}
 
 
 @router.get("/activities")
 def moodle_get_activities(current_user: dict = Depends(get_current_user)):
-    return {"activities": _cache_get("activities", current_user.get("id")) or []}
+    return {"activities": _cache_get("activities", _uid(current_user)) or []}
 
 
 @router.get("/deadlines")
 def moodle_get_deadlines(current_user: dict = Depends(get_current_user)):
-    return {"deadlines": _cache_get("deadlines", current_user.get("id")) or []}
+    return {"deadlines": _cache_get("deadlines", _uid(current_user)) or []}
 
 
 @router.get("/announcements")
 def moodle_get_announcements(current_user: dict = Depends(get_current_user)):
-    return {"announcements": _cache_get("announcements", current_user.get("id")) or []}
+    return {"announcements": _cache_get("announcements", _uid(current_user)) or []}
 
 
 @router.post("/sync")
 def moodle_sync(current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("id")
+    user_id = _uid(current_user)
     cfg = _load_config(user_id)
     if not cfg:
         raise HTTPException(status_code=400, detail="Token do Moodle nao configurado.")
@@ -531,6 +642,7 @@ def moodle_sync(current_user: dict = Depends(get_current_user)):
         "success": True,
         "synced": True,
         "last_sync": datetime.utcnow().isoformat(),
+        "errors": data.get("errors", []),
         "counts": {
             "courses": len(data["courses"]),
             "activities": len(data["activities"]),
@@ -544,7 +656,7 @@ def moodle_sync(current_user: dict = Depends(get_current_user)):
 def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current_user)):
     """Connect using IFG username/password. Moodle issues a token automatically
     via login/token.php (same flow as the official Moodle Mobile app)."""
-    user_id = current_user.get("id")
+    user_id = _uid(current_user)
     base = _base(req.url)
     try:
         r = requests.post(
@@ -568,20 +680,29 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
             info = _call(base, data["token"], "core_webservice_get_site_info")
         except HTTPException:
             info = {}
+        errors = []
         try:
             synced = _sync_all(user_id)
             _cache_set("courses", synced["courses"], user_id)
             _cache_set("activities", synced["activities"], user_id)
             _cache_set("deadlines", synced["deadlines"], user_id)
             _cache_set("announcements", synced["announcements"], user_id)
-        except Exception:
-            pass
+            errors = synced.get("errors", [])
+        except Exception as e:
+            errors = [str(e)]
         return {
             "success": True,
             "valid": True,
             "site": info.get("sitename", "Moodle"),
             "user": info.get("fullname", req.username.strip()),
             "last_sync": _cache_get("last_sync", user_id),
+            "errors": errors,
+            "counts": {
+                "courses": len(_cache_get("courses", user_id) or []),
+                "activities": len(_cache_get("activities", user_id) or []),
+                "deadlines": len(_cache_get("deadlines", user_id) or []),
+                "announcements": len(_cache_get("announcements", user_id) or []),
+            },
         }
     detail = data.get("error", "Falha de autenticação.") if isinstance(data, dict) else "Falha de autenticação."
     raise HTTPException(status_code=401, detail=detail)
@@ -589,7 +710,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
 
 @router.post("/token")
 def moodle_save_token(req: TokenRequest, current_user: dict = Depends(get_current_user)):
-    user_id = current_user.get("id")
+    user_id = _uid(current_user)
     cfg = {"url": req.url, "token": req.token}
     _save_config(cfg, user_id, current_user.get("email"), current_user.get("name"))
     base = _base(cfg["url"])
@@ -602,5 +723,5 @@ def moodle_save_token(req: TokenRequest, current_user: dict = Depends(get_curren
 
 @router.delete("/token")
 def moodle_delete_token(current_user: dict = Depends(get_current_user)):
-    _delete_config(current_user.get("id"))
+    _delete_config(_uid(current_user))
     return {"success": True}

@@ -31,6 +31,20 @@ export function MoodlePage({ onClose }) {
   const [tokenInput, setTokenInput] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [useTokenOption, setUseTokenOption] = useState(false);
+  const [syncInfo, setSyncInfo] = useState(null);
+
+  const applySyncResult = (res) => {
+    const counts = res.data?.counts || {};
+    const errors = res.data?.errors || [];
+    setSyncInfo(errors.length ? { errors, counts } : null);
+    const total = (counts.courses || 0) + (counts.activities || 0) + (counts.deadlines || 0) + (counts.announcements || 0);
+    if (errors.length) {
+      toast.warning('Conexão OK, mas o Moodle devolveu erros ao buscar dados.');
+    } else if (total === 0) {
+      toast.warning('Conectado, mas nenhuma atividade/disciplina encontrada no Moodle.');
+    }
+    return counts;
+  };
 
   const connectMoodle = async () => {
     if (connecting) return;
@@ -50,7 +64,8 @@ export function MoodlePage({ onClose }) {
         setTokenInput('');
         setLastSync(new Date());
         try {
-          await axios.post(`${API}/sync`);
+          const syncRes = await axios.post(`${API}/sync`);
+          applySyncResult(syncRes);
         } catch (e) {
           console.error('Sincronização inicial falhou:', e);
         }
@@ -170,10 +185,12 @@ export function MoodlePage({ onClose }) {
     try {
       const res = await axios.post(`${API}/sync`);
       setLastSync(new Date());
+      applySyncResult(res);
       toast.success('Sincronização concluída!');
       fetchAll();
     } catch (e) {
       console.error('Erro ao sincronizar:', e);
+      setSyncInfo({ errors: [e.response?.data?.detail || 'Falha ao sincronizar com o backend.'], counts: {} });
       toast.error('Erro na sincronização. Verifique se o token está configurado.');
     } finally {
       setLoading(prev => ({ ...prev, sync: false }));
@@ -314,6 +331,23 @@ export function MoodlePage({ onClose }) {
           </div>
         )}
 
+        {moodleConfigured && syncInfo && syncInfo.errors && syncInfo.errors.length > 0 && (
+          <div className="moodle-sync-error">
+            <AlertTriangle size={18} color="#f59e0b" />
+            <div>
+              <strong>O Moodle não retornou todos os dados.</strong>
+              <ul>
+                {syncInfo.errors.slice(0, 4).map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            </div>
+            <button className="moodle-btn secondary" onClick={syncMoodle} disabled={loading.sync}>
+              <RefreshCw size={14} className={loading.sync ? 'spin' : ''} /> Tentar novamente
+            </button>
+          </div>
+        )}
+
         {moodleConfigured && activeTab === 'activities' && (
           <div className="moodle-content">
             {loading.activities ? (
@@ -323,6 +357,9 @@ export function MoodlePage({ onClose }) {
                 <FolderOpen size={48} color="#64748b" />
                 <h3>Nenhuma atividade encontrada</h3>
                 <p>As atividades aparecerão aqui após a sincronização.</p>
+                <button className="moodle-btn secondary" onClick={syncMoodle} disabled={loading.sync}>
+                  <RefreshCw size={14} className={loading.sync ? 'spin' : ''} /> Atualizar
+                </button>
               </div>
             ) : (
               <div className="activities-list">
@@ -369,6 +406,9 @@ export function MoodlePage({ onClose }) {
               <div className="moodle-empty">
                 <Calendar size={48} color="#64748b" />
                 <h3>Nenhum prazo encontrado</h3>
+                <button className="moodle-btn secondary" onClick={syncMoodle} disabled={loading.sync}>
+                  <RefreshCw size={14} className={loading.sync ? 'spin' : ''} /> Atualizar
+                </button>
               </div>
             ) : (
               <div className="deadlines-list">
@@ -413,6 +453,10 @@ export function MoodlePage({ onClose }) {
               <div className="moodle-empty">
                 <BookOpen size={48} color="#64748b" />
                 <h3>Nenhuma disciplina encontrada</h3>
+                <p>Verifique se você está matriculado em disciplinas no Moodle e tente atualizar.</p>
+                <button className="moodle-btn secondary" onClick={syncMoodle} disabled={loading.sync}>
+                  <RefreshCw size={14} className={loading.sync ? 'spin' : ''} /> Atualizar
+                </button>
               </div>
             ) : (
               <div className="courses-grid">
@@ -453,6 +497,9 @@ export function MoodlePage({ onClose }) {
               <div className="moodle-empty">
                 <Bell size={48} color="#64748b" />
                 <h3>Nenhum aviso recente</h3>
+                <button className="moodle-btn secondary" onClick={syncMoodle} disabled={loading.sync}>
+                  <RefreshCw size={14} className={loading.sync ? 'spin' : ''} /> Atualizar
+                </button>
               </div>
             ) : (
               <div className="announcements-list">

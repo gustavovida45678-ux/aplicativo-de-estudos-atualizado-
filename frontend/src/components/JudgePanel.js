@@ -1047,6 +1047,33 @@ const JudgePanel = () => {
               </div>
             )}
 
+            {result.corrected_code && (
+              <div style={{
+                marginTop: 10, borderRadius: 8, padding: '10px 14px',
+                background: 'rgba(124, 58, 237, 0.12)', border: '1px solid #7c3aed',
+                display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              }}>
+                <Sparkles size={15} color="#a78bfa" />
+                <span style={{ fontSize: 12.5, color: '#c4b5fd', flex: 1, minWidth: 200 }}>
+                  <b>Codigo corrigido gerado pela IA:</b> aplique no editor e envie novamente.
+                </span>
+                <button
+                  onClick={() => {
+                    setCode(result.corrected_code);
+                    saveCode((selected || newExercise).id || 'custom', language, result.corrected_code);
+                    toast.success('Codigo corrigido aplicado no editor!');
+                  }}
+                  style={{
+                    padding: '6px 12px', borderRadius: 8, border: 'none', background: '#7c3aed',
+                    color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  <Wand2 size={13} /> Aplicar no editor
+                </button>
+              </div>
+            )}
+
             {result.tests.length > 0 && (
               <div className="materials-judge-tests">
                 {result.tests.map((t) => (

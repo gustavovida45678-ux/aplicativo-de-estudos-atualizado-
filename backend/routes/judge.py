@@ -652,6 +652,71 @@ def _run_sandbox(conf: dict, code: str, stdin: str):
         return None
 
 
+def _run_local(conf: dict, code: str, stdin: str):
+    """Executa o codigo localmente no servidor (fallback quando os
+    servicos externos de execucao estao indisponiveis: Piston virou
+    whitelist-only e o Wandbox pode falhar). Usa gcc/g++ se existirem
+    e python3 (sempre presente, pois o backend roda em Python)."""
+    import shutil as _shutil
+    import subprocess as _sp
+    import tempfile as _tf
+
+    lang = conf.get("sandbox") or conf.get("piston")
+    run_timeout = conf.get("run_timeout", 5000) / 1000.0
+    stdin_bytes = (stdin or "").encode("utf-8", "replace")
+    try:
+        if lang == "python":
+            py = _shutil.which("python3") or _shutil.which("python")
+            if not py:
+                return None
+            src = None
+            try:
+                with _tf.NamedTemporaryFile(suffix=".py", delete=False) as f:
+                    f.write(code.encode("utf-8", "replace"))
+                    src = f.name
+                try:
+                    rp = _sp.run([py, src], input=stdin_bytes, capture_output=True, timeout=run_timeout)
+                except _sp.TimeoutExpired:
+                    return {"compile": {"code": 0, "stderr": ""}, "run": {"stdout": "", "stderr": "Tempo limite excedido", "code": 124}}
+                return {
+                    "compile": {"code": 0, "stderr": ""},
+                    "run": {"stdout": rp.stdout.decode("utf-8", "replace"), "stderr": rp.stderr.decode("utf-8", "replace"), "code": rp.returncode},
+                }
+            finally:
+                if src:
+                    try:
+                        os.remove(src)
+                    except Exception:
+                        pass
+        elif lang in ("c", "cpp"):
+            cc = _shutil.which("gcc") if lang == "c" else (_shutil.which("g++") or _shutil.which("c++"))
+            if not cc:
+                return None
+            with _tf.TemporaryDirectory() as d:
+                src = os.path.join(d, "main.c" if lang == "c" else "main.cpp")
+                exe = os.path.join(d, "main")
+                with open(src, "w", encoding="utf-8") as f:
+                    f.write(code)
+                try:
+                    cp = _sp.run([cc, src, "-o", exe, "-O2", "-lm"], capture_output=True, timeout=20)
+                except _sp.TimeoutExpired:
+                    return {"compile": {"code": 1, "stderr": "Tempo de compilacao excedido"}, "run": {"stdout": "", "stderr": "", "code": 1}}
+                if cp.returncode != 0:
+                    return {"compile": {"code": cp.returncode, "stderr": cp.stderr.decode("utf-8", "replace")[:2000]}, "run": {"stdout": "", "stderr": "", "code": 1}}
+                try:
+                    rp = _sp.run([exe], input=stdin_bytes, capture_output=True, timeout=run_timeout)
+                except _sp.TimeoutExpired:
+                    return {"compile": {"code": 0, "stderr": ""}, "run": {"stdout": "", "stderr": "Tempo limite excedido", "code": 124}}
+                return {
+                    "compile": {"code": 0, "stderr": ""},
+                    "run": {"stdout": rp.stdout.decode("utf-8", "replace"), "stderr": rp.stderr.decode("utf-8", "replace"), "code": rp.returncode},
+                }
+    except Exception as e:
+        logger.warning(f"Execucao local falhou: {e}")
+        return None
+    return None
+
+
 def _run_piston(conf: dict, code: str, stdin: str):
     payload = {
         "language": conf["piston"],
@@ -684,6 +749,11 @@ def _run(lang: str, code: str, stdin: str) -> dict:
         return result
 
     result = _run_sandbox(conf, code, stdin)
+    if result:
+        return result
+
+    # Execucao local: nao depende de servicos externos (Piston whitelist-only)
+    result = _run_local(conf, code, stdin)
     if result:
         return result
 
@@ -1615,6 +1685,7 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
 
     if first_result.get("compile") and first_result["compile"].get("code") is not None and first_result["compile"].get("code") != 0:
         compile_stderr = first_result["compile"].get("stderr", "")
+        corrected_code = _fix_code_ai(req.code, req.language, compile_stderr, x_custom_api_key) if compile_stderr else None
         ai_explanation = _ai_explain(req.code, req.language, compile_stderr, "", "", True, x_custom_api_key)
         if not ai_explanation:
             ai_explanation = _fallback_explanation(req.code, req.language, compile_stderr, "", "", True)
@@ -1623,17 +1694,20 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
         _save_submission(user_id, req.problem_id, req.language, req.code, "compile_error", {
             "compile": {"ok": False, "stderr": compile_stderr},
             "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
+            "corrected_code": corrected_code,
             "explanation": ai_explanation,
         })
         return {
             "compile": {"ok": False, "stderr": compile_stderr},
             "tests": [],
             "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
+            "corrected_code": corrected_code,
             "explanation": ai_explanation,
         }
 
     if not first_result.get("run") or (first_result.get("run") and first_result["run"].get("stdout") is None and first_result["run"].get("code") != 0):
         stderr_val = (first_result.get("compile") or {}).get("stderr", "") or ((first_result.get("run") or {}).get("stderr", ""))
+        corrected_code = _fix_code_ai(req.code, req.language, stderr_val, x_custom_api_key) if stderr_val else None
         ai_explanation = _ai_explain(req.code, req.language, stderr_val, "", "", True, x_custom_api_key)
         if not ai_explanation:
             ai_explanation = _fallback_explanation(req.code, req.language, stderr_val, "", "", True)
@@ -1643,6 +1717,7 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
             "compile": {"ok": True, "stderr": ""},
             "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
             "error": "Falha ao executar o codigo.",
+            "corrected_code": corrected_code,
             "explanation": ai_explanation,
         })
         return {
@@ -1650,6 +1725,7 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
             "tests": [],
             "summary": {"passed": 0, "total": len(req.test_cases), "accepted": False},
             "error": "Falha ao executar o codigo.",
+            "corrected_code": corrected_code,
             "explanation": ai_explanation,
         }
 
@@ -1669,7 +1745,7 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
         if ok:
             passed += 1
         elif first_fail is None:
-            first_fail = {"stderr": stderr, "output": output, "expected": expected_norm}
+            first_fail = {"stderr": stderr, "output": output, "expected": expected_norm, "input": tc.input}
         tests.append({
             "index": i + 1,
             "passed": ok,
@@ -1696,6 +1772,11 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
         _enrich_explanation(ai_explanation, req.language)
         ai_explanation["youtube_videos"] = _get_youtube_videos("saida incorreta", req.language, req.code)
         explanation = ai_explanation
+        corrected_code = _fix_wrong_answer(
+            req.code, req.language,
+            first_fail.get("input", ""), first_fail["output"], first_fail["expected"],
+            x_custom_api_key,
+        )
 
     return {
         "compile": {"ok": True, "stderr": (results[0].get("compile") or {}).get("stderr", "")},
@@ -1705,6 +1786,7 @@ async def judge_submit(req: SubmitRequest, x_custom_api_key: Optional[str] = Hea
             "total": len(req.test_cases),
             "accepted": passed == len(req.test_cases),
         },
+        "corrected_code": corrected_code if first_fail else None,
         "explanation": explanation,
     }
 
@@ -1749,6 +1831,39 @@ CODIGO DO ALUNO:
 {code}
 ```"""
     raw = _call_ai(system_prompt, context, custom_key, max_tokens=1200)
+    if not raw:
+        return None
+    cleaned = re.sub(r"^```\w*\n?", "", raw.strip()).strip()
+    cleaned = re.sub(r"\n?```$", "", cleaned)
+    if not cleaned or cleaned.lower().startswith(("desculpe", "não ", "nao ", "erro")):
+        return None
+    return cleaned
+
+
+def _fix_wrong_answer(code: str, language: str, test_input: str, actual: str, expected: str, custom_key=None):
+    """Corrige o codigo que compila mas produz saida errada no juiz."""
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
+    system_prompt = f"""Voce e um professor de {lang_name}. O codigo do aluno COMPILA mas falha nos testes do juiz online (saida incorreta).
+
+CORRIJA o codigo para passar nos testes, mantendo a logica e o estilo do aluno o mais proximo possivel do original. Nao reescreva do zero, nao mude a estrutura, nao adicione funcionalidades novas. Conserte apenas o que esta errado (leitura da entrada, calculo, formatacao exata da saida).
+
+Responda APENAS com o codigo corrigido completo (sem markdown, sem ```, sem comentarios adicionais)."""
+    context = f"""LINGUAGEM: {lang_name}
+
+ENTRADA DO TESTE:
+{test_input[:500]}
+
+SAIDA PRODUZIDA (incorreta):
+{actual[:500]}
+
+SAIDA ESPERADA:
+{expected[:500]}
+
+CODIGO DO ALUNO:
+```{language}
+{code}
+```"""
+    raw = _call_ai(system_prompt, context, custom_key, max_tokens=1400)
     if not raw:
         return None
     cleaned = re.sub(r"^```\w*\n?", "", raw.strip()).strip()

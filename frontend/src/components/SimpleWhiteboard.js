@@ -774,6 +774,9 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
 
   const selectedNode = nodesRef.current.find(n => n.id === selectedNodeId) || null;
 
+  // Mantém o ref da matéria em sincronia com o estado (o autosave lê o ref)
+  currentSubjectRef.current = currentSubject;
+
   return (
     <div className="simple-whiteboard" ref={wrapperRef} onWheel={handleWheel}>
       {onExit && (

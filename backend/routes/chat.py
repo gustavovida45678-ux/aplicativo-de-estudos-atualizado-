@@ -208,6 +208,13 @@ async def _chat_with_teacher(user, message: ChatMessage, x_custom_api_key: Optio
         raise
     except Exception as e:
         logger.error(f"Error in teacher chat endpoint: {e}")
+        if chat_service._is_rate_limited(e):
+            raise HTTPException(
+                status_code=429,
+                detail=("A IA atingiu o limite de uso gratuito no momento. "
+                        "Aguarde alguns minutos e tente novamente, ou configure "
+                        "outra chave de IA em Configurar API Keys.")
+            )
         raise HTTPException(status_code=500, detail=f"Erro ao processar mensagem: {str(e)}")
 
 @router.get("/providers", response_model=ProvidersResponse)
@@ -291,6 +298,13 @@ async def chat(
         logger.error(f"Error in chat endpoint: {e}")
         import traceback
         traceback.print_exc()
+        if chat_service._is_rate_limited(e):
+            raise HTTPException(
+                status_code=429,
+                detail=("A IA atingiu o limite de uso gratuito no momento. "
+                        "Aguarde alguns minutos e tente novamente, ou configure "
+                        "outra chave de IA em Configurar API Keys.")
+            )
         raise HTTPException(
             status_code=500,
             detail=f"Erro ao processar mensagem: {str(e)}"

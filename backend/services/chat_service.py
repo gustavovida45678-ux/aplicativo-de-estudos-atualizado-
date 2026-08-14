@@ -108,6 +108,23 @@ class ChatService:
         offset = next(_key_rotation_counter) % len(keys)
         return keys[offset:] + keys[:offset]
 
+    def _model_candidates(self, provider_type: ProviderType, model_key: Optional[str] = None) -> List[str]:
+        """Modelos a tentar no provider: o escolhido primeiro, depois os demais.
+
+        O limite diario de tokens (TPD) do Groq e POR MODELO. Quando o modelo
+        escolhido estoura a cota, tentamos os outros modelos do mesmo provider
+        com a mesma chave antes de desistir."""
+        config = get_provider_config(provider_type)
+        if not config:
+            return [model_key] if model_key else []
+        keys = list(config.models.keys())
+        chosen = model_key or get_default_model(provider_type)
+        ordered = []
+        for m in [chosen] + keys:
+            if m and m not in ordered:
+                ordered.append(m)
+        return ordered
+
     async def chat(
         self,
         message: str,
@@ -151,25 +168,39 @@ class ChatService:
             keys = self._rotated_keys(ptype, custom_api_key if ptype == provider_type else None)
             if not keys:
                 continue
+            # Fallback de modelo: se o modelo escolhido estiver em rate limit
+            # (ex: TPD do Groq), tenta os demais modelos do mesmo provider.
+            models = self._model_candidates(ptype, model_key if ptype == provider_type else None)
             for key_index, api_key in enumerate(keys):
-                try:
-                    return await self._chat_once(
-                        message=message,
-                        provider_type=ptype,
-                        model_key=model_key if ptype == provider_type else None,
-                        api_key=api_key,
-                        system_prompt=system_prompt,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        stream=stream,
-                    )
-                except Exception as e:
-                    last_error = e
-                    if self._is_rate_limited(e) and key_index < len(keys) - 1:
-                        logger.warning(f"Provider {ptype.value} (chave {key_index + 1}/{len(keys)}) em rate limit; trocando de chave...")
-                        continue
-                    logger.warning(f"Provider {ptype.value} falhou ({e}); tentando proximo provedor...")
-                    break
+                for model_index, mk in enumerate(models):
+                    try:
+                        return await self._chat_once(
+                            message=message,
+                            provider_type=ptype,
+                            model_key=mk,
+                            api_key=api_key,
+                            system_prompt=system_prompt,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            stream=stream,
+                        )
+                    except Exception as e:
+                        last_error = e
+                        if self._is_rate_limited(e):
+                            if model_index < len(models) - 1:
+                                logger.warning(f"Modelo {mk} do provider {ptype.value} em rate limit; tentando proximo modelo...")
+                                continue
+                            if key_index < len(keys) - 1:
+                                logger.warning(f"Provider {ptype.value} (chave {key_index + 1}/{len(keys)}) em rate limit; trocando de chave...")
+                                break
+                            logger.warning(f"Todos os modelos do provider {ptype.value} em rate limit; tentando proximo provedor...")
+                            break
+                        logger.warning(f"Provider {ptype.value} falhou ({e}); tentando proximo provedor...")
+                        break
+                # rate limit em todos os modelos e ainda ha chaves -> proxima chave
+                if self._is_rate_limited(last_error) and key_index < len(keys) - 1:
+                    continue
+                break
 
         logger.error(f"Todos os provedores falharam. Ultimo erro: {last_error}")
         raise last_error or ValueError("Nenhum provedor de IA respondeu")

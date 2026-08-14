@@ -76,6 +76,7 @@ AI_PROVIDERS = [
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "env": "GROQ_API_KEY",
         "model": "llama-3.3-70b-versatile",
+        "models": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
         "headers": {},
     },
     {
@@ -819,13 +820,16 @@ def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = N
                 return content
 
     # 2) Depois tenta todas as chaves configuradas no servidor, em ordem.
+    #    Se o modelo principal estiver em rate limit (TPD do Groq e por modelo),
+    #    tenta os modelos alternativos do mesmo provider com a mesma chave.
     for provider in AI_PROVIDERS:
         key = os.environ.get(provider["env"])
         if not key:
             continue
-        content = _call_openai_compat(provider["url"], key, provider["model"], provider["headers"], provider)
-        if content:
-            return content
+        for model in provider.get("models", [provider["model"]]):
+            content = _call_openai_compat(provider["url"], key, model, provider["headers"], provider)
+            if content:
+                return content
 
     logger.warning("Nenhuma chave de IA configurada ou todas falharam")
     return None

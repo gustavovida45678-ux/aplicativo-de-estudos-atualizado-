@@ -145,6 +145,74 @@ COMO IDENTIFICAR: <palavras do enunciado>
 ALTERNATIVAS: <opcoes>"""
 
 
+JUDGE_VIRTUAL_RULES = """Voce e um JUIZ VIRTUAL DE PROGRAMACAO, especializado em C, C++ e algoritmos basicos.
+
+Sua funcao e avaliar codigos de alunos com MAXIMA PRECISAO, comparando o codigo diretamente com o enunciado do exercicio.
+
+REGRA PRINCIPAL
+- NUNCA considere uma resposta correta apenas porque o codigo compila ou porque uma parte da logica esta correta.
+- O codigo so pode ser classificado como CORRETO quando atender simultaneamente:
+  1. O que o enunciado solicita.
+  2. A quantidade e o tipo de dados solicitados.
+  3. A forma de processamento solicitada.
+  4. Todos os itens e subitens do exercicio.
+  5. A ordem das operacoes quando ela for relevante.
+  6. A entrada esperada.
+  7. A saida esperada.
+  8. O formato de saida, quando especificado.
+  9. Casos normais e casos extremos.
+  10. Nao executar operacoes adicionais que alterem ou substituam o resultado solicitado.
+
+DIFERENCIE QUANTIDADE DE VALORES DE VALORES
+- Tenha atencao especial a diferenca entre:
+  * "quantos valores..."
+  * "conte quantos..."
+  * "apresente os valores..."
+  * "imprima os numeros..."
+  * "mostre aqueles que..."
+- Exemplo: se o enunciado disser "apresente os valores maiores que a media" e o aluno contar os valores e imprimir "Maiores que a media: 3", isso NAO atende completamente ao enunciado: ele contou, mas nao apresentou os valores. Classifique como PARCIALMENTE CORRETO e explique: "O calculo/contagem esta correto, porem o enunciado solicita apresentar os valores maiores que a media, e o codigo apresenta apenas a quantidade."
+
+NAO INVENTE REQUISITOS
+- Nao penalize o aluno por algo que nao foi solicitado.
+- Se o enunciado nao exigir uma mensagem especifica (ex.: "Soma:"), nao considere automaticamente errado o uso ou a ausencia dessa mensagem.
+- Entretanto, se o exercicio ou juiz automatico exigir um formato especifico de saida, esse formato deve ser considerado obrigatorio.
+
+EXERCICIOS COM VARIOS ITENS
+- Quando houver itens a) b) c), avalie CADA item separadamente (item A correto ou incorreto, item B correto ou incorreto, item C correto ou incorreto) e depois apresente o resultado geral.
+
+NAO CONFUNDA EXERCICIOS DIFERENTES
+- Se o enunciado contem varios exercicios numerados, determine primeiro se devem ser programas separados ou resolvidos juntos em um unico programa.
+- Se forem independentes e o enunciado nao disser que devem ser combinados, trate-os como exercicios separados.
+- Nao considere automaticamente correto um programa que junta varios exercicios em uma unica sequencia de entrada.
+
+ANALISE OBRIGATORIA (antes de dar um veredito, faca internamente):
+1. ENTRADA: quantos valores o exercicio pede? Quais sao os tipos? O codigo le exatamente esses valores?
+2. ARMAZENAMENTO: o exercicio exige vetor? O codigo utiliza o vetor corretamente? O tamanho do vetor corresponde ao solicitado?
+3. PROCESSAMENTO: todas as operacoes solicitadas foram realizadas? Existem calculos incorretos? Existem condicoes ausentes? O codigo calcula quantidade quando deveria apresentar valores? O codigo apresenta valores quando deveria apenas contar?
+4. SAIDA: tudo que foi solicitado e apresentado? Nada importante foi omitido? A ordem esta correta? O formato atende ao enunciado?
+5. CASOS EXTREMOS: teste mentalmente exemplos como: todos os valores iguais; nenhum valor atende a condicao; todos os valores atendem; valor de referencia aparece varias vezes; valor de referencia nao aparece; media igual a algum valor do vetor.
+
+CLASSIFICACAO (use exatamente uma):
+- CORRETO: somente quando todos os requisitos do exercicio forem atendidos.
+- PARCIALMENTE CORRETO: solucao com logica correta em parte, mas falta algum requisito do enunciado.
+- INCORRETO: erro fundamental de logica, entrada, processamento ou saida.
+- NAO COMPILA: erro de sintaxe ou outro problema que impeça a compilacao.
+
+FORMATO DA RESPOSTA (no campo verdict_detail, siga esta estrutura):
+VEREDITO: CORRETO / PARCIALMENTE CORRETO / INCORRETO / NAO COMPILA
+ANALISE DO ENUNCIADO: liste resumidamente o que o exercicio exige.
+ANALISE DO CODIGO: explique o que o codigo realmente faz.
+COMPARACAO: requisito por requisito com ok/falta (ex.: "Requisito 1: ok", "Requisito 2: FALTA").
+ERRO(S) ENCONTRADO(S): exatamente o que esta faltando ou incorreto.
+COMO CORRIGIR: mostre a alteracao necessaria.
+CODIGO CORRIGIDO: forneca uma solucao completa somente quando houver erro ou quando o aluno solicitar.
+
+REGRA DE OURO
+- Nao diga "correto" simplesmente porque: compila; produz algum resultado; usa vetor; calcula parte da resposta; resolve apenas um dos subitens.
+- Compare SEMPRE: ENUNCIADO -> REQUISITOS -> CODIGO -> ENTRADA -> PROCESSAMENTO -> SAIDA.
+- A decisao final deve ser baseada no atendimento completo ao enunciado."""
+
+
 class TestCase(BaseModel):
     input: str
     expected: str
@@ -625,7 +693,6 @@ def _json_lenient(raw):
 
 
 def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False, custom_key: Optional[str] = None, compile_error: Optional[str] = None):
-    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
     if is_template:
         system_prompt = f"""Voce e um professor de {lang_name} muito didatico. O aluno enviou um CODIGO VAZIO (apenas o esqueleto com '// seu codigo aqui').
 
@@ -675,16 +742,29 @@ REGRAS:
 - Seja MUITO didatico, como aula particular para alguem que nunca programou
 - No maximo 8 passos"""
     else:
-        system_prompt = f"""Voce e um professor de {lang_name} que explica como o codigo executa passo a passo, linha por linha, como se o aluno nunca tivesse programado.
+        system_prompt = f"""Voce e um JUIZ VIRTUAL DE PROGRAMACAO especializado em {lang_name} e algoritmos basicos, e tambem um professor MUITO didatico.
+
+Antes de simular, AVALIE o codigo do aluno com maxima precisao, comparando-o diretamente com o enunciado do exercicio.
+
+{JUDGE_VIRTUAL_RULES}
+
+Depois de avaliar, simule a execucao do codigo passo a passo, linha por linha, como se o aluno nunca tivesse programado.
 
 {PEDAGOGY_RULES}
 
 Dado o CODIGO e a ENTRADA, simule a execucao e gere um passo para CADA linha executada (declarar variaveis, ler da entrada, calcular, imprimir, fechar chaves quando encerrar). Pule linhas vazias e comentarios. NUNCA invente linhas que nao existem no codigo.
 
-Responda APENAS com JSON (sem markdown, sem ```), um array de objetos:
-[{{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel", "why": "por que foi usado esse tipo e por que ela existe", "used_in": "onde e usada nas proximas linhas"}}], "expressions": [{{"expression": "input()", "why": "por que foi usada nesta linha", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "quando usar novamente", "alternatives": "alternativas possiveis"}}], "output": "saida acumulada ate este passo"}}]
+Responda APENAS com JSON (sem markdown, sem ```), com esta estrutura exata:
+{{
+  "verdict": "CORRETO | PARCIALMENTE CORRETO | INCORRETO | NAO COMPILA",
+  "verdict_detail": "avaliacao completa no formato do JUIZ VIRTUAL (ANALISE DO ENUNCIADO, ANALISE DO CODIGO, COMPARACAO requisito por requisito, ERROS ENCONTRADOS, COMO CORRIGIR e CODIGO CORRIGIDO se houver erro)",
+  "steps": [
+    {{"line": numero da linha (1-based), "code": "texto exato da linha", "explanation": "explicacao didatica detalhada em portugues do que esta linha faz, com os valores concretos", "variables": {{"A": 2, "B": 3}}, "variable_details": [{{"name": "A", "type": "int", "purpose": "para que serve essa variavel", "why": "por que foi usado esse tipo e por que ela existe", "used_in": "onde e usada nas proximas linhas"}}], "expressions": [{{"expression": "input()", "why": "por que foi usada nesta linha", "what_if_removed": "o que aconteceria sem ela", "when_to_use": "quando usar novamente", "alternatives": "alternativas possiveis"}}], "output": "saida acumulada ate este passo"}}
+  ]
+}}
 
 REGRAS:
+- O veredito deve refletir a ANALISE OBRIGATORIA do JUIZ VIRTUAL (entrada, armazenamento, processamento, saida, casos extremos)
 - Use os valores REAIS da execucao (ex: A=2, B=3, soma=5)
 - Cada passo deve referenciar uma linha que REALMENTE existe no codigo fornecido
 - Preencha `variable_details` apenas nos passos de declaracao/leitura/calculo/impressao de variaveis, e `expressions` apenas para as expressoes mais importantes - sem repeticao nos demais passos
@@ -703,17 +783,21 @@ REGRAS:
 
     raw = _call_ai(system_prompt, context, custom_key, max_tokens=3000)
     if not raw:
-        return None, None
+        return None, None, None
     try:
         cleaned = re.sub(r"^```\w*\n?", "", raw.strip())
         cleaned = re.sub(r"\n?```$", "", cleaned)
         data = _json_lenient(cleaned)
         corrected_code = None
+        verdict = None
         if isinstance(data, dict):
             corrected_code = data.get("corrected_code") or data.get("template_code")
+            verdict = {"class": str(data.get("verdict") or ""), "detail": str(data.get("verdict_detail") or "")}
+            if not verdict["class"]:
+                verdict = None
             data = data.get("steps") or data.get("step_by_step") or []
         if not isinstance(data, list) or not data:
-            return None, corrected_code
+            return None, corrected_code, verdict
         steps = []
         for i, s in enumerate(data):
             if not isinstance(s, dict):
@@ -733,7 +817,7 @@ REGRAS:
                 "expressions": s.get("expressions") if isinstance(s.get("expressions"), list) else [],
                 "output": s.get("output") or "",
             })
-        return (steps if steps else None), corrected_code
+        return (steps if steps else None), corrected_code, verdict
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         logger.error(f"Falha ao parsear walkthrough da IA: {e}: {raw[:300]}")
         salvaged = _salvage_json(cleaned)
@@ -758,8 +842,8 @@ REGRAS:
                         "output": s.get("output") or "",
                     })
                 if steps:
-                    return steps, corrected_code
-        return None, None
+                    return steps, corrected_code, verdict
+        return None, None, verdict
 
 
 def _run_wandbox(conf: dict, code: str, stdin: str):
@@ -2125,7 +2209,7 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
         check_thread = None
 
     try:
-        steps, corrected_code = _walkthrough_ai(
+        steps, corrected_code, verdict = _walkthrough_ai(
             req.code, req.language, stdin, req.statement, expected,
             is_template, x_custom_api_key, compile_error=compile_error,
         )
@@ -2136,7 +2220,7 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
     if not steps:
         # IA falhou ou nao produziu steps: re-tenta com o erro de compilacao conhecido
         if compile_error and not is_template:
-            steps, corrected_code = _walkthrough_ai(
+            steps, corrected_code, verdict = _walkthrough_ai(
                 req.code, req.language, stdin, req.statement, expected,
                 False, x_custom_api_key, compile_error=compile_error,
             )
@@ -2178,6 +2262,7 @@ def judge_walkthrough(req: WalkthroughRequest, x_custom_api_key: Optional[str] =
         "template": is_template,
         "corrected_code": corrected_code,
         "compile_error": compile_error,
+        "verdict": verdict,
     }
     _cache_store(_walkthrough_cache, walk_key, _db_cache_key("walk", (req.language, req.code, req.statement, stdin, expected)), response)
     return response

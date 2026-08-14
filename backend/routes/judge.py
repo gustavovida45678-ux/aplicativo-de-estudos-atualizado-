@@ -443,6 +443,60 @@ def _salvage_json(raw: str):
     return None
 
 
+def _split_json_objects(text):
+    """Divide multiplos objetos JSON concatenados (IA responde N exercicios de uma vez)
+    e devolve o mais completo (mais casos de teste; empate -> ultimo)."""
+    candidates = []
+    i = 0
+    n = len(text)
+    while True:
+        s = text.find("{", i)
+        if s == -1:
+            break
+        depth = 0
+        in_str = False
+        esc = False
+        j = s
+        while j < n:
+            ch = text[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+            else:
+                if ch == '"':
+                    in_str = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            d = json.loads(text[s : j + 1])
+                            if isinstance(d, dict):
+                                candidates.append(d)
+                        except json.JSONDecodeError:
+                            pass
+                        break
+            j += 1
+        i = j + 1
+    if not candidates:
+        return None
+    best = None
+    best_tc = -1
+    for d in candidates:
+        if not (d.get("statement") or d.get("solution")):
+            continue
+        tc = len(d.get("test_cases") or [])
+        if tc >= best_tc:
+            best = d
+            best_tc = tc
+    return best
+
+
 def _json_lenient(raw):
     """Parse de JSON gerado por IA, tolerante a:
     1) quebras de linha CRUAS dentro de strings (control chars invalidos
@@ -457,6 +511,39 @@ def _json_lenient(raw):
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
         text = re.sub(r"\n?```$", "", text)
+
+    # 0) Aspas-triplas (""" ... """) que a IA usa como delimitador de string
+    #    (codigo/explicacao com quebras de linha): vira string JSON normal.
+    parts = text.split('"""')
+    if len(parts) > 1:
+        rebuilt = []
+        for i, p in enumerate(parts):
+            if i % 2 == 1:
+                # bloco """ ... """: vira string JSON normal (repor as aspas)
+                out = []
+                esc = False
+                for ch in p:
+                    if esc:
+                        out.append(ch)
+                        esc = False
+                        continue
+                    if ch == "\\":
+                        out.append(ch)
+                        esc = True
+                        continue
+                    if ch == '"':
+                        out.append('\\"')
+                        continue
+                    if ord(ch) < 0x20:
+                        out.append(json.dumps(ch)[1:-1])
+                        continue
+                    out.append(ch)
+                if esc:
+                    out.append("\\\\")
+                rebuilt.append('"' + "".join(out) + '"')
+            else:
+                rebuilt.append(p)
+        text = "".join(rebuilt)
 
     # Reparo do campo "solution" (codigo-fonte, unico que contem aspas)
     sol_key = '"solution":'
@@ -519,7 +606,12 @@ def _json_lenient(raw):
 
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        if "Extra data" in str(e):
+            # Multiplos objetos concatenados (IA respondeu N exercicios de uma vez)
+            best = _split_json_objects(text)
+            if best is not None:
+                return best
         pass
     # Truncamento: corta do primeiro { ate o ultimo }
     start = text.find("{")
@@ -2171,7 +2263,7 @@ def vismo_prompt(req: VismoPromptRequest):
     }
 
 
-def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
+def _generate_new_exercise(topic: str, difficulty: int, language: str, description: str = "") -> dict:
     exercises_db = {
         "variaveis": [
             {"title": "Soma de Dois Numeros", "statement": "Leia dois inteiros A e B e imprima a soma A + B.",
@@ -2234,7 +2326,19 @@ def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
     topic_lower = topic.lower().replace(" ", "_").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
     possible = exercises_db.get(topic_lower, exercises_db["variaveis"])
     import random
-    ex = random.choice(possible)
+    if description:
+        # Escolhe o exercicio do banco que mais combina com a descricao
+        # (em vez de sortear um que pode nao ter relacao com a questao).
+        text = description.lower()
+        best, best_score = possible[0], -1
+        for cand in possible:
+            hay = " ".join([cand["statement"], cand["inputFormat"], cand["outputFormat"]]).lower()
+            score = sum(1 for kw in hay.split() if len(kw) > 3 and kw in text)
+            if score > best_score:
+                best, best_score = cand, score
+        ex = best
+    else:
+        ex = random.choice(possible)
 
     starters = {
         "Soma de Dois Numeros": {
@@ -2378,6 +2482,9 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
         '"explanation": "explicacao didatica passo a passo da solucao"}'
         "\n\nRegras: no minimo 2 test_cases; solution deve ler a entrada, calcular e imprimir "
         "exatamente o que os test_cases esperam; statement em portugues."
+        "\nIMPORTANTE: gere APENAS UM exercicio. Se a solicitacao contiver varios itens "
+        "numerados (1., 2., ...), crie UM exercicio unico que englobe a questao completa "
+        "(o mais completo possivel), nunca um exercicio por item."
     )
     # max_tokens moderado: modelos de fallback do Groq (ex. gpt-oss-20b) tem teto
     # menor que 8000 e rejeitam a requisicao; o parser leniente abaixo cobre o caso
@@ -2402,9 +2509,11 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
         if solution.endswith('"""') or solution.endswith("'''"):
             solution = solution[:-3]
         sol_lines = [ln.strip() for ln in solution.split("\n")]
-        while sol_lines and sol_lines[0] in ('"', "'", "`", '"""', "'''", "```"):
+        while sol_lines and (sol_lines[0] in ('"', "'", "`", '"""', "'''", "```")
+                             or (sol_lines[0] and set(sol_lines[0]) <= {'"', "'", "`"})):
             sol_lines.pop(0)
-        while sol_lines and sol_lines[-1] in ('"', "'", "`", '"""', "'''", "```"):
+        while sol_lines and (sol_lines[-1] in ('"', "'", "`", '"""', "'''", "```")
+                             or (sol_lines[-1] and set(sol_lines[-1]) <= {'"', "'", "`"})):
             sol_lines.pop()
         solution = "\n".join(sol_lines).strip()
         examples = data.get("examples") or []
@@ -2488,7 +2597,7 @@ def generate_from_text(req: TextExerciseRequest, x_custom_api_key: Optional[str]
         _cache_store(_gen_cache, gen_key, _db_cache_key("from_text", (description, req.language, req.difficulty)), result)
         return result
 
-    base = _generate_new_exercise(topic, req.difficulty, req.language)
+    base = _generate_new_exercise(topic, req.difficulty, req.language, description)
     explanation = (
         f"O programa deve: (1) ler a entrada descrita em '{base['inputFormat']}'; "
         f"(2) aplicar a logica do enunciado; (3) imprimir exatamente '{base['outputFormat']}'. "

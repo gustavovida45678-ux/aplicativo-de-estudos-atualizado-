@@ -47,6 +47,9 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   const textInputRef = useRef(null);
   const lastPointRef = useRef(null);
   const textJustCreatedRef = useRef(false);
+  // Copia do conteudo original ao editar texto/novo topico existente:
+  // Esc REVERTE em vez de apagar.
+  const textOriginalRef = useRef(null);
 
   // Mapa mental
   const nodesRef = useRef([]);
@@ -305,14 +308,31 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   };
 
   const openNodeEditor = (node) => {
-    textJustCreatedRef.current = true;
+    textJustCreatedRef.current = false;
+    textOriginalRef.current = { ...node };
     setEditingText(node);
-    setTimeout(() => textInputRef.current?.focus(), 0);
+    setTimeout(() => {
+      const el = textInputRef.current;
+      if (el) {
+        el.focus();
+        const len = (node.content || "").length;
+        el.setSelectionRange(len, len);
+      }
+    }, 0);
   };
 
   const openTextEditor = (t) => {
+    textJustCreatedRef.current = false;
+    textOriginalRef.current = { ...t };
     setEditingText(t);
-    setTimeout(() => textInputRef.current?.focus(), 0);
+    setTimeout(() => {
+      const el = textInputRef.current;
+      if (el) {
+        el.focus();
+        const len = (t.content || "").length;
+        el.setSelectionRange(len, len);
+      }
+    }, 0);
   };
 
   const createNodeAt = (x, y) => {
@@ -443,6 +463,19 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
       // o textarea recém-focado perde o foco na mesma hora e o overlay fecha
       e.preventDefault();
       const pt = getPoint(e);
+      // Clique sobre texto/topico EXISTENTE edita em vez de criar novo
+      const hitNode = hitTestNode(pt);
+      if (hitNode) {
+        openNodeEditor(hitNode);
+        redraw();
+        return;
+      }
+      const hitText = hitTestText(pt);
+      if (hitText) {
+        openTextEditor(hitText);
+        redraw();
+        return;
+      }
       startTextEdit(pt.x, pt.y);
       return;
     }
@@ -508,6 +541,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     textsRef.current.push(newText);
     setEditingText(newText);
     textJustCreatedRef.current = true;
+    textOriginalRef.current = null;
     
     // Focus the textarea after render
     setTimeout(() => textInputRef.current?.focus(), 0);
@@ -551,7 +585,12 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
 
   const cancelTextEdit = () => {
     if (!editingText) return;
-    if (editingText.kind === "node") {
+    if (textOriginalRef.current) {
+      // Texto/topico EXISTENTE: Esc reverte para o conteudo original (nao apaga)
+      const list = editingText.kind === "node" ? nodesRef.current : textsRef.current;
+      const idx = list.indexOf(editingText);
+      if (idx !== -1) list[idx] = textOriginalRef.current;
+    } else if (editingText.kind === "node") {
       removeNodeSubtree(editingText.id);
     } else {
       textsRef.current = textsRef.current.filter(t => t !== editingText);
@@ -964,7 +1003,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
                 width: "100%"
               }}
               placeholder={editingText.kind === "node" ? "Título do tópico... (Ctrl+Enter finaliza, Esc cancela)" : "Digite seu texto... (Ctrl+Enter para finalizar, Esc para cancelar)"}
-              rows={1}
+              rows={Math.max(1, (editingText.content || "").split("\n").length)}
             />
           </div>
         )}

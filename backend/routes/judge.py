@@ -2206,6 +2206,18 @@ def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
             {"title": "Soma dos Elementos", "statement": "Leia N numeros e calcule a soma.",
              "inputFormat": "N seguido de N numeros", "outputFormat": "A soma total",
              "test_cases": [{"input": "3\n1 2 3", "expected": "6"}]},
+            {"title": "Acima da Media", "statement": "Leia N notas, armazene-as em um vetor, calcule a media inteira e imprima quantas notas estao acima dela.",
+             "inputFormat": "N seguido de N notas", "outputFormat": "A media inteira e a quantidade de notas acima dela",
+             "test_cases": [{"input": "4\n5 8 7 6", "expected": "6\n2"}, {"input": "3\n10 9 8", "expected": "9\n1"}]},
+            {"title": "Contagem de Ocorrencias", "statement": "Leia N numeros e um valor de referencia R. Imprima quantos sao maiores que R, quantos sao menores e quantas vezes R aparece.",
+             "inputFormat": "N, depois N numeros, depois R", "outputFormat": "maiores, menores e ocorrencias de R",
+             "test_cases": [{"input": "5\n1 5 5 9 10\n5", "expected": "2 1 2"}, {"input": "3\n4 4 4\n4", "expected": "0 0 3"}]},
+            {"title": "Inverter Vetor", "statement": "Leia N numeros e imprima-os na ordem inversa.",
+             "inputFormat": "N seguido de N numeros", "outputFormat": "Os N numeros na ordem inversa",
+             "test_cases": [{"input": "4\n1 2 3 4", "expected": "4 3 2 1"}, {"input": "3\n7 8 9", "expected": "9 8 7"}]},
+            {"title": "Filtrar Pares", "statement": "Leia N numeros e imprima apenas os pares, na ordem em que aparecem (ou VAZIO se nao houver).",
+             "inputFormat": "N seguido de N numeros", "outputFormat": "Os numeros pares separados por espaco ou VAZIO",
+             "test_cases": [{"input": "5\n1 2 3 4 5", "expected": "2 4"}, {"input": "3\n1 3 5", "expected": "VAZIO"}]},
         ],
         "estruturas_dados": [
             {"title": "Verificacao de Parenteses", "statement": "Verifique se uma expressao tem parenteses balanceados.",
@@ -2265,6 +2277,26 @@ def _generate_new_exercise(topic: str, difficulty: int, language: str) -> dict:
             "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, i, v, soma = 0;\n    scanf(\"%d\", &N);\n    for (i = 0; i < N; i++) {{\n        scanf(\"%d\", &v);\n        soma = soma + v;\n    }}\n    printf(\"%d\\n\", soma);\n    return 0;\n}}\n",
             "cpp": "// {t}\n#include <iostream>\nusing namespace std;\n\nint main() {{\n    int N, v, soma = 0;\n    cin >> N;\n    for (int i = 0; i < N; i++) {{\n        cin >> v;\n        soma = soma + v;\n    }}\n    cout << soma << endl;\n    return 0;\n}}\n",
         },
+        "Acima da Media": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nnotas = list(map(int, input().split()))\nmedia = sum(notas) // N\nprint(media, sum(1 for n in notas if n > media), sep=\"\\n\")\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, soma = 0, acima = 0, media, notas[1000];\n    scanf(\"%d\", &N);\n    for (int i = 0; i < N; i++) {{\n        scanf(\"%d\", &notas[i]);\n        soma += notas[i];\n    }}\n    media = soma / N;\n    for (int i = 0; i < N; i++)\n        if (notas[i] > media) acima++;\n    printf(\"%d\\n%d\\n\", media, acima);\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {{\n    int N, soma = 0, acima = 0, media;\n    cin >> N;\n    vector<int> notas(N);\n    for (int i = 0; i < N; i++) {{\n        cin >> notas[i];\n        soma += notas[i];\n    }}\n    media = soma / N;\n    for (int n : notas)\n        if (n > media) acima++;\n    cout << media << \"\\n\" << acima << endl;\n    return 0;\n}}\n",
+        },
+        "Contagem de Ocorrencias": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nnums = list(map(int, input().split()))\nR = int(input())\nprint(sum(1 for x in nums if x > R), sum(1 for x in nums if x < R), nums.count(R))\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, i, R, nums[1000], maior = 0, menor = 0, iguais = 0;\n    scanf(\"%d\", &N);\n    for (i = 0; i < N; i++) scanf(\"%d\", &nums[i]);\n    scanf(\"%d\", &R);\n    for (i = 0; i < N; i++) {{\n        if (nums[i] > R) maior++;\n        else if (nums[i] < R) menor++;\n        else iguais++;\n    }}\n    printf(\"%d %d %d\\n\", maior, menor, iguais);\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {{\n    int N, R, maior = 0, menor = 0, iguais = 0;\n    cin >> N;\n    vector<int> nums(N);\n    for (int i = 0; i < N; i++) cin >> nums[i];\n    cin >> R;\n    for (int x : nums) {{\n        if (x > R) maior++;\n        else if (x < R) menor++;\n        else iguais++;\n    }}\n    cout << maior << \" \" << menor << \" \" << iguais << endl;\n    return 0;\n}}\n",
+        },
+        "Inverter Vetor": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nnums = list(map(int, input().split()))\nnums.reverse()\nprint(\" \".join(map(str, nums)))\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, i, nums[1000];\n    scanf(\"%d\", &N);\n    for (i = 0; i < N; i++) scanf(\"%d\", &nums[i]);\n    for (i = N - 1; i >= 0; i--) {{\n        if (i < N - 1) printf(\" \");\n        printf(\"%d\", nums[i]);\n    }}\n    printf(\"\\n\");\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\n\nint main() {{\n    int N;\n    cin >> N;\n    vector<int> nums(N);\n    for (int i = 0; i < N; i++) cin >> nums[i];\n    reverse(nums.begin(), nums.end());\n    for (int i = 0; i < N; i++) {{\n        if (i) cout << \" \";\n        cout << nums[i];\n    }}\n    cout << endl;\n    return 0;\n}}\n",
+        },
+        "Filtrar Pares": {
+            "python": "# {t}\n# {s}\n\nN = int(input())\nnums = list(map(int, input().split()))\npares = [x for x in nums if x % 2 == 0]\nprint(\" \".join(map(str, pares)) if pares else \"VAZIO\")\n",
+            "c": "/* {t} */\n#include <stdio.h>\n\nint main() {{\n    int N, i, nums[1000], prim = 1;\n    scanf(\"%d\", &N);\n    for (i = 0; i < N; i++) scanf(\"%d\", &nums[i]);\n    for (i = 0; i < N; i++) {{\n        if (nums[i] % 2 == 0) {{\n            if (!prim) printf(\" \");\n            printf(\"%d\", nums[i]);\n            prim = 0;\n        }}\n    }}\n    if (prim) printf(\"VAZIO\");\n    printf(\"\\n\");\n    return 0;\n}}\n",
+            "cpp": "// {t}\n#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {{\n    int N, prim = 1;\n    cin >> N;\n    vector<int> nums(N);\n    for (int i = 0; i < N; i++) cin >> nums[i];\n    for (int x : nums) {{\n        if (x % 2 == 0) {{\n            if (!prim) cout << \" \";\n            cout << x;\n            prim = 0;\n        }}\n    }}\n    if (prim) cout << \"VAZIO\";\n    cout << endl;\n    return 0;\n}}\n",
+        },
         "Verificacao de Parenteses": {
             "python": "# {t}\n# {s}\n\nexpr = input()\npilha = 0\nok = True\nfor ch in expr:\n    if ch == \"(\":\n        pilha += 1\n    elif ch == \")\":\n        pilha -= 1\n        if pilha < 0:\n            ok = False\nif pilha != 0:\n    ok = False\nprint(\"SIM\" if ok else \"NAO\")\n",
             "c": "/* {t} */\n#include <stdio.h>\n#include <string.h>\n\nint main() {{\n    char expr[1000];\n    int i, len, pilha = 0, ok = 1;\n    scanf(\"%s\", expr);\n    len = strlen(expr);\n    for (i = 0; i < len; i++) {{\n        if (expr[i] == '(') {{\n            pilha++;\n        }} else if (expr[i] == ')') {{\n            pilha--;\n            if (pilha < 0) ok = 0;\n        }}\n    }}\n    if (pilha != 0) ok = 0;\n    printf(\"%s\\n\", ok ? \"SIM\" : \"NAO\");\n    return 0;\n}}\n",
@@ -2309,10 +2341,10 @@ class TextExerciseRequest(BaseModel):
 _TOPIC_KEYWORDS = {
     "recursao": ["recursi", "potencia", "recursiva"],
     "estruturas_dados": ["pilha", "fila", "parenteses", "lista encadeada", "arvore", "balancead"],
-    "arrays": ["vetor", "array", "lista", "elementos", "sequencia", "na ordem"],
+    "arrays": ["vetor", "array", "lista", "elementos", "sequencia", "na ordem", "ordem inversa", "reverter", "inverta o vetor", "ocorrencia", "contagem", "acima da media", "pares", "media das notas", "armazene-os em um vetor", "armazene em um vetor"],
     "strings": ["string", "texto", "vogal", "palavra", "inverta", "maiuscula", "minuscula", "caractere"],
     "loops": ["loop", "repeti", "tabuada", "fatorial", "fibonacci", "contar de", "de 1 a", "ate n"],
-    "condicionais": ["par", "impar", "positivo", "negativo", "maior", "menor", "condicao", "classifique", "compare", "se for"],
+    "condicionais": ["par", "impar", "positivo", "negativo", "maior", "menor", "condicao", "classifique", "compare", "se for", "aprovado", "reprovado", "recuperacao"],
     "variaveis": ["soma", "multiplica", "divisao", "resto", "media", "numero", "inteiro", "calcule", "calcular", "leia dois"],
 }
 

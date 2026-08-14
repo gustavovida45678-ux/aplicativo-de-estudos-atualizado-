@@ -182,20 +182,20 @@ PROVIDERS: Dict[ProviderType, ProviderConfig] = {
                 display_name="Llama 3.3 70B Versatile",
                 context_window=128000
             ),
-            "llama-3.1-70b-versatile": ModelConfig(
-                model_id="groq/llama-3.1-70b-versatile",
-                display_name="Llama 3.1 70B Versatile",
+            "llama-3.1-8b-instant": ModelConfig(
+                model_id="groq/llama-3.1-8b-instant",
+                display_name="Llama 3.1 8B Instant",
                 context_window=128000
             ),
-            "mixtral-8x7b-32768": ModelConfig(
-                model_id="groq/mixtral-8x7b-32768",
-                display_name="Mixtral 8x7B",
-                context_window=32768
+            "openai/gpt-oss-20b": ModelConfig(
+                model_id="groq/openai/gpt-oss-20b",
+                display_name="GPT-OSS 20B",
+                context_window=131072
             ),
-            "gemma2-9b-it": ModelConfig(
-                model_id="groq/gemma2-9b-it",
-                display_name="Gemma 2 9B",
-                context_window=8192
+            "qwen/qwen3.6-27b": ModelConfig(
+                model_id="groq/qwen/qwen3.6-27b",
+                display_name="Qwen 3.6 27B",
+                context_window=131072
             ),
         },
         env_var="GROQ_API_KEY",

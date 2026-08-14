@@ -186,16 +186,16 @@ class ChatService:
                         )
                     except Exception as e:
                         last_error = e
-                        if self._is_rate_limited(e):
-                            if model_index < len(models) - 1:
-                                logger.warning(f"Modelo {mk} do provider {ptype.value} em rate limit; tentando proximo modelo...")
-                                continue
-                            if key_index < len(keys) - 1:
-                                logger.warning(f"Provider {ptype.value} (chave {key_index + 1}/{len(keys)}) em rate limit; trocando de chave...")
-                                break
-                            logger.warning(f"Todos os modelos do provider {ptype.value} em rate limit; tentando proximo provedor...")
+                        if self._is_rate_limited(e) and model_index < len(models) - 1:
+                            logger.warning(f"Modelo {mk} do provider {ptype.value} em rate limit; tentando proximo modelo...")
+                            continue
+                        if model_index < len(models) - 1:
+                            logger.warning(f"Modelo {mk} do provider {ptype.value} falhou ({type(e).__name__}: {str(e)[:120]}); tentando proximo modelo...")
+                            continue
+                        if self._is_rate_limited(e) and key_index < len(keys) - 1:
+                            logger.warning(f"Provider {ptype.value} (chave {key_index + 1}/{len(keys)}) em rate limit; trocando de chave...")
                             break
-                        logger.warning(f"Provider {ptype.value} falhou ({e}); tentando proximo provedor...")
+                        logger.warning(f"Provider {ptype.value} falhou em todos os modelos ({e}); tentando proximo provedor...")
                         break
                 # rate limit em todos os modelos e ainda ha chaves -> proxima chave
                 if self._is_rate_limited(last_error) and key_index < len(keys) - 1:

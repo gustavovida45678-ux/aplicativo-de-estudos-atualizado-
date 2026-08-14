@@ -672,6 +672,7 @@ def _json_lenient(raw):
 
 
 def _walkthrough_ai(code: str, language: str, stdin: str, statement: str = "", expected: str = "", is_template: bool = False, custom_key: Optional[str] = None, compile_error: Optional[str] = None):
+    lang_name = {"c": "C", "cpp": "C++", "python": "Python"}.get(language, language)
     if is_template:
         system_prompt = f"""Voce e um professor de {lang_name} muito didatico. O aluno enviou um CODIGO VAZIO (apenas o esqueleto com '// seu codigo aqui').
 

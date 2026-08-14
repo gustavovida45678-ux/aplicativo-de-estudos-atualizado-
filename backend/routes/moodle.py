@@ -1138,7 +1138,31 @@ REGRAS:
 2. Se for material de estudo (PDF/lição), transforme em explicação passo a passo do conteúdo.
 3. Se o conteúdo disponível for limitado (apenas metadados: título, disciplina, arquivos e link, sem texto do enunciado), diga isso claramente na question_summary e explique ao aluno: o que esse tipo de atividade costuma pedir, como abordá-la, passos para resolvê-la e o que estudar. Não invente dados, cálculos ou números específicos que não estejam no conteúdo.
 4. Não invente dados: use apenas o que está na atividade.
-5. Retorne APENAS o JSON válido."""
+5. Retorne APENAS o JSON válido.
+6. IMPORTANTE: TODO campo de texto (question_summary, step, explanation, final_answer, khan_style) deve ser uma STRING de texto puro, nunca um objeto, lista ou JSON aninhado. Se precisar enumerar algo, use texto com quebras de linha. NUNCA escreva literalmente "object Object" na resposta."""
+
+
+def _deep_stringify(obj):
+    """Garante que nenhum campo de texto vire '[object Object]' no app:
+    converte recursivamente objetos aninhados em JSON/texto e listas em
+    texto separado por virgula. Nunca deixa dict/list dentro de campo
+    que o frontend renderiza como string."""
+    if isinstance(obj, dict):
+        return {k: _deep_stringify(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_stringify(v) for v in obj]
+    if obj is None:
+        return ""
+    if isinstance(obj, bool):
+        return "true" if obj else "false"
+    if isinstance(obj, (int, float)):
+        return str(obj)
+    if isinstance(obj, str):
+        return obj
+    try:
+        return json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        return str(obj)
 
 
 @router.post("/study")
@@ -1218,19 +1242,28 @@ async def moodle_study(req: StudyRequest, current_user: dict = Depends(get_curre
     # 1) Resolução passo a passo
     solution_text = _ok(solution_resp).get("content", "")
     solution_json = _extract_json(solution_text)
-    solution = json.loads(solution_json) if solution_json else {
+    solution = _deep_stringify(json.loads(solution_json)) if solution_json else {
         "question_summary": "", "solution": [], "final_answer": "", "khan_style": ""
     }
 
     # 2) Resumo de estudos
     summary_text = _ok(summary_resp).get("content", "")
     summary_json = _extract_json(summary_text)
-    summary = json.loads(summary_json) if summary_json else {}
+    summary = _deep_stringify(json.loads(summary_json)) if summary_json else {}
 
     # 3) 10 exercícios do material
     exercises_text = _ok(exercises_resp).get("content", "")
     exercises_json = _extract_json(exercises_text)
-    exercises = json.loads(exercises_json).get("exercises", []) if exercises_json else []
+    exercises = _deep_stringify(json.loads(exercises_json).get("exercises", [])) if exercises_json else []
+
+    # Guardas de tipo: garante que os campos que o app percorre com .map sejam listas
+    if not isinstance(solution.get("solution"), list):
+        solution["solution"] = []
+    for _lk in ("topics", "keywords", "study_tips", "formulas_summary", "priority_analysis"):
+        if not isinstance(summary.get(_lk), list):
+            summary[_lk] = []
+    if not isinstance(exercises, list):
+        exercises = []
 
     if not solution.get("solution") and not summary and not exercises:
         detail = "A IA não conseguiu gerar o estudo desta atividade"

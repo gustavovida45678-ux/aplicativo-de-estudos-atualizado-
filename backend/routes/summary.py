@@ -576,7 +576,8 @@ Responda EXATAMENTE com este JSON (sem markdown, sem ```):
   "priority_analysis": []
 }}
 
-Retorne APENAS o JSON válido."""
+Retorne APENAS o JSON válido.
+REGRAS DE TIPO: TODO campo de texto (title, general_summary, name, explanation, word, definition, example, root, study_tips etc.) deve ser uma STRING de texto puro, nunca objeto, lista ou JSON aninhado. Campos de lista (key_concepts, formulas, examples, common_errors, observations, study_tips, priority_analysis) contêm APENAS strings. Se precisar enumerar algo dentro de um texto, use quebras de linha. NUNCA escreva literalmente "object Object" na resposta."""
 
 
 def _build_exercises_prompt(text: str, count: int, difficulty: str, is_simulado: bool) -> str:
@@ -651,7 +652,8 @@ REGRAS:
 2. Não invente conteúdo ausente no material
 3. VARIE as respostas corretas (não use sempre a mesma letra)
 4. Explique o PORQUÊ, não apenas o QUÊ
-5. Retorne APENAS o JSON válido"""
+5. Retorne APENAS o JSON válido
+6. IMPORTANTE: TODO campo de texto (question, correct_answer, explanation, topic, difficulty, concept_used, cada item de options e solution_steps) deve ser uma STRING de texto puro, nunca objeto, lista ou JSON aninhado. options e solution_steps contêm APENAS strings. NUNCA escreva literalmente "object Object" na resposta."""
 
 
 def _build_fallback_summary(text: str, file_names: list) -> dict:

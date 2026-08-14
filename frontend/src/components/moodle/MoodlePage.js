@@ -14,6 +14,13 @@ const API = `${BACKEND_URL}/api/moodle`;
 
 const MOODLE_URL = 'https://moodle.ifg.edu.br/my/';
 
+const txt = (v) => {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+};
+
 export function MoodlePage({ onClose }) {
   const [courses, setCourses] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -578,10 +585,10 @@ export function MoodlePage({ onClose }) {
             <div className="moodle-study-panel" onClick={(e) => e.stopPropagation()}>
               <div className="moodle-study-header">
                 <div>
-                  <h3>{studyData?.activity_name || studyActivity.name}</h3>
-                  <p>{studyData?.course_name || studyActivity.course_name}</p>
+                  <h3>{txt(studyData?.activity_name || studyActivity.name)}</h3>
+                  <p>{txt(studyData?.course_name || studyActivity.course_name)}</p>
                   {studyData?.files && studyData.files.length > 0 && (
-                    <p className="moodle-study-files">Arquivos escaneados: {studyData.files.join(', ')}</p>
+                    <p className="moodle-study-files">Arquivos escaneados: {txt(studyData.files.join(', '))}</p>
                   )}
                 </div>
                 <button className="moodle-close" onClick={() => setStudyActivity(null)}>
@@ -628,27 +635,27 @@ export function MoodlePage({ onClose }) {
                     {studyTab === 'solution' && (
                       <div className="study-solution">
                         {studyData.solution?.question_summary && (
-                          <p className="study-question-summary">{studyData.solution.question_summary}</p>
+                          <p className="study-question-summary">{txt(studyData.solution.question_summary)}</p>
                         )}
                         {(studyData.solution?.solution || []).map((step, i) => (
                           <div key={i} className="study-step">
                             <span className="study-step-num">{i + 1}</span>
                             <div>
-                              <strong>{step.step}</strong>
-                              <p>{step.explanation}</p>
+                              <strong>{txt(step.step)}</strong>
+                              <p>{txt(step.explanation)}</p>
                             </div>
                           </div>
                         ))}
                         {studyData.solution?.final_answer && (
                           <div className="study-final-answer">
                             <h4>Resposta final</h4>
-                            <p>{studyData.solution.final_answer}</p>
+                            <p>{txt(studyData.solution.final_answer)}</p>
                           </div>
                         )}
                         {studyData.solution?.khan_style && (
                           <div className="study-khan">
                             <h4>Explicação de colega</h4>
-                            <p>{studyData.solution.khan_style}</p>
+                            <p>{txt(studyData.solution.khan_style)}</p>
                           </div>
                         )}
                       </div>
@@ -656,32 +663,32 @@ export function MoodlePage({ onClose }) {
 
                     {studyTab === 'summary' && (
                       <div className="study-summary">
-                        {studyData.summary?.title && <h3>{studyData.summary.title}</h3>}
+                        {studyData.summary?.title && <h3>{txt(studyData.summary.title)}</h3>}
                         {studyData.summary?.general_summary && (
-                          <p className="study-general">{studyData.summary.general_summary}</p>
+                          <p className="study-general">{txt(studyData.summary.general_summary)}</p>
                         )}
                         {(studyData.summary?.topics || []).map((t, i) => (
                           <div key={i} className="study-topic">
-                            <h4>{t.name}
-                              {t.priority && <span className={`topic-priority ${t.priority}`}>{t.priority}</span>}
+                            <h4>{txt(t.name)}
+                              {t.priority && <span className={`topic-priority ${txt(t.priority)}`}>{txt(t.priority)}</span>}
                             </h4>
-                            {t.explanation && <p>{t.explanation}</p>}
+                            {t.explanation && <p>{txt(t.explanation)}</p>}
                             {t.key_concepts?.length > 0 && (
-                              <ul>{t.key_concepts.map((k, j) => <li key={j}>• {k}</li>)}</ul>
+                              <ul>{t.key_concepts.map((k, j) => <li key={j}>• {txt(k)}</li>)}</ul>
                             )}
                             {t.formulas?.length > 0 && (
-                              <div className="study-formulas">{t.formulas.map((f, j) => <code key={j}>{f}</code>)}</div>
+                              <div className="study-formulas">{t.formulas.map((f, j) => <code key={j}>{txt(f)}</code>)}</div>
                             )}
                             {t.examples?.length > 0 && (
                               <div className="study-examples">
                                 <strong>Exemplos:</strong>
-                                {t.examples.map((ex, j) => <p key={j}>– {ex}</p>)}
+                                {t.examples.map((ex, j) => <p key={j}>– {txt(ex)}</p>)}
                               </div>
                             )}
                             {t.common_errors?.length > 0 && (
                               <div className="study-errors">
                                 <strong>Erros comuns:</strong>
-                                {t.common_errors.map((er, j) => <p key={j}>⚠ {er}</p>)}
+                                {t.common_errors.map((er, j) => <p key={j}>⚠ {txt(er)}</p>)}
                               </div>
                             )}
                           </div>
@@ -689,13 +696,13 @@ export function MoodlePage({ onClose }) {
                         {studyData.summary?.study_tips?.length > 0 && (
                           <div className="study-tips">
                             <h4>Dicas de estudo</h4>
-                            {studyData.summary.study_tips.map((tip, i) => <p key={i}>💡 {tip}</p>)}
+                            {studyData.summary.study_tips.map((tip, i) => <p key={i}>💡 {txt(tip)}</p>)}
                           </div>
                         )}
                         {studyData.summary?.formulas_summary?.length > 0 && (
                           <div className="study-formulas-all">
                             <h4>Fórmulas</h4>
-                            {studyData.summary.formulas_summary.map((f, i) => <code key={i}>{f}</code>)}
+                            {studyData.summary.formulas_summary.map((f, i) => <code key={i}>{txt(f)}</code>)}
                           </div>
                         )}
                       </div>
@@ -707,23 +714,23 @@ export function MoodlePage({ onClose }) {
                           <div key={i} className="study-exercise">
                             <div className="study-exercise-head">
                               <span className="study-exercise-num">{i + 1}</span>
-                              <span className="activity-type">{ex.type}</span>
-                              {ex.difficulty && <span className="topic-priority medio">{ex.difficulty}</span>}
+                              <span className="activity-type">{txt(ex.type)}</span>
+                              {ex.difficulty && <span className="topic-priority medio">{txt(ex.difficulty)}</span>}
                             </div>
-                            <p className="study-exercise-q">{ex.question}</p>
+                            <p className="study-exercise-q">{txt(ex.question)}</p>
                             {ex.options?.length > 0 && (
                               <div className="study-options">
-                                {ex.options.map((o, j) => <p key={j}>{o}</p>)}
+                                {ex.options.map((o, j) => <p key={j}>{txt(o)}</p>)}
                               </div>
                             )}
                             <div className="study-answer">
-                              <strong>Resposta: {ex.correct_answer}</strong>
-                              {ex.explanation && <p>{ex.explanation}</p>}
+                              <strong>Resposta: {txt(ex.correct_answer)}</strong>
+                              {ex.explanation && <p>{txt(ex.explanation)}</p>}
                               {ex.solution_steps?.length > 0 && (
-                                <ol>{ex.solution_steps.map((s, j) => <li key={j}>{s}</li>)}</ol>
+                                <ol>{ex.solution_steps.map((s, j) => <li key={j}>{txt(s)}</li>)}</ol>
                               )}
                             </div>
-                            {ex.topic && <p className="study-exercise-topic">Tópico: {ex.topic}</p>}
+                            {ex.topic && <p className="study-exercise-topic">Tópico: {txt(ex.topic)}</p>}
                           </div>
                         ))}
                       </div>

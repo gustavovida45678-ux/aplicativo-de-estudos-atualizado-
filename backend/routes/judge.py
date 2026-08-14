@@ -2347,9 +2347,10 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
         "\n\nRegras: no minimo 2 test_cases; solution deve ler a entrada, calcular e imprimir "
         "exatamente o que os test_cases esperam; statement em portugues."
     )
-    # JSON com solucao completa + explicacao + casos de teste passa de 3000 tokens;
-    # com max_tokens baixo a resposta era truncada e o parse falhava (caia no banco).
-    raw = _call_ai(system_prompt, user_prompt, custom_key, max_tokens=8000)
+    # max_tokens moderado: modelos de fallback do Groq (ex. gpt-oss-20b) tem teto
+    # menor que 8000 e rejeitam a requisicao; o parser leniente abaixo cobre o caso
+    # real de resposta longa (que tinha quebras de linha e aspas cruas no JSON).
+    raw = _call_ai(system_prompt, user_prompt, custom_key, max_tokens=4096)
     if not raw:
         return None
     try:

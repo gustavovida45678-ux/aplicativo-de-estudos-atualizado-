@@ -2364,6 +2364,17 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
         explanation = str(data.get("explanation") or "").strip()
         if not statement or not solution:
             return None
+        # A IA as vezes envolve o codigo em aspas/ticks de bloco -> limpa
+        if solution.startswith('"""') or solution.startswith("'''"):
+            solution = solution[3:]
+        if solution.endswith('"""') or solution.endswith("'''"):
+            solution = solution[:-3]
+        sol_lines = [ln.strip() for ln in solution.split("\n")]
+        while sol_lines and sol_lines[0] in ('"', "'", "`", '"""', "'''", "```"):
+            sol_lines.pop(0)
+        while sol_lines and sol_lines[-1] in ('"', "'", "`", '"""', "'''", "```"):
+            sol_lines.pop()
+        solution = "\n".join(sol_lines).strip()
         examples = data.get("examples") or []
         if not isinstance(examples, list):
             examples = []

@@ -2265,14 +2265,25 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
         "\n\nRegras: no minimo 2 test_cases; solution deve ler a entrada, calcular e imprimir "
         "exatamente o que os test_cases esperam; statement em portugues."
     )
-    raw = _call_ai(system_prompt, user_prompt, custom_key)
+    # JSON com solucao completa + explicacao + casos de teste passa de 3000 tokens;
+    # com max_tokens baixo a resposta era truncada e o parse falhava (caia no banco).
+    raw = _call_ai(system_prompt, user_prompt, custom_key, max_tokens=8000)
     if not raw:
         return None
     try:
         if raw.startswith("```"):
             raw = re.sub(r"^```\w*\n?", "", raw)
             raw = re.sub(r"\n?```$", "", raw)
-        data = json.loads(raw)
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            # Extracao robusta: pega do primeiro { ate o ultimo } (JSON truncado/sobra de texto)
+            start = raw.find("{")
+            end = raw.rfind("}")
+            if start != -1 and end > start:
+                data = json.loads(raw[start : end + 1])
+            else:
+                raise
         if not isinstance(data, dict):
             logger.error(f"generate_from_text: IA retornou JSON nao-objeto: {type(data).__name__}")
             return None

@@ -437,9 +437,98 @@ def _salvage_json(raw: str):
     for i in range(len(raw) - 1, -1, -1):
         if raw[i] in "}]":
             try:
-                return json.loads(raw[:i + 1])
+                return _json_lenient(raw[:i + 1])
             except json.JSONDecodeError:
                 continue
+    return None
+
+
+def _json_lenient(raw):
+    """Parse de JSON gerado por IA, tolerante a:
+    1) quebras de linha CRUAS dentro de strings (control chars invalidos
+       que a IA insere e fazem json.loads falhar -> caia no banco de dados);
+    2) aspas NAO escapadas dentro do campo "solution" (codigo C com
+       printf/scanf(\"...\") que a IA deixa cruas);
+    3) lixo/markdown em volta;
+    4) truncamento (corta do primeiro { ate o ultimo })."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```\w*\n?", "", text)
+        text = re.sub(r"\n?```$", "", text)
+
+    # Reparo do campo "solution" (codigo-fonte, unico que contem aspas)
+    sol_key = '"solution":'
+    ki = text.find(sol_key)
+    if ki != -1:
+        vs = text.find('"', ki + len(sol_key))
+        if vs != -1:
+            # fim do valor: aspas + separador + campo "explanation"
+            m_end = re.search(r'",\s*"explanation"', text[vs + 1:])
+            if m_end:
+                raw_sol = text[vs + 1 : vs + 1 + m_end.start()]
+                if raw_sol.count('"') > 2:
+                    fixed = []
+                    esc = False
+                    for ch in raw_sol:
+                        if esc:
+                            fixed.append(ch)
+                            esc = False
+                            continue
+                        if ch == "\\":
+                            fixed.append(ch)
+                            esc = True
+                            continue
+                        if ch == '"':
+                            fixed.append('\\"')
+                            continue
+                        if ord(ch) < 0x20:
+                            fixed.append(json.dumps(ch)[1:-1])
+                            continue
+                        fixed.append(ch)
+                    if esc:
+                        fixed.append("\\\\")
+                    text = text[:vs + 1] + "".join(fixed) + text[vs + 1 + m_end.start():]
+
+    # Escapa control chars que aparecerem DENTRO de strings JSON
+    out = []
+    in_str = False
+    esc = False
+    for ch in text:
+        if in_str:
+            if esc:
+                out.append(ch)
+                esc = False
+                continue
+            if ch == "\\":
+                out.append(ch)
+                esc = True
+                continue
+            if ch == '"':
+                in_str = False
+            elif ord(ch) < 0x20:
+                out.append(json.dumps(ch)[1:-1])
+                continue
+            out.append(ch)
+        else:
+            if ch == '"':
+                in_str = True
+            out.append(ch)
+    text = "".join(out)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Truncamento: corta do primeiro { ate o ultimo }
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
     return None
 
 
@@ -526,7 +615,7 @@ REGRAS:
     try:
         cleaned = re.sub(r"^```\w*\n?", "", raw.strip())
         cleaned = re.sub(r"\n?```$", "", cleaned)
-        data = json.loads(cleaned)
+        data = _json_lenient(cleaned)
         corrected_code = None
         if isinstance(data, dict):
             corrected_code = data.get("corrected_code") or data.get("template_code")
@@ -941,11 +1030,7 @@ def _educ_json(raw, fallback):
     if not raw:
         return fallback
     try:
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```\w*\n?", "", cleaned)
-            cleaned = re.sub(r"\n?```$", "", cleaned)
-        data = json.loads(cleaned)
+        data = _json_lenient(raw)
         return data if isinstance(data, dict) else fallback
     except Exception:
         logger.error(f"IA: falha ao parsear JSON: {str(raw)[:400]}")
@@ -1379,10 +1464,7 @@ IMPORTANTE: Analise o erro detalhadamente:
         return None
 
     try:
-        if raw.startswith("```"):
-            raw = re.sub(r"^```\w*\n?", "", raw)
-            raw = re.sub(r"\n?```$", "", raw)
-        parsed = json.loads(raw)
+        parsed = _json_lenient(raw)
         _cache_store(_ai_explain_cache, explain_key, _db_cache_key("explain", (language, code, stderr, stdout, expected, compile_error)), parsed)
         return parsed
     except json.JSONDecodeError:
@@ -2271,19 +2353,7 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
     if not raw:
         return None
     try:
-        if raw.startswith("```"):
-            raw = re.sub(r"^```\w*\n?", "", raw)
-            raw = re.sub(r"\n?```$", "", raw)
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            # Extracao robusta: pega do primeiro { ate o ultimo } (JSON truncado/sobra de texto)
-            start = raw.find("{")
-            end = raw.rfind("}")
-            if start != -1 and end > start:
-                data = json.loads(raw[start : end + 1])
-            else:
-                raise
+        data = _json_lenient(raw)
         if not isinstance(data, dict):
             logger.error(f"generate_from_text: IA retornou JSON nao-objeto: {type(data).__name__}")
             return None
@@ -2930,9 +3000,7 @@ REGRAS:
     raw = _call_ai(system_prompt, context, x_custom_api_key)
     if raw:
         try:
-            cleaned = re.sub(r"^```\w*\n?", "", raw.strip())
-            cleaned = re.sub(r"\n?```$", "", cleaned)
-            parsed = json.loads(cleaned)
+            parsed = _json_lenient(raw)
             if isinstance(parsed, dict):
                 ai_result = parsed
         except (json.JSONDecodeError, ValueError, TypeError) as e:

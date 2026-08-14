@@ -831,6 +831,36 @@ def _call_ai(system_prompt: str, user_prompt: str, custom_key: Optional[str] = N
             if content:
                 return content
 
+    # 3) Ultimo recurso: provedores gratuitos publicos sem chave, para o juiz
+    #    nunca parar de gerar correcoes/explicacoes quando todas as chaves falham.
+    keyless_endpoints = [
+        ("https://text.pollinations.ai/openai", "openai"),
+        ("https://enter.pollinations.ai/openai", "openai"),
+        ("https://api.glfh.chat/v1/chat/completions", "gpt-4o-mini"),
+    ]
+    for url, model in keyless_endpoints:
+        try:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.3,
+                "max_tokens": max_tokens,
+            }
+            resp = _post_with_deadline(url, {"Content-Type": "application/json"}, payload, timeout=45)
+            if resp is None:
+                continue
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if content:
+                    logger.warning(f"Juiz IA via keyless fallback {url}")
+                    return content
+        except Exception as e:
+            logger.warning(f"Keyless fallback {url} falhou: {type(e).__name__}: {str(e)[:100]}")
+
     logger.warning("Nenhuma chave de IA configurada ou todas falharam")
     return None
 

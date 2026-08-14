@@ -125,6 +125,58 @@ class ChatService:
                 ordered.append(m)
         return ordered
 
+    async def _chat_keyless_fallback(
+        self,
+        message: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> Optional[Dict[str, Any]]:
+        """ULTIMO recurso: provedores publicos gratuitos que nao exigem chave.
+
+        Usados APENAS quando TODAS as chaves configuradas falharam (rate limit
+        total, queda de API), para o chat nunca parar de responder."""
+        import httpx
+
+        endpoints = [
+            ("https://text.pollinations.ai/openai", "openai"),
+            ("https://enter.pollinations.ai/openai", "openai"),
+            ("https://api.glfh.chat/v1/chat/completions", "gpt-4o-mini"),
+        ]
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+        timeout = httpx.Timeout(60.0, connect=15.0)
+        for url, model in endpoints:
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.post(
+                        url,
+                        json={
+                            "model": model,
+                            "messages": messages,
+                            "temperature": temperature,
+                            "max_tokens": max_tokens,
+                        },
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+                        if content:
+                            logger.warning(f"Keyless fallback funcionou via {url}")
+                            return {
+                                "content": content,
+                                "provider": "keyless",
+                                "model": model,
+                                "usage": None,
+                            }
+                    else:
+                        logger.warning(f"Keyless fallback {url} -> HTTP {resp.status_code}")
+            except Exception as e:
+                logger.warning(f"Keyless fallback {url} falhou: {type(e).__name__}: {str(e)[:100]}")
+        return None
+
     async def chat(
         self,
         message: str,
@@ -201,6 +253,20 @@ class ChatService:
                 if self._is_rate_limited(last_error) and key_index < len(keys) - 1:
                     continue
                 break
+
+        # Ultimo recurso: provedores gratuitos sem chave, para o chat NUNCA parar.
+        try:
+            fallback = await self._chat_keyless_fallback(
+                message=message,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            if fallback:
+                logger.warning("Chat respondeu via fallback keyless (todas as chaves falharam)")
+                return fallback
+        except Exception as e:
+            logger.warning(f"Keyless fallback final falhou: {type(e).__name__}: {str(e)[:120]}")
 
         logger.error(f"Todos os provedores falharam. Ultimo erro: {last_error}")
         raise last_error or ValueError("Nenhum provedor de IA respondeu")

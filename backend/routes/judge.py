@@ -2461,6 +2461,36 @@ def _detect_topic(description: str) -> str:
     return "variaveis"
 
 
+def _validate_generated_solution(language: str, solution: str, test_cases: list) -> bool:
+    """Executa a solucao gerada contra os test_cases; True so se TODOS passarem.
+
+    Garante que o gabarito devolvido pelo juiz esteja correto (mesmo quando a IA
+    gera codigo quebrado ou gabarito inconsistente com os testes).
+    """
+    if not solution or not test_cases:
+        return False
+    conf = LANG_NAMES.get(language)
+    if not conf:
+        return False
+    try:
+        for tc in test_cases:
+            inp = str(tc.get("input", ""))
+            expected = _normalize(str(tc.get("expected", "")))
+            result = _run_local(conf, solution, inp)
+            if not result:
+                result = _run(language, solution, inp)
+            if not result:
+                return False
+            stdout = _normalize(result.get("run", {}).get("stdout", ""))
+            if stdout != expected:
+                logger.info(f"generate_from_text: solucao divergente. esperado={expected!r} obtido={stdout!r}")
+                return False
+    except Exception as e:
+        logger.warning(f"generate_from_text: validacao falhou ({type(e).__name__}): {str(e)[:200]}")
+        return False
+    return True
+
+
 def _generate_from_text_ai(description: str, language: str, custom_key: Optional[str]) -> Optional[dict]:
     """Tenta gerar o exercicio completo (com resposta) via IA."""
     lang_name = {"c": "C", "cpp": "C++", "python": "Python 3"}.get(language, language)
@@ -2489,62 +2519,68 @@ def _generate_from_text_ai(description: str, language: str, custom_key: Optional
     # max_tokens moderado: modelos de fallback do Groq (ex. gpt-oss-20b) tem teto
     # menor que 8000 e rejeitam a requisicao; o parser leniente abaixo cobre o caso
     # real de resposta longa (que tinha quebras de linha e aspas cruas no JSON).
-    raw = _call_ai(system_prompt, user_prompt, custom_key, max_tokens=4096)
-    if not raw:
-        return None
-    try:
-        data = _json_lenient(raw)
-        if not isinstance(data, dict):
-            logger.error(f"generate_from_text: IA retornou JSON nao-objeto: {type(data).__name__}")
-            return None
-        title = str(data.get("title") or "Exercicio Gerado")[:120]
-        statement = str(data.get("statement") or "").strip()
-        solution = str(data.get("solution") or "").strip()
-        explanation = str(data.get("explanation") or "").strip()
-        if not statement or not solution:
-            return None
-        # A IA as vezes envolve o codigo em aspas/ticks de bloco -> limpa
-        if solution.startswith('"""') or solution.startswith("'''"):
-            solution = solution[3:]
-        if solution.endswith('"""') or solution.endswith("'''"):
-            solution = solution[:-3]
-        sol_lines = [ln.strip() for ln in solution.split("\n")]
-        while sol_lines and (sol_lines[0] in ('"', "'", "`", '"""', "'''", "```")
-                             or (sol_lines[0] and set(sol_lines[0]) <= {'"', "'", "`"})):
-            sol_lines.pop(0)
-        while sol_lines and (sol_lines[-1] in ('"', "'", "`", '"""', "'''", "```")
-                             or (sol_lines[-1] and set(sol_lines[-1]) <= {'"', "'", "`"})):
-            sol_lines.pop()
-        solution = "\n".join(sol_lines).strip()
-        examples = data.get("examples") or []
-        if not isinstance(examples, list):
-            examples = []
-        test_cases = data.get("test_cases") or []
-        if not isinstance(test_cases, list):
-            test_cases = []
-        for ex in examples:
-            if isinstance(ex, dict) and {"input", "output"} <= set(ex.keys()):
-                if not any(t.get("input") == ex["input"] for t in test_cases):
-                    test_cases.append({"input": str(ex["input"]), "expected": str(ex["output"])})
-        test_cases = [
-            {"input": str(t.get("input", "")), "expected": str(t.get("expected", ""))}
-            for t in test_cases if t.get("input") is not None
-        ][:6]
-        if not test_cases:
-            return None
-        return {
-            "title": title,
-            "statement": statement,
-            "input_format": str(data.get("input_format") or "Entrada conforme o enunciado"),
-            "output_format": str(data.get("output_format") or "Saida conforme o enunciado"),
-            "examples": examples[:3],
-            "test_cases": test_cases,
-            "solution": solution,
-            "explanation": explanation,
-        }
-    except Exception as e:
-        logger.error(f"generate_from_text: parse da IA falhou ({type(e).__name__}): {str(e)[:200]}")
-        return None
+    for attempt in range(2):
+        raw = _call_ai(system_prompt, user_prompt, custom_key, max_tokens=4096)
+        if not raw:
+            continue
+        try:
+            data = _json_lenient(raw)
+            if not isinstance(data, dict):
+                logger.error(f"generate_from_text: IA retornou JSON nao-objeto: {type(data).__name__}")
+                continue
+            title = str(data.get("title") or "Exercicio Gerado")[:120]
+            statement = str(data.get("statement") or "").strip()
+            solution = str(data.get("solution") or "").strip()
+            explanation = str(data.get("explanation") or "").strip()
+            if not statement or not solution:
+                continue
+            # A IA as vezes envolve o codigo em aspas/ticks de bloco -> limpa
+            if solution.startswith('"""') or solution.startswith("'''"):
+                solution = solution[3:]
+            if solution.endswith('"""') or solution.endswith("'''"):
+                solution = solution[:-3]
+            sol_lines = [ln.strip() for ln in solution.split("\n")]
+            while sol_lines and (sol_lines[0] in ('"', "'", "`", '"""', "'''", "```")
+                                 or (sol_lines[0] and set(sol_lines[0]) <= {'"', "'", "`"})):
+                sol_lines.pop(0)
+            while sol_lines and (sol_lines[-1] in ('"', "'", "`", '"""', "'''", "```")
+                                 or (sol_lines[-1] and set(sol_lines[-1]) <= {'"', "'", "`"})):
+                sol_lines.pop()
+            solution = "\n".join(sol_lines).strip()
+            examples = data.get("examples") or []
+            if not isinstance(examples, list):
+                examples = []
+            test_cases = data.get("test_cases") or []
+            if not isinstance(test_cases, list):
+                test_cases = []
+            for ex in examples:
+                if isinstance(ex, dict) and {"input", "output"} <= set(ex.keys()):
+                    if not any(t.get("input") == ex["input"] for t in test_cases):
+                        test_cases.append({"input": str(ex["input"]), "expected": str(ex["output"])})
+            test_cases = [
+                {"input": str(t.get("input", "")), "expected": str(t.get("expected", ""))}
+                for t in test_cases if t.get("input") is not None
+            ][:6]
+            if not test_cases:
+                continue
+            # VALIDACAO: o gabarito precisa passar nos testes antes de ser devolvido
+            if not _validate_generated_solution(language, solution, test_cases):
+                logger.info(f"generate_from_text: tentativa {attempt + 1} da IA reprovada na validacao")
+                continue
+            return {
+                "title": title,
+                "statement": statement,
+                "input_format": str(data.get("input_format") or "Entrada conforme o enunciado"),
+                "output_format": str(data.get("output_format") or "Saida conforme o enunciado"),
+                "examples": examples[:3],
+                "test_cases": test_cases,
+                "solution": solution,
+                "explanation": explanation,
+            }
+        except Exception as e:
+            logger.error(f"generate_from_text: parse da IA falhou ({type(e).__name__}): {str(e)[:200]}")
+            continue
+    return None
 
 
 @router.post("/generate-from-text")

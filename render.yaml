@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: backend
+    env: python
+    plan: free
+    root: .
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SUPABASE_URL
+        value: https://pwiefrivtdypnvqzimwv.supabase.co
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DB_NAME
+        value: study_app
+      - key: MONGO_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+  - type: static
+    name: frontend
+    root: frontend
+    env: static
+    buildCommand: yarn install && yarn build
+    publishPath: build
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        value: https://aplicativo-de-estudos-atualizado-s.onrender.com
+      - key: REACT_APP_SUPABASE_URL
+        value: https://pwiefrivtdypnvqzimwv.supabase.co
+      - key: REACT_APP_SUPABASE_ANON_KEY
+        sync: false

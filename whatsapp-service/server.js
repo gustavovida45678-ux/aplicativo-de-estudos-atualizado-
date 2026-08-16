@@ -263,5 +263,5 @@ app.get("/conversations", authMiddleware, async (_req, res) => {
   res.json({ ok: true, conversations: chats.slice(0, 100) });
 });
 
-app.listen(PORT, () => console.log(`[baileys] sidecar ouvindo na porta ${PORT}`));
+app.listen(PORT, "127.0.0.1", () => console.log(`[baileys] sidecar ouvindo em 127.0.0.1:${PORT}`));
 startBaileys();

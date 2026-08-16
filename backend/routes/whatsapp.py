@@ -211,7 +211,7 @@ def _build_ai_message(user_text: str, name: str, history: list) -> str:
 def _load_history(jid: str, limit: int = 12) -> list:
     db = _mongo_db()
     try:
-        if db:
+        if db is not None:
             docs = list(db["whatsapp_messages"].find({"jid": jid}).sort("ts", -1).limit(limit))
             docs.reverse()
             return docs
@@ -291,7 +291,7 @@ def _save_message(direction: str, jid: str, phone: str, name: str, text: str, ai
     }
     _file_append(doc)
     db = _mongo_db()
-    if not db:
+    if db is None:
         return
     try:
         db["whatsapp_messages"].insert_one(doc)
@@ -399,7 +399,7 @@ async def send(req: SendMessageRequest, _user=Depends(_current_user_optional)):
 @router.get("/conversations")
 async def conversations(_user=Depends(_current_user_optional)):
     db = _mongo_db()
-    if db:
+    if db is not None:
         try:
             convs = list(db["whatsapp_conversations"].find().sort("ts", -1).limit(50))
             for c in convs:
@@ -417,7 +417,7 @@ async def conversations(_user=Depends(_current_user_optional)):
 @router.get("/messages")
 async def messages(jid: str, limit: int = 100, _user=Depends(_current_user_optional)):
     db = _mongo_db()
-    if db:
+    if db is not None:
         try:
             docs = list(db["whatsapp_messages"].find({"jid": jid}).sort("ts", 1).limit(limit))
             for d in docs:

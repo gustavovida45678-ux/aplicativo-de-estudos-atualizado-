@@ -74,8 +74,9 @@ async def _debug_errors(request, call_next):
     except Exception:
         import traceback as _tb
         detail = _tb.format_exc()
+        last = detail.strip().splitlines()[-1] if detail.strip() else "?"
         print("MIDDLEWARE ERROR:", detail, flush=True)
-        return JSONResponse(status_code=500, content={"ok": False, "error": detail[-2000:]})
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"ULTIMA_LINHA: {last}\n{detail[-3000:]}"})
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")

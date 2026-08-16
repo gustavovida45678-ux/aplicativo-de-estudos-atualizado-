@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict
@@ -63,6 +64,18 @@ configure_store(db)
 
 # Create the main app without a prefix
 app = FastAPI()
+
+
+@app.middleware("http")
+async def _debug_errors(request, call_next):
+    """Retorna traceback como JSON em vez de 500 cego (ajuda no diagnóstico)."""
+    try:
+        return await call_next(request)
+    except Exception:
+        import traceback as _tb
+        detail = _tb.format_exc()
+        print("MIDDLEWARE ERROR:", detail, flush=True)
+        return JSONResponse(status_code=500, content={"ok": False, "error": detail[-2000:]})
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")

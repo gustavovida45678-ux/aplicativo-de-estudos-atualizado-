@@ -8,6 +8,7 @@ import asyncio
 import logging
 import traceback
 import time
+import threading
 from datetime import datetime, timezone
 
 import httpx
@@ -40,8 +41,15 @@ WEBHOOK_TOKEN = os.environ.get("BAILEYS_WEBHOOK_TOKEN", BAILEYS_INTERNAL_TOKEN)
 
 
 # ---------------------------------------------------------------- Mongo
+# O cluster Mongo do usuário (eri.a1fuw7j.mongodb.net) não resolve DNS.
+# Todo armazenamento é best-effort: Mongo se disponível, senão arquivo
+# JSON local. NUNCA deixe o storage travar o atendimento do WhatsApp.
 _mongo_client = None
 _mongo_db_handle = None
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+MSGS_FILE = os.path.join(DATA_DIR, "whatsapp_messages.json")
+_MSG_LOCK = threading.Lock()
 
 
 def _mongo_db():
@@ -51,10 +59,36 @@ def _mongo_db():
     url = os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URL")
     if not url:
         return None
-    from pymongo import MongoClient
-    _mongo_client = MongoClient(url, serverSelectionTimeoutMS=4000)
-    _mongo_db_handle = _mongo_client[os.environ.get("DB_NAME", "study_app")]
+    try:
+        from pymongo import MongoClient
+        _mongo_client = MongoClient(url, serverSelectionTimeoutMS=4000)
+        _mongo_db_handle = _mongo_client[os.environ.get("DB_NAME", "study_app")]
+    except Exception as e:
+        logger.warning("whatsapp: Mongo indisponível (%s) — usando arquivo local", e)
+        _mongo_db_handle = None
     return _mongo_db_handle
+
+
+def _file_load() -> list:
+    try:
+        if os.path.exists(MSGS_FILE):
+            with open(MSGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
+
+
+def _file_append(doc: dict):
+    with _MSG_LOCK:
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            docs = _file_load()
+            docs.append(doc)
+            with open(MSGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(docs[-2000:], f, ensure_ascii=False)
+        except Exception as e:
+            logger.warning("whatsapp: falha ao salvar arquivo local: %s", e)
 
 
 # ---------------------------------------------------------------- Models
@@ -176,15 +210,15 @@ def _build_ai_message(user_text: str, name: str, history: list) -> str:
 
 def _load_history(jid: str, limit: int = 12) -> list:
     db = _mongo_db()
-    if not db:
-        return []
     try:
-        docs = list(db["whatsapp_messages"].find({"jid": jid}).sort("ts", -1).limit(limit))
-        docs.reverse()
-        return docs
+        if db:
+            docs = list(db["whatsapp_messages"].find({"jid": jid}).sort("ts", -1).limit(limit))
+            docs.reverse()
+            return docs
     except Exception as e:
-        logger.warning("whatsapp: falha ao ler histórico: %s", e)
-        return []
+        logger.warning("whatsapp: falha ao ler histórico no Mongo: %s", e)
+    docs = [d for d in _file_load() if d.get("jid") == jid]
+    return docs[-limit:]
 
 
 async def _generate_reply(text: str, name: str = None, history: list = None) -> str:
@@ -245,20 +279,21 @@ def _tts_bytes(text: str) -> Optional[bytes]:
 
 
 def _save_message(direction: str, jid: str, phone: str, name: str, text: str, ai: bool = False):
+    doc = {
+        "direction": direction,
+        "jid": jid,
+        "phone": phone,
+        "name": name,
+        "text": text,
+        "ai": ai,
+        "created_at": _now_iso(),
+        "ts": _utc_now(),
+    }
+    _file_append(doc)
     db = _mongo_db()
     if not db:
         return
     try:
-        doc = {
-            "direction": direction,
-            "jid": jid,
-            "phone": phone,
-            "name": name,
-            "text": text,
-            "ai": ai,
-            "created_at": _now_iso(),
-            "ts": _utc_now(),
-        }
         db["whatsapp_messages"].insert_one(doc)
         db["whatsapp_conversations"].update_one(
             {"jid": jid},
@@ -364,29 +399,34 @@ async def send(req: SendMessageRequest, _user=Depends(_current_user_optional)):
 @router.get("/conversations")
 async def conversations(_user=Depends(_current_user_optional)):
     db = _mongo_db()
-    if not db:
-        return {"ok": True, "conversations": []}
-    try:
-        convs = list(db["whatsapp_conversations"].find().sort("ts", -1).limit(50))
-        for c in convs:
-            c.pop("_id", None)
-        return {"ok": True, "conversations": convs}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    if db:
+        try:
+            convs = list(db["whatsapp_conversations"].find().sort("ts", -1).limit(50))
+            for c in convs:
+                c.pop("_id", None)
+            return {"ok": True, "conversations": convs}
+        except Exception as e:
+            logger.warning("whatsapp: conversas Mongo falhou: %s", e)
+    by_jid = {}
+    for d in _file_load():
+        by_jid[d["jid"]] = d
+    convs = sorted(by_jid.values(), key=lambda x: x.get("ts", 0), reverse=True)[:50]
+    return {"ok": True, "conversations": convs}
 
 
 @router.get("/messages")
 async def messages(jid: str, limit: int = 100, _user=Depends(_current_user_optional)):
     db = _mongo_db()
-    if not db:
-        return {"ok": True, "messages": []}
-    try:
-        docs = list(db["whatsapp_messages"].find({"jid": jid}).sort("ts", 1).limit(limit))
-        for d in docs:
-            d.pop("_id", None)
-        return {"ok": True, "messages": docs}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    if db:
+        try:
+            docs = list(db["whatsapp_messages"].find({"jid": jid}).sort("ts", 1).limit(limit))
+            for d in docs:
+                d.pop("_id", None)
+            return {"ok": True, "messages": docs}
+        except Exception as e:
+            logger.warning("whatsapp: mensagens Mongo falhou: %s", e)
+    docs = [d for d in _file_load() if d.get("jid") == jid]
+    return {"ok": True, "messages": docs[:limit]}
 
 
 @router.post("/logout")

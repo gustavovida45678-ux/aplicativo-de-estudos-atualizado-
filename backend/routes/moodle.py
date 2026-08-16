@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 import requests
 import os
 import json
+import re
 from urllib.parse import urlparse
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,6 +13,20 @@ from utils.auth import get_current_user
 from utils.supabase import get_supabase_admin
 
 router = APIRouter(prefix="/moodle", tags=["moodle"])
+
+# O app não tem tela de login ativa (autenticação é opcional): o Moodle
+# funciona logado OU anônimo. Com JWT usa a config do usuário; sem JWT usa
+# a config global compartilhada.
+_optional_oauth = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+
+async def _current_user_optional(token: str = Depends(_optional_oauth)):
+    if not token:
+        return None
+    try:
+        return await get_current_user(token)
+    except HTTPException:
+        return None
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 CONFIG_PATH = os.path.join(DATA_DIR, "moodle_config.json")
@@ -844,7 +860,7 @@ def _sync_all(user_id=None):
 
 
 @router.get("/status")
-def moodle_status(current_user: dict = Depends(get_current_user)):
+def moodle_status(current_user: dict = Depends(_current_user_optional)):
     user_id = _uid(current_user)
     cfg = _load_config(user_id)
     if not cfg:
@@ -858,27 +874,27 @@ def moodle_status(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/courses")
-def moodle_get_courses(current_user: dict = Depends(get_current_user)):
+def moodle_get_courses(current_user: dict = Depends(_current_user_optional)):
     return {"courses": _cache_get("courses", _uid(current_user)) or []}
 
 
 @router.get("/activities")
-def moodle_get_activities(current_user: dict = Depends(get_current_user)):
+def moodle_get_activities(current_user: dict = Depends(_current_user_optional)):
     return {"activities": _cache_get("activities", _uid(current_user)) or []}
 
 
 @router.get("/deadlines")
-def moodle_get_deadlines(current_user: dict = Depends(get_current_user)):
+def moodle_get_deadlines(current_user: dict = Depends(_current_user_optional)):
     return {"deadlines": _cache_get("deadlines", _uid(current_user)) or []}
 
 
 @router.get("/announcements")
-def moodle_get_announcements(current_user: dict = Depends(get_current_user)):
+def moodle_get_announcements(current_user: dict = Depends(_current_user_optional)):
     return {"announcements": _cache_get("announcements", _uid(current_user)) or []}
 
 
 @router.post("/sync")
-def moodle_sync(current_user: dict = Depends(get_current_user)):
+def moodle_sync(current_user: dict = Depends(_current_user_optional)):
     user_id = _uid(current_user)
     cfg = _load_config(user_id)
     if not cfg:
@@ -907,16 +923,20 @@ def moodle_sync(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/connect")
-def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current_user)):
+def moodle_connect(req: ConnectRequest, current_user: dict = Depends(_current_user_optional)):
     """Connect using IFG username/password. Moodle issues a token automatically
     via login/token.php (same flow as the official Moodle Mobile app)."""
     user_id = _uid(current_user)
     base = _base(req.url)
+    # CPF pode vir com pontos/traços ("000.000.000-00") -> envia só dígitos
+    raw_username = req.username.strip()
+    digits = re.sub(r"\D", "", raw_username)
+    username = digits if (len(digits) == 11 and digits != raw_username) else raw_username
     try:
         r = requests.post(
             f"{base}/login/token.php",
             data={
-                "username": req.username.strip(),
+                "username": username,
                 "password": req.password,
                 "service": "moodle_mobile_app",
             },
@@ -966,7 +986,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(get_current
 
 
 @router.post("/token")
-def moodle_save_token(req: TokenRequest, current_user: dict = Depends(get_current_user)):
+def moodle_save_token(req: TokenRequest, current_user: dict = Depends(_current_user_optional)):
     user_id = _uid(current_user)
     cfg = {"url": req.url, "token": req.token}
     _save_config(cfg, user_id, current_user.get("email"), current_user.get("name"))
@@ -979,7 +999,7 @@ def moodle_save_token(req: TokenRequest, current_user: dict = Depends(get_curren
 
 
 @router.delete("/token")
-def moodle_delete_token(current_user: dict = Depends(get_current_user)):
+def moodle_delete_token(current_user: dict = Depends(_current_user_optional)):
     _delete_config(_uid(current_user))
     return {"success": True}
 
@@ -1089,7 +1109,7 @@ def _scan_activity(user_id, activity):
 
 
 @router.post("/scan")
-def moodle_scan(req: StudyRequest, current_user: dict = Depends(get_current_user)):
+def moodle_scan(req: StudyRequest, current_user: dict = Depends(_current_user_optional)):
     """Baixa e escaneia (extrai texto) os arquivos da atividade do Moodle."""
     user_id = _uid(current_user)
     activity = _find_activity(user_id, req.activity_id)
@@ -1166,7 +1186,7 @@ def _deep_stringify(obj):
 
 
 @router.post("/study")
-async def moodle_study(req: StudyRequest, current_user: dict = Depends(get_current_user)):
+async def moodle_study(req: StudyRequest, current_user: dict = Depends(_current_user_optional)):
     """Escaneia a atividade e gera: resolução passo a passo + resumo + 10 exercícios."""
     user_id = _uid(current_user)
     activity = _find_activity(user_id, req.activity_id)

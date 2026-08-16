@@ -48,7 +48,7 @@ def _mongo_db():
     global _mongo_client, _mongo_db_handle
     if _mongo_db_handle is not None:
         return _mongo_db_handle
-    url = os.environ.get("MONGODB_URI")
+    url = os.environ.get("MONGODB_URI") or os.environ.get("MONGO_URL")
     if not url:
         return None
     from pymongo import MongoClient
@@ -321,6 +321,8 @@ async def webhook(msg: InboundMessage):
     async def reply_worker():
         try:
             reply = await _generate_reply(text, name=name, history=history)
+            logger.info("whatsapp: resposta gerada (%d chars) para %s: %s",
+                        len(reply), msg.jid, reply[:150])
             await _send_via_baileys(msg.jid, reply)
             _save_message("outbound", msg.jid, msg.phone, msg.name or msg.phone, reply, ai=True)
         except Exception as e:

@@ -928,10 +928,13 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(_current_us
     via login/token.php (same flow as the official Moodle Mobile app)."""
     user_id = _uid(current_user)
     base = _base(req.url)
-    # CPF pode vir com pontos/traços ("000.000.000-00") -> envia só dígitos
+    # Matrícula ou CPF podem vir com pontos/traços ("2026.1020.0400.22")
+    # -> envia só dígitos; e-mails/usuários com letras são enviados como estão
     raw_username = req.username.strip()
-    digits = re.sub(r"\D", "", raw_username)
-    username = digits if (len(digits) == 11 and digits != raw_username) else raw_username
+    if re.fullmatch(r"[\d\s.\-]+", raw_username):
+        username = re.sub(r"\D", "", raw_username)
+    else:
+        username = raw_username
     try:
         r = requests.post(
             f"{base}/login/token.php",
@@ -949,7 +952,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(_current_us
         )
     if isinstance(data, dict) and data.get("token"):
         cfg = {"url": base, "token": data["token"]}
-        _save_config(cfg, user_id, current_user.get("email"), current_user.get("name"))
+        _save_config(cfg, user_id, (current_user or {}).get("email"), (current_user or {}).get("name"))
         try:
             info = _call(base, data["token"], "core_webservice_get_site_info")
         except HTTPException:
@@ -989,7 +992,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(_current_us
 def moodle_save_token(req: TokenRequest, current_user: dict = Depends(_current_user_optional)):
     user_id = _uid(current_user)
     cfg = {"url": req.url, "token": req.token}
-    _save_config(cfg, user_id, current_user.get("email"), current_user.get("name"))
+    _save_config(cfg, user_id, (current_user or {}).get("email"), (current_user or {}).get("name"))
     base = _base(cfg["url"])
     try:
         info = _call(base, cfg["token"], "core_webservice_get_site_info")

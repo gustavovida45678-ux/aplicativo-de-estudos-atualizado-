@@ -111,7 +111,7 @@ export function MoodlePage({ onClose }) {
     } catch (e) {
       console.error('Erro ao conectar ao Moodle:', e);
       const detail = e.response?.data?.detail;
-      toast.error(detail ? `Não foi possível conectar: ${detail}` : 'Não foi possível conectar ao Moodle. Verifique CPF e senha.');
+      toast.error(detail ? `Não foi possível conectar: ${detail}` : 'Não foi possível conectar ao Moodle. Verifique matrícula e senha.');
     } finally {
       setConnecting(false);
     }
@@ -291,12 +291,12 @@ export function MoodlePage({ onClose }) {
           <div className="moodle-not-configured">
             <Shield size={48} color="#f59e0b" />
             <h3>Moodle não conectado</h3>
-            <p>Conecte com seu CPF e senha do IFG para ver atividades, prazos, disciplinas e avisos direto no app.</p>
+            <p>Conecte com seu número de matrícula e senha do IFG para ver atividades, prazos, disciplinas e avisos direto no app.</p>
             <div className="moodle-login-form">
               <input
                 type="text"
                 inputMode="numeric"
-                placeholder="CPF (somente números)"
+                placeholder="Número de matrícula"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') connectMoodle(); }}
@@ -331,7 +331,7 @@ export function MoodlePage({ onClose }) {
                     {connecting ? <><Loader2 size={16} className="spin" /> Conectando...</> : 'Conectar'}
                   </button>
                   <button className="moodle-btn secondary" onClick={() => setUseTokenOption(false)} disabled={connecting}>
-                    Usar CPF
+                    Usar matrícula
                   </button>
                 </div>
               )}

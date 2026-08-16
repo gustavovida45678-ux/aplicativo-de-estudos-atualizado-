@@ -637,9 +637,28 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     const canvasRect = canvasRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
 
-    // Vídeo é espelhado (scaleX(-1)): inverte X para o cursor acompanhar a mão
-    const rawX = (1 - indexTip.x) * canvasRect.width;
-    const rawY = indexTip.y * canvasRect.height;
+    // O vídeo invisível cobre o quadro inteiro com object-fit: cover
+    // (a câmera fica "atrás" da lousa). Calcula a área visível do vídeo
+    // para o dedo mapear exatamente na posição da tela.
+    const video = videoRef.current;
+    let vx = 0, vy = 0, vw = 1, vh = 1;
+    if (video && video.videoWidth > 0 && canvasRect.width > 0 && canvasRect.height > 0) {
+      const vAspect = video.videoWidth / video.videoHeight;
+      const cAspect = canvasRect.width / canvasRect.height;
+      if (vAspect > cAspect) {
+        vh = cAspect / vAspect;
+        vy = (1 - vh) / 2;
+      } else {
+        vw = vAspect / cAspect;
+        vx = (1 - vw) / 2;
+      }
+    }
+
+    // Vídeo é espelhado (scaleX(-1)): inverte X para o dedo acompanhar a mão
+    const normX = vx + (1 - indexTip.x) * vw;
+    const normY = vy + indexTip.y * vh;
+    const rawX = normX * canvasRect.width;
+    const rawY = normY * canvasRect.height;
 
     // Suavização (média móvel) para reduzir o tremor e desenhar letras limpas
     if (smoothPointRef.current) {

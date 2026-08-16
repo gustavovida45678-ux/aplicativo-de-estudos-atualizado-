@@ -983,6 +983,31 @@ code, pre {
   .nav-tab-text { display: none; }
 }
 
+/* --- Celular: nav fixa embaixo, com alvo de toque maior --- */
+@media (max-width: 768px) {
+  .nav-tabs-container {
+    top: auto;
+    bottom: max(0.6rem, env(safe-area-inset-bottom));
+    left: 0.6rem;
+    right: 0.6rem;
+    transform: none;
+    width: auto;
+    max-width: none;
+    border-radius: 18px;
+    min-height: 52px;
+    align-items: center;
+  }
+  .nav-tab {
+    min-height: 44px;
+    min-width: 46px;
+    padding: 0.45rem 0.65rem;
+  }
+  .App > div:not(.noise-overlay) {
+    padding-top: 4rem;
+    padding-bottom: 5.75rem;
+  }
+}
+
 /* --- Modo foco (sessão de estudo sem distrações) --- */
 body.study-focus-mode .nav-tabs-container {
   display: none;
@@ -990,6 +1015,10 @@ body.study-focus-mode .nav-tabs-container {
 
 body.study-focus-mode #root > .App > div:not(.noise-overlay) {
   filter: none;
+}
+
+body.study-focus-mode .App > div:not(.noise-overlay) {
+  padding-bottom: 1rem;
 }
 
 .App > div:not(.noise-overlay) { padding-top: 5rem; }

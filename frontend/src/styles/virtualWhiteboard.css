@@ -379,6 +379,62 @@
   }
 }
 
+/* --- Celular: Lousa Digital (SimpleWhiteboard) --- */
+@media (max-width: 768px) {
+  .simple-whiteboard .whiteboard-toolbar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    scrollbar-width: none;
+  }
+
+  .simple-whiteboard .whiteboard-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .simple-whiteboard .tool-group {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+  }
+
+  .simple-whiteboard .tool-btn,
+  .simple-whiteboard .action-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+  }
+
+  .simple-whiteboard .video-preview-container {
+    width: 110px !important;
+    top: 8px !important;
+    right: 8px !important;
+  }
+
+  .simple-whiteboard .gesture-guide {
+    bottom: 8px !important;
+    left: 8px !important;
+    right: 8px !important;
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    max-width: calc(100% - 16px);
+  }
+
+  .simple-whiteboard .hand-cursor-overlay {
+    width: 30px;
+    height: 30px;
+    transform: translate(-50%, -50%);
+  }
+
+  .simple-whiteboard .text-input-field {
+    font-size: 16px !important;
+  }
+
+  .simple-whiteboard .whiteboard-header {
+    padding: 8px 10px;
+  }
+}
+
 /* ============ Nova UI: mapa mental, mini-botões, modais, minimapa ============ */
 
 .whiteboard-toolbar.secondary {

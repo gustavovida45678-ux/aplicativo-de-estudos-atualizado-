@@ -4,6 +4,7 @@ Maps each provider to their LiteLLM model identifiers and required environment v
 """
 
 import os
+import re
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
@@ -27,6 +28,7 @@ class ProviderType(str, Enum):
     HUGGINGFACE = "huggingface"
     OPENAI = "openai"
     EMERGENT = "emergent"
+    FCC = "fcc"
 
 @dataclass
 class ModelConfig:
@@ -282,7 +284,7 @@ ProviderType.OLLAMA: ProviderConfig(
             ),
         },
         env_var="OLLAMA_API_KEY",
-        base_url="http://localhost:11434/v1",
+        base_url=os.environ.get("OLLAMA_URL", "http://localhost:11434/v1").replace("/api/generate", "").rstrip("/"),
         requires_api_key=False,
         free_tier_description="Totalmente grátis - roda localmente",
         website="https://ollama.com",
@@ -473,7 +475,40 @@ ProviderType.OLLAMA: ProviderConfig(
         website="https://emergent.sh",
         icon="key"
     ),
+    ProviderType.FCC: ProviderConfig(
+        type=ProviderType.FCC,
+        name="FCC Free CC",
+        category="Grátis",
+        models=_fcc_models(),
+        env_var="FCC_AUTH_TOKEN",
+        base_url=os.environ.get("FCC_BASE_URL", "").rstrip("/"),
+        requires_api_key=False,
+        free_tier_description="Grátis - modelos FreeCC via tunnel",
+        website="",
+        icon="zap"
+    ),
 }
+
+# FCC_MODEL pode conter vários modelos separados por vírgula ou "|"
+# (o primeiro é o principal, os demais entram como fallback no rate limit).
+def _fcc_models() -> Dict[str, ModelConfig]:
+    raw = os.environ.get(
+        "FCC_MODEL",
+        "claude-3-freecc-no-thinking/nvidia_nim/nvidia/nemotron-3-super-120b-a12b",
+    )
+    names = [m.strip() for m in re.split(r"[,|]", raw) if m.strip()]
+    if not names:
+        names = ["claude-3-freecc-no-thinking"]
+    models = {}
+    for i, name in enumerate(names):
+        key = "fcc" if i == 0 else f"fcc-{i + 1}"
+        models[key] = ModelConfig(
+            model_id=f"openai/{name}",
+            display_name=f"FCC FreeCC {i + 1}",
+            context_window=128000,
+        )
+    return models
+
 
 # Default model per provider (first one listed)
 DEFAULT_MODELS = {
@@ -487,6 +522,7 @@ DEFAULT_MODELS = {
     ProviderType.OLLAMA: "gemma4-12b",
     ProviderType.OPENAI: "gpt-4o-mini",
     ProviderType.EMERGENT: "gpt-4o-mini",
+    ProviderType.FCC: "fcc",
 }
 
 # Preferred order for auto-detection and fallback
@@ -505,6 +541,7 @@ AUTO_PRIORITY = [
     ProviderType.HUGGINGFACE,
     ProviderType.OPENAI,
     ProviderType.EMERGENT,
+    ProviderType.FCC,
 ]
 
 def get_provider_config(provider_type: ProviderType) -> Optional[ProviderConfig]:

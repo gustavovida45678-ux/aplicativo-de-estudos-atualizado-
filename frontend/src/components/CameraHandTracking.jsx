@@ -14,6 +14,7 @@ export function CameraHandTracking({
   isActive,
   onGesture,
   onStatusChange,
+  onStream,
   videoRef
 }) {
   const [hands, setHands] = useState(null);
@@ -23,6 +24,8 @@ export function CameraHandTracking({
   const animationRef = useRef(null);
   const lastGestureRef = useRef("none");
   const gestureCooldownRef = useRef(0);
+  const lastDetectedRef = useRef(0);
+  const noneReportedRef = useRef(false);
 
   useEffect(() => {
     if (!isActive) {
@@ -48,12 +51,14 @@ export function CameraHandTracking({
       handsInstance.setOptions({
         maxNumHands: 1,
         modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        minDetectionConfidence: 0.4,
+        minTrackingConfidence: 0.4
       });
 
       handsInstance.onResults((results) => {
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          lastDetectedRef.current = Date.now();
+          noneReportedRef.current = false;
           const landmarks = results.multiHandLandmarks[0];
           const gesture = detectGesture(landmarks);
 
@@ -71,7 +76,13 @@ export function CameraHandTracking({
           onStatusChange?.("detected", "Mão detectada");
         } else {
           lastGestureRef.current = "none";
-          onStatusChange?.("none", "Mão não detectada");
+          // Só avisa "mão fora do quadro" depois de 800ms sem detecção:
+          // o MediaPipe falha frames isolados mesmo com a mão presente,
+          // e isso fazia o aviso ficar piscando o tempo todo.
+          if (Date.now() - lastDetectedRef.current > 800 && !noneReportedRef.current) {
+            noneReportedRef.current = true;
+            onStatusChange?.("none", "Mão não detectada");
+          }
         }
       });
 
@@ -104,6 +115,7 @@ export function CameraHandTracking({
         await cameraInstance.start();
         setIsInitialized(true);
         onStatusChange?.("active", "Câmera ativa");
+        onStream?.(videoElement.srcObject || null);
       } else {
         throw new Error("Elemento de vídeo não encontrado");
       }

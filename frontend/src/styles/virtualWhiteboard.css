@@ -1453,3 +1453,127 @@ input[type="range"].stroke-slider {
   background: rgba(239, 68, 68, 0.12);
   color: #ef4444;
 }
+
+/* ===== Painel de reconhecimento de escrita (OCR) ===== */
+.simple-whiteboard .recognition-panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 30;
+  width: min(340px, calc(100% - 28px));
+  background: rgba(13, 17, 23, 0.95);
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+.simple-whiteboard .recognition-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8b949e;
+  margin-bottom: 6px;
+}
+
+.simple-whiteboard .recognition-header svg {
+  color: #58a6ff;
+}
+
+.simple-whiteboard .recognition-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.simple-whiteboard .recognition-text {
+  background: #ffffff;
+  color: #0d1117;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 15px;
+  line-height: 1.5;
+  max-height: 160px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+.simple-whiteboard .recognition-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.simple-whiteboard .recognition-conf {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.simple-whiteboard .recognition-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.simple-whiteboard .recognition-actions button,
+.simple-whiteboard .recognition-empty button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  background: rgba(56, 139, 253, 0.12);
+  color: #58a6ff;
+  cursor: pointer;
+}
+
+.simple-whiteboard .recognition-actions button:hover,
+.simple-whiteboard .recognition-empty button:hover {
+  background: rgba(56, 139, 253, 0.25);
+}
+
+.simple-whiteboard .recognition-actions .recognition-insert {
+  background: #238636;
+  border-color: #238636;
+  color: #ffffff;
+}
+
+.simple-whiteboard .recognition-actions .recognition-insert:hover {
+  background: #2ea043;
+}
+
+.simple-whiteboard .recognition-working {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.simple-whiteboard .recognition-empty {
+  font-size: 13px;
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.simple-whiteboard .recognition-empty button {
+  align-self: flex-start;
+}
+
+.simple-whiteboard .tool-btn.active {
+  background: rgba(56, 139, 253, 0.25);
+  color: #58a6ff;
+  border-color: #388bfd;
+}

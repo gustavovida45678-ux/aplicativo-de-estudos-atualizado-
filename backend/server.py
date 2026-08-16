@@ -37,6 +37,7 @@ from routes.moodle import router as moodle_router
 from routes.judge import router as judge_router
 from routes.adaptive import router as adaptive_router
 from routes.summary import router as summary_router
+from routes.whatsapp import router as whatsapp_router
 from services.adaptive_store import configure_store
 
 logging.basicConfig(
@@ -131,6 +132,7 @@ api_router.include_router(moodle_router, tags=["moodle"])
 api_router.include_router(judge_router, tags=["judge"])
 api_router.include_router(adaptive_router, prefix="/adaptive", tags=["adaptive"])
 api_router.include_router(summary_router, prefix="/summary", tags=["summary"])
+api_router.include_router(whatsapp_router, tags=["whatsapp"])
 app.include_router(api_router)
 
 # Include schedule router with /api/schedule prefix

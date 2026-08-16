@@ -9,7 +9,8 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool, Network, Eye } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool, Network, Eye, MessageCircle } from "lucide-react";
+import { WhatsAppSecretary } from "./components/WhatsAppSecretary";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -607,6 +608,14 @@ function App() {
                 <GraduationCap size={18} />
                 <span className="nav-tab-text">Moodle IFG</span>
               </button>
+              <button
+                onClick={() => setActiveTab("secretaria")}
+                className={`nav-tab ${activeTab === "secretaria" ? "active" : ""}`}
+                data-testid="tab-secretaria"
+              >
+                <MessageCircle size={18} />
+                <span className="nav-tab-text">Secretaria Virtual</span>
+              </button>
             </div>
 
             <div className="nav-group">
@@ -678,6 +687,8 @@ function App() {
               <div className="mx-auto max-w-5xl px-4 py-8">
                 <MoodlePage onClose={() => setActiveTab("dashboard")} />
               </div>
+            ) : activeTab === "secretaria" ? (
+              <WhatsAppSecretary currentUser={currentUser} />
             ) : (
               <>
                 {/* Drag and drop overlay */}

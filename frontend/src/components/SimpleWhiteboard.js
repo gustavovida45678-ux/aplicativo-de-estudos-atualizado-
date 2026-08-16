@@ -1,5 +1,14 @@
 import { useRef, useEffect, useState } from "react";
-import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2, Camera, CameraOff, Zap, AlertCircle } from "lucide-react";
+import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2, Camera, CameraOff, Zap, AlertCircle, Highlighter, Brush, Undo2, Redo2, Eye, EyeOff, Crosshair, ScanText } from "lucide-react";
+import { BRUSH_TYPES, brushWidth, renderStroke } from "../lib/brush";
+import {
+  CALIB_TARGETS,
+  loadCalibration,
+  saveCalibration,
+  buildCalibration,
+  applyCalibration,
+} from "../lib/calibration";
+import { recognizeStrokes } from "../lib/handwriting";
 import { useToast } from "@/hooks/use-toast";
 import { CameraHandTracking } from "./CameraHandTracking";
 
@@ -57,6 +66,11 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   const [cameraStatus, setCameraStatus] = useState("inactive");
   const [currentGesture, setCurrentGesture] = useState("none");
   const [handPosition, setHandPosition] = useState(null);
+  const [recognitionMode, setRecognitionMode] = useState(false);
+  const [recognition, setRecognition] = useState(null);
+  const recognitionModeRef = useRef(false);
+  const recognitionTimerRef = useRef(null);
+  const recognizedCountRef = useRef(0);
   const videoRef = useRef(null);
   const cameraDrawingRef = useRef(false);
   const lastHandPointRef = useRef(null);
@@ -546,6 +560,82 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     lastPointRef.current = null;
     dragNodeRef.current = null;
     dragOffsetRef.current = null;
+    if (recognitionModeRef.current && (tool === "pen" || tool === "eraser")) {
+      scheduleRecognition();
+    }
+  };
+
+  const toggleRecognition = () => {
+    const next = !recognitionMode;
+    recognitionModeRef.current = next;
+    setRecognitionMode(next);
+    setRecognition(null);
+    if (next) {
+      recognizedCountRef.current = strokesRef.current.length;
+      toast({ title: "Reconhecimento de escrita ativado — escreva e aguarde" });
+    }
+  };
+
+  const scheduleRecognition = () => {
+    clearTimeout(recognitionTimerRef.current);
+    recognitionTimerRef.current = setTimeout(runRecognition, 900);
+  };
+
+  const runRecognition = async () => {
+    const newStrokes = strokesRef.current.slice(recognizedCountRef.current);
+    recognizedCountRef.current = strokesRef.current.length;
+    if (!newStrokes.length) return;
+    setRecognition({ working: true });
+    try {
+      const res = await recognizeStrokes(newStrokes);
+      if (!res) {
+        setRecognition({ working: false, empty: true });
+        return;
+      }
+      setRecognition({ ...res, working: false });
+    } catch (e) {
+      setRecognition({ working: false, error: String(e && e.message ? e.message : e) });
+    }
+  };
+
+  const recognizeEverything = async () => {
+    const all = strokesRef.current.slice();
+    if (!all.length) {
+      toast({ title: "Não há nada escrito na lousa" });
+      return;
+    }
+    setRecognition({ working: true });
+    try {
+      const res = await recognizeStrokes(all);
+      recognizedCountRef.current = strokesRef.current.length;
+      if (!res) {
+        setRecognition({ working: false, empty: true });
+        return;
+      }
+      setRecognition({ ...res, working: false });
+    } catch (e) {
+      setRecognition({ working: false, error: String(e && e.message ? e.message : e) });
+    }
+  };
+
+  const insertRecognizedText = () => {
+    if (!recognition?.text) return;
+    const t = {
+      kind: "text",
+      x: recognition.bbox.x,
+      y: recognition.bbox.y - 6,
+      content: recognition.text,
+      color,
+      size: Math.max(20, Math.min(48, Math.round(recognition.bbox.h * 0.85))),
+      font: fontFamily,
+      bold: false,
+      italic: false,
+      align: "left"
+    };
+    textsRef.current.push(t);
+    setRecognition(null);
+    redraw();
+    toast({ title: "Texto reconhecido e inserido na lousa" });
   };
 
   const startTextEdit = (x, y) => {
@@ -963,6 +1053,13 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
           <button className={`tool-btn ${tool === "mindmap" ? "active" : ""}`} onClick={() => setTool("mindmap")} title="Mapa Mental (M) - clique para criar tópico, arraste para mover, duplo clique para editar">
             <Network size={20} />
           </button>
+          <button
+            className={`tool-btn ${recognitionMode ? "active" : ""}`}
+            onClick={toggleRecognition}
+            title="Reconhecimento de escrita: converte o que você escreve com o mouse em texto"
+          >
+            <ScanText size={20} />
+          </button>
         </div>
 
         <div className="tool-divider" />
@@ -1047,6 +1144,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
 
         <div className="tool-group actions">
           <button onClick={clearCanvas} title="Limpar tudo"><Trash2 size={20} /></button>
+          <button onClick={recognizeEverything} title="Reconhecer toda a escrita da lousa como texto"><ScanText size={20} /></button>
           <button onClick={saveImage} title="Baixar PNG"><Download size={20} /></button>
           <button onClick={resetView} title="Resetar zoom (0)"><RotateCcw size={20} /></button>
           <button onClick={() => growBoard(400)} title={`Crescer o quadro (atual: +${boardExtra}px)`}><Expand size={20} /></button>
@@ -1122,6 +1220,43 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
               <><Zap size={12} style={{ color: "#f59e0b", marginRight: 6 }} />Mão fora do quadro</>
             ) : (
               <><Zap size={12} style={{ color: "#58a6ff", marginRight: 6 }} />{currentGesture === "fist" ? "Borracha" : currentGesture === "none" ? "Aguardando..." : "Escrevendo"}</>
+            )}
+          </div>
+        )}
+
+        {recognition && (
+          <div className="recognition-panel">
+            {recognition.working ? (
+              <div className="recognition-working">
+                <Loader2 size={16} className="spin" />
+                <span>Reconhecendo a escrita...</span>
+              </div>
+            ) : recognition.error ? (
+              <div className="recognition-empty">
+                Falha no reconhecimento: {recognition.error}
+                <button onClick={() => setRecognition(null)}>Fechar</button>
+              </div>
+            ) : recognition.empty ? (
+              <div className="recognition-empty">
+                Não consegui ler. Escreva com letras maiores e mais claras.
+                <button onClick={() => setRecognition(null)}>Fechar</button>
+              </div>
+            ) : (
+              <>
+                <div className="recognition-header">
+                  <ScanText size={14} />
+                  <span>Escrita reconhecida</span>
+                  <button className="recognition-close" onClick={() => setRecognition(null)} title="Fechar"><X size={14} /></button>
+                </div>
+                <div className="recognition-text">{recognition.text}</div>
+                <div className="recognition-footer">
+                  <span className="recognition-conf">Confiança: {Math.round(recognition.confidence)}%</span>
+                  <div className="recognition-actions">
+                    <button className="recognition-insert" onClick={insertRecognizedText}><Type size={14} /> Inserir como texto</button>
+                    <button onClick={runRecognition}>Tentar de novo</button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}

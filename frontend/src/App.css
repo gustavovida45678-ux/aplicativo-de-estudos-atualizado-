@@ -2684,3 +2684,24 @@ body.study-focus-mode .App > div:not(.noise-overlay) {
     max-height: calc(100vh - 200px);
   }
 }
+
+/* ===== Secretaria Virtual (WhatsApp) ===== */
+.whatsapp-secretary .qr-code-image {
+  width: 240px;
+  height: 240px;
+  background: #ffffff;
+  padding: 10px;
+}
+.whatsapp-secretary .secretary-chat {
+  min-height: 420px;
+}
+.whatsapp-secretary .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (max-width: 768px) {
+  .whatsapp-secretary .qr-code-image {
+    width: 200px;
+    height: 200px;
+  }
+}

@@ -56,16 +56,21 @@ export function CameraHandTracking({
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
           const landmarks = results.multiHandLandmarks[0];
           const gesture = detectGesture(landmarks);
-          
+
           const now = Date.now();
-          if (gesture !== lastGestureRef.current && now - gestureCooldownRef.current > 300) {
+          if (gesture !== lastGestureRef.current) {
             lastGestureRef.current = gesture;
+            onStatusChange?.("gesture", `Gesto: ${gesture}`);
+          }
+
+          if (now - gestureCooldownRef.current > 50) {
             gestureCooldownRef.current = now;
             onGesture?.(gesture, landmarks);
           }
 
           onStatusChange?.("detected", "Mão detectada");
         } else {
+          lastGestureRef.current = "none";
           onStatusChange?.("none", "Mão não detectada");
         }
       });

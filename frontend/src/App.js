@@ -9,7 +9,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool, Network } from "lucide-react";
+import { Send, Image as ImageIcon, X, Sparkles, MessageSquare, BookOpen, GraduationCap, Calendar, LayoutDashboard, Lightbulb, Calculator, FileText, Zap, ListChecks, Library, BrainCircuit, Settings, Code2, NotebookPen, ClipboardList, TrendingUp, GraduationCap as TeacherIcon, PenTool, Network, Eye } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import MathExplainer from "./components/MathExplainer";
 import ExerciseSystem from "./components/ExerciseSystem";
@@ -23,6 +23,7 @@ import AdaptiveStudy from "./components/adaptive/AdaptiveStudy";
 import JudgePanel from "./components/JudgePanel";
 import MoodlePage from "./components/moodle/MoodlePage";
 import SimpleWhiteboard from "./components/SimpleWhiteboard";
+import EyeExercises from "./components/EyeExercises";
 import SummaryGenerator from "./components/SummaryGenerator";
 // import DebugPanel from "./components/DebugPanel"; // Removed
 
@@ -585,6 +586,18 @@ function App() {
             </div>
 
             <div className="nav-group">
+              <span className="nav-group-label">Saúde</span>
+              <button
+                onClick={() => setActiveTab("eyes")}
+                className={`nav-tab ${activeTab === "eyes" ? "active" : ""}`}
+                data-testid="tab-eyes"
+              >
+                <Eye size={18} />
+                <span className="nav-tab-text">Exercícios Oculares</span>
+              </button>
+            </div>
+
+            <div className="nav-group">
               <span className="nav-group-label">Moodle</span>
               <button
                 onClick={() => setActiveTab("moodle")}
@@ -659,6 +672,8 @@ function App() {
               ) : (
                 <div className="whiteboard-minimized-placeholder" />
               )
+            ) : activeTab === "eyes" ? (
+              <EyeExercises />
             ) : activeTab === "moodle" ? (
               <div className="mx-auto max-w-5xl px-4 py-8">
                 <MoodlePage onClose={() => setActiveTab("dashboard")} />

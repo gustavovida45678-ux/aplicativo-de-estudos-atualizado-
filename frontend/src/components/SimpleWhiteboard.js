@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
-import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2 } from "lucide-react";
+import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2, Camera, CameraOff, Zap, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CameraHandTracking } from "./CameraHandTracking";
 
 const SUBJECT_KEY_PREFIX = "lousa_subject_v1_";
 const subjectKey = (name) => `${SUBJECT_KEY_PREFIX}${name}`;
@@ -50,6 +51,15 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   // Copia do conteudo original ao editar texto/novo topico existente:
   // Esc REVERTE em vez de apagar.
   const textOriginalRef = useRef(null);
+
+  // Câmera / rastreamento de mão
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState("inactive");
+  const [currentGesture, setCurrentGesture] = useState("none");
+  const [handPosition, setHandPosition] = useState(null);
+  const videoRef = useRef(null);
+  const cameraDrawingRef = useRef(false);
+  const lastHandPointRef = useRef(null);
 
   // Mapa mental
   const nodesRef = useRef([]);
@@ -611,6 +621,62 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     }
   };
 
+  // ---------------- Câmera / rastreamento de mão ----------------
+  const handleCameraGesture = (gesture, landmarks) => {
+    setCurrentGesture(gesture);
+    const indexTip = landmarks[8];
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+
+    const x = (indexTip.x * canvasRect.width - pan.x) / scale;
+    const y = (indexTip.y * canvasRect.height - pan.y) / scale;
+    setHandPosition({ x, y });
+
+    // "open" ou sem gesto encerra o traço
+    if (gesture === "open" || gesture === "none") {
+      cameraDrawingRef.current = false;
+      lastHandPointRef.current = null;
+      return;
+    }
+
+    const isEraser = gesture === "fist";
+    if (!cameraDrawingRef.current) {
+      cameraDrawingRef.current = true;
+      lastHandPointRef.current = { x, y };
+      return;
+    }
+
+    const last = lastHandPointRef.current;
+    if (!last) {
+      lastHandPointRef.current = { x, y };
+      return;
+    }
+
+    strokesRef.current.push({
+      points: [last, { x, y }],
+      color: isEraser ? "#0d1117" : color,
+      size: isEraser ? size * 3 : size
+    });
+    lastHandPointRef.current = { x, y };
+    redraw();
+  };
+
+  const handleCameraStatusChange = (status) => {
+    setCameraStatus(status);
+  };
+
+  const toggleCamera = () => {
+    setCameraActive(prev => {
+      if (!prev) setHandPosition(null);
+      return !prev;
+    });
+  };
+
+  // Desliga a câmera ao minimizar a lousa
+  useEffect(() => {
+    if (minimized) setCameraActive(false);
+  }, [minimized]);
+
   const clearCanvas = () => {
     strokesRef.current = [];
     textsRef.current = [];
@@ -851,6 +917,24 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
         <div className="tool-divider" />
 
         <div className="tool-group">
+          <button
+            className={`tool-btn ${cameraActive ? "active" : ""} ${cameraActive && cameraStatus === "error" ? "danger" : ""}`}
+            onClick={toggleCamera}
+            title={cameraActive ? "Desligar câmera (desenhar com o dedo)" : "Ligar câmera (desenhar com o dedo)"}
+          >
+            {cameraActive ? <CameraOff size={20} /> : <Camera size={20} />}
+          </button>
+          {cameraActive && (
+            <span className="camera-status-chip" title="Estado da câmera">
+              {cameraStatus === "error" ? <AlertCircle size={14} /> : <Zap size={14} />}
+              {cameraStatus === "error" ? "Erro" : cameraStatus === "active" || cameraStatus === "detected" || cameraStatus === "gesture" ? (cameraStatus === "gesture" ? `Gesto: ${currentGesture}` : "Mão ok") : "Aguardando..."}
+            </span>
+          )}
+        </div>
+
+        <div className="tool-divider" />
+
+        <div className="tool-group">
           <span className="tool-label">Cor</span>
           <div className="color-palette">
             {COLORS.map(c => (
@@ -958,6 +1042,90 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
       </div>
 
       <div className="whiteboard-canvas-wrapper">
+        {cameraActive && (
+          <CameraHandTracking
+            isActive={cameraActive}
+            onGesture={handleCameraGesture}
+            onStatusChange={handleCameraStatusChange}
+            videoRef={videoRef}
+          />
+        )}
+
+        {cameraActive && videoRef.current && (
+          <div className="video-preview-container" style={{
+            position: "absolute",
+            top: "10px",
+            right: "10px",
+            zIndex: 50,
+            width: "160px",
+            borderRadius: "10px",
+            overflow: "hidden",
+            border: "2px solid #30363d",
+            background: "#0d1117",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+          }}>
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="video-preview"
+              style={{ transform: "scaleX(-1)", width: "100%", height: "auto", display: "block" }}
+            />
+            <div className="video-overlay" style={{
+              position: "absolute",
+              bottom: "8px",
+              left: "8px",
+              right: "8px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "6px 12px",
+              background: "rgba(13, 17, 23, 0.9)",
+              border: "1px solid #30363d",
+              borderRadius: "20px",
+              backdropFilter: "blur(10px)",
+              fontSize: "11px",
+              color: "#e2e8f0",
+              pointerEvents: "none"
+            }}>
+              <Zap size={12} style={{ color: "#58a6ff", marginRight: "6px" }} />
+              <span>{currentGesture === "none" ? "Aguardando gesto..." : `Gesto: ${currentGesture}`}</span>
+            </div>
+          </div>
+        )}
+
+        {cameraActive && handPosition && (
+          <div
+            className={`hand-cursor-overlay ${currentGesture === "fist" ? "eraser" : ""}`}
+            style={{
+              left: handPosition.x * scale + pan.x,
+              top: handPosition.y * scale + pan.y,
+            }}
+          />
+        )}
+
+        {cameraActive && (
+          <div className="gesture-guide" style={{
+            position: "absolute",
+            bottom: "20px",
+            left: "20px",
+            zIndex: 50,
+            background: "rgba(13, 17, 23, 0.92)",
+            border: "1px solid #30363d",
+            borderRadius: "12px",
+            padding: "10px 14px",
+            fontSize: "12px",
+            color: "#e2e8f0",
+            pointerEvents: "none"
+          }}>
+            <strong style={{ display: "block", marginBottom: "4px", color: "#58a6ff" }}>Gestos</strong>
+            <div>☝️ Apontar / 🤏 Pinça = escrever</div>
+            <div>✊ Punho = borracha</div>
+            <div>✋ Mão aberta = parar</div>
+          </div>
+        )}
+
         <canvas
           ref={canvasRef}
           className="whiteboard-canvas"

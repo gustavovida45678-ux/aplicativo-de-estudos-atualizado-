@@ -685,17 +685,9 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     // Se a mão ficou fora do quadro por muito tempo, começa um traço novo
     const lostMs = handLostAtRef.current ? Date.now() - handLostAtRef.current : 0;
     handLostAtRef.current = null;
-    if (lostMs > 600) {
+    if (lostMs > 350) {
       cameraDrawingRef.current = false;
       lastHandPointRef.current = null;
-    }
-
-    // "open" encerra o traço
-    if (gesture === "open") {
-      cameraDrawingRef.current = false;
-      lastHandPointRef.current = null;
-      smoothPointRef.current = null;
-      return;
     }
 
     const isEraser = gesture === "fist";
@@ -714,7 +706,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     strokesRef.current.push({
       points: [last, { x, y }],
       color: isEraser ? "#000000" : color,
-      size: isEraser ? size * 3 : Math.max(size, 4)
+      size: isEraser ? size * 3 : Math.max(size, 5)
     });
     lastHandPointRef.current = { x, y };
     redraw();
@@ -1129,7 +1121,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
             ) : cameraStatus === "none" ? (
               <><Zap size={12} style={{ color: "#f59e0b", marginRight: 6 }} />Mão fora do quadro</>
             ) : (
-              <><Zap size={12} style={{ color: "#58a6ff", marginRight: 6 }} />{currentGesture === "none" ? "Aguardando gesto..." : `Escrevendo (${currentGesture})`}</>
+              <><Zap size={12} style={{ color: "#58a6ff", marginRight: 6 }} />{currentGesture === "fist" ? "Borracha" : currentGesture === "none" ? "Aguardando..." : "Escrevendo"}</>
             )}
           </div>
         )}

@@ -136,29 +136,19 @@ export function CameraHandTracking({
 
     const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
 
-    // Escrita tem prioridade: indicador esticado = escrever,
-    // mesmo que outros dedos também estejam levemente abertos.
-    if (indexExtended && extendedCount <= 2 && pinchDist > 0.05) {
-      return "point";
-    }
-
-    if (pinchDist < 0.05 && indexExtended) {
-      return "pinch";
-    }
-
-    if (extendedCount === 0) {
+    // O DEDO É O PINCEL: qualquer mão em quadro escreve.
+    // - punho fechado = borracha
+    // - pinça (polegar + indicador juntos) = escrever fino
+    // - qualquer outra posição com a mão presente = escrever
+    if (extendedCount === 0 && pinchDist > 0.08) {
       return "fist";
     }
 
-    if (extendedCount >= 4) {
-      return "open";
+    if (pinchDist < 0.05) {
+      return "pinch";
     }
 
-    if (indexExtended) {
-      return "point";
-    }
-
-    return "none";
+    return "point";
   };
 
   const cleanup = useCallback(() => {

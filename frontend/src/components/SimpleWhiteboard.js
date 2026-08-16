@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2, Camera, CameraOff, Zap, AlertCircle, Highlighter, Brush, Undo2, Redo2, Eye, EyeOff, Crosshair, ScanText } from "lucide-react";
+import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2, Camera, CameraOff, Zap, AlertCircle, Highlighter, Brush, Undo2, Redo2, Eye, EyeOff, Crosshair, ScanText, FlipHorizontal2, Volume2, Sparkles } from "lucide-react";
 import { BRUSH_TYPES, brushWidth, renderStroke } from "../lib/brush";
 import {
   CALIB_TARGETS,
@@ -66,6 +66,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   const [cameraStatus, setCameraStatus] = useState("inactive");
   const [currentGesture, setCurrentGesture] = useState("none");
   const [handPosition, setHandPosition] = useState(null);
+  const [mirrorCamera, setMirrorCamera] = useState(true);
   const [recognitionMode, setRecognitionMode] = useState(false);
   const [recognition, setRecognition] = useState(null);
   const recognitionModeRef = useRef(false);
@@ -638,6 +639,44 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     toast({ title: "Texto reconhecido e inserido na lousa" });
   };
 
+  const speakRecognizedText = (text) => {
+    if (!text || !("speechSynthesis" in window)) {
+      toast({ title: "Seu navegador não suporta fala" });
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "pt-BR";
+    u.rate = 0.95;
+    const voices = window.speechSynthesis.getVoices();
+    const pt = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("pt"));
+    if (pt) u.voice = pt;
+    window.speechSynthesis.speak(u);
+  };
+
+  const explainRecognizedText = async () => {
+    if (!recognition?.text) return;
+    setRecognition(r => ({ ...r, explaining: true, explanation: null, explainError: null }));
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "https://aplicativo-de-estudos-atualizado-s.onrender.com"}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Explique e descreva o texto abaixo, que foi escrito à mão na lousa. Se for uma pergunta, responda; se for um resumo/anotação, explique o conteúdo de forma didática:\n\n"${recognition.text}"`,
+          provider: "auto",
+          system_prompt: "Você é um professor didático. Responda em português (pt-BR), de forma clara e concisa (máx. 12 linhas), como se estivesse ensinando o aluno.",
+          temperature: 0.5,
+          max_tokens: 900,
+        }),
+      });
+      const d = await res.json();
+      const content = d.assistant_message?.content || "";
+      setRecognition(r => ({ ...r, explaining: false, explanation: content, explainError: content ? null : "Falha ao gerar explicação" }));
+    } catch (e) {
+      setRecognition(r => ({ ...r, explaining: false, explainError: String(e) }));
+    }
+  };
+
   const startTextEdit = (x, y) => {
     const newText = {
       kind: "text",
@@ -754,8 +793,10 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
       }
     }
 
-    // Vídeo é espelhado (scaleX(-1)): inverte X para o dedo acompanhar a mão
-    const normX = vx + (1 - indexTip.x) * vw;
+    // Vídeo é espelhado (scaleX(-1)): inverte X para o dedo acompanhar a mão.
+    // Algumas câmeras (ex: apps de celular como webcam) já enviam o vídeo
+    // espelhado — nesse caso o botão "Espelhar" desliga a inversão.
+    const normX = vx + (mirrorCamera ? 1 - indexTip.x : indexTip.x) * vw;
     const normY = vy + indexTip.y * vh;
     const rawX = normX * canvasRect.width;
     const rawY = normY * canvasRect.height;
@@ -1073,6 +1114,15 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
             {cameraActive ? <CameraOff size={20} /> : <Camera size={20} />}
           </button>
           {cameraActive && (
+            <button
+              className={`tool-btn ${mirrorCamera ? "active" : ""}`}
+              onClick={() => setMirrorCamera(m => !m)}
+              title="Espelhar imagem da câmera (use se o desenho sai invertido: aponta para um lado e escreve no outro)"
+            >
+              <FlipHorizontal2 size={20} />
+            </button>
+          )}
+          {cameraActive && (
             <span className="camera-status-chip" title="Estado da câmera">
               {cameraStatus === "error" ? <AlertCircle size={14} /> : <Zap size={14} />}
               {cameraStatus === "error" ? "Erro" : cameraStatus === "active" || cameraStatus === "detected" || cameraStatus === "gesture" ? (cameraStatus === "gesture" ? `Gesto: ${currentGesture}` : "Mão ok") : cameraStatus === "none" ? "Mão fora do quadro" : "Aguardando..."}
@@ -1207,7 +1257,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
               autoPlay
               muted
               playsInline
-              style={{ transform: "scaleX(-1)" }}
+              style={{ transform: mirrorCamera ? "scaleX(-1)" : "none" }}
             />
           </div>
         )}
@@ -1252,10 +1302,32 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
                 <div className="recognition-footer">
                   <span className="recognition-conf">Confiança: {Math.round(recognition.confidence)}%</span>
                   <div className="recognition-actions">
-                    <button className="recognition-insert" onClick={insertRecognizedText}><Type size={14} /> Inserir como texto</button>
-                    <button onClick={runRecognition}>Tentar de novo</button>
+                    <button onClick={() => speakRecognizedText(recognition.text)} title="Ouvir o texto"><Volume2 size={14} /> Ouvir</button>
+                    <button onClick={explainRecognizedText} title="Pedir para a IA explicar o texto" disabled={recognition.explaining}><Sparkles size={14} /> Explicar</button>
+                    <button className="recognition-insert" onClick={insertRecognizedText}><Type size={14} /> Inserir</button>
                   </div>
                 </div>
+                {recognition.explaining && (
+                  <div className="recognition-working" style={{ marginTop: 8 }}>
+                    <Loader2 size={16} className="spin" />
+                    <span>Gerando explicação...</span>
+                  </div>
+                )}
+                {recognition.explanation && (
+                  <div className="recognition-explanation">
+                    <div className="recognition-explanation-header">
+                      <Sparkles size={13} />
+                      <span>Explicação da IA</span>
+                      <button onClick={() => speakRecognizedText(recognition.explanation)} title="Ouvir a explicação"><Volume2 size={13} /></button>
+                    </div>
+                    <div className="recognition-explanation-text">{recognition.explanation}</div>
+                  </div>
+                )}
+                {recognition.explainError && (
+                  <div className="recognition-empty" style={{ marginTop: 8 }}>
+                    Falha na explicação: {recognition.explainError}
+                  </div>
+                )}
               </>
             )}
           </div>

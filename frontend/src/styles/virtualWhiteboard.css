@@ -1577,3 +1577,39 @@ input[type="range"].stroke-slider {
   color: #58a6ff;
   border-color: #388bfd;
 }
+
+.simple-whiteboard .recognition-explanation {
+  margin-top: 8px;
+  background: rgba(56, 139, 253, 0.08);
+  border: 1px solid rgba(56, 139, 253, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.simple-whiteboard .recognition-explanation-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #58a6ff;
+  margin-bottom: 4px;
+}
+
+.simple-whiteboard .recognition-explanation-header button {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 2px;
+}
+
+.simple-whiteboard .recognition-explanation-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #e2e8f0;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}

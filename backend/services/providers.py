@@ -54,6 +54,28 @@ class ProviderConfig:
     website: str = ""
     icon: str = "brain"
 
+
+# FCC_MODEL pode conter vários modelos separados por vírgula ou "|"
+# (o primeiro é o principal, os demais entram como fallback no rate limit).
+def _fcc_models() -> Dict[str, ModelConfig]:
+    raw = os.environ.get(
+        "FCC_MODEL",
+        "claude-3-freecc-no-thinking/nvidia_nim/nvidia/nemotron-3-super-120b-a12b",
+    )
+    names = [m.strip() for m in re.split(r"[,|]", raw) if m.strip()]
+    if not names:
+        names = ["claude-3-freecc-no-thinking"]
+    models = {}
+    for i, name in enumerate(names):
+        key = "fcc" if i == 0 else f"fcc-{i + 1}"
+        models[key] = ModelConfig(
+            model_id=f"openai/{name}",
+            display_name=f"FCC FreeCC {i + 1}",
+            context_window=128000,
+        )
+    return models
+
+
 # Provider configurations with LiteLLM model identifiers
 PROVIDERS: Dict[ProviderType, ProviderConfig] = {
     ProviderType.GEMINI: ProviderConfig(
@@ -489,30 +511,8 @@ ProviderType.OLLAMA: ProviderConfig(
     ),
 }
 
-# FCC_MODEL pode conter vários modelos separados por vírgula ou "|"
-# (o primeiro é o principal, os demais entram como fallback no rate limit).
-def _fcc_models() -> Dict[str, ModelConfig]:
-    raw = os.environ.get(
-        "FCC_MODEL",
-        "claude-3-freecc-no-thinking/nvidia_nim/nvidia/nemotron-3-super-120b-a12b",
-    )
-    names = [m.strip() for m in re.split(r"[,|]", raw) if m.strip()]
-    if not names:
-        names = ["claude-3-freecc-no-thinking"]
-    models = {}
-    for i, name in enumerate(names):
-        key = "fcc" if i == 0 else f"fcc-{i + 1}"
-        models[key] = ModelConfig(
-            model_id=f"openai/{name}",
-            display_name=f"FCC FreeCC {i + 1}",
-            context_window=128000,
-        )
-    return models
-
-
 # Default model per provider (first one listed)
 DEFAULT_MODELS = {
-    ProviderType.GEMINI: "gemini-1.5-flash",
     ProviderType.CLAUDE: "claude-3-5-sonnet-20241022",
     ProviderType.PERPLEXITY: "llama-3.1-sonar-small-128k-online",
     ProviderType.DEEPSEEK: "deepseek-chat",

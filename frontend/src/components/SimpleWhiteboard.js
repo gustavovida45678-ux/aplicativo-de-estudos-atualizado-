@@ -1051,7 +1051,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
           />
         )}
 
-        {cameraActive && videoRef.current && (
+        {cameraActive && (
           <div className="video-preview-container" style={{
             position: "absolute",
             top: "10px",

@@ -77,7 +77,18 @@ export function CameraHandTracking({
 
       setHands(handsInstance);
 
-      const videoElement = videoRef?.current;
+      const waitForVideo = (retries = 30) =>
+        new Promise((resolve) => {
+          const check = () => {
+            const el = videoRef?.current;
+            if (el) return resolve(el);
+            if (retries <= 0) return resolve(null);
+            setTimeout(() => check(retries - 1), 100);
+          };
+          check();
+        });
+
+      const videoElement = await waitForVideo();
       if (videoElement) {
         const cameraInstance = new CameraUtils.Camera(videoElement, {
           onFrame: async () => {
@@ -93,6 +104,8 @@ export function CameraHandTracking({
         await cameraInstance.start();
         setIsInitialized(true);
         onStatusChange?.("active", "Câmera ativa");
+      } else {
+        throw new Error("Elemento de vídeo não encontrado");
       }
     } catch (err) {
       console.error("Erro ao inicializar MediaPipe:", err);
@@ -168,25 +181,6 @@ export function CameraHandTracking({
             <RotateCcw size={16} />
             Tentar novamente
           </button>
-        </div>
-      )}
-
-      {isInitialized && videoRef?.current && (
-        <div className="video-preview-container">
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            className="video-preview"
-            style={{ transform: "scaleX(-1)" }}
-          />
-          <div className="video-overlay">
-            <div className="gesture-indicator">
-              <Hand size={16} />
-              <span id="currentGesture">Aguardando gesto...</span>
-            </div>
-          </div>
         </div>
       )}
 

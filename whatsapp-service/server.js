@@ -23,7 +23,7 @@ const {
   isLidUser,
 } = require("@whiskeysockets/baileys");
 
-const PORT = parseInt(process.env.PORT || "8002", 10);
+const PORT = parseInt(process.env.BAILEYS_PORT || "8002", 10);
 const AUTH_DIR = process.env.BAILEYS_AUTH_DIR || path.join(__dirname, "auth_info");
 const INTERNAL_TOKEN = process.env.BAILEYS_INTERNAL_TOKEN || "deusfiel-secretaria-2026";
 const BACKEND_WEBHOOK =

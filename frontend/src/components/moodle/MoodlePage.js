@@ -29,7 +29,7 @@ export function MoodlePage({ onClose }) {
   const [loading, setLoading] = useState({ courses: false, activities: false, deadlines: false, announcements: false });
   const [error, setError] = useState(null);
   const [showLoginHelp, setShowLoginHelp] = useState(false);
-  const [activeTab, setActiveTab] = useState('activities');
+  const [activeTab, setActiveTab] = useState('deadlines');
   const [lastSync, setLastSync] = useState(null);
   const [moodleConfigured, setMoodleConfigured] = useState(false);
   const [configChecked, setConfigChecked] = useState(false);
@@ -425,15 +425,16 @@ export function MoodlePage({ onClose }) {
                         )}
                         {activity.type && <span className="activity-type">{activity.type}</span>}
                         {activity.priority && <span className="priority-badge">Prioridade</span>}
+                        {activity.resolved && <span className="priority-badge resolved">Resolução pronta</span>}
                       </div>
                     </div>
                     <div className="activity-actions">
                       <button
                         className="moodle-btn small study-btn"
                         onClick={() => startStudy(activity)}
-                        title="Escaneia a atividade e gera resolução passo a passo, resumo e 10 exercícios"
+                        title="Resolução passo a passo, resumo e 10 exercícios gerados pela IA"
                       >
-                        <GraduationCap size={14} /> Estudar
+                        <GraduationCap size={14} /> {activity.resolved ? 'Ver resolução' : 'Estudar'}
                       </button>
                       {activity.url && (
                         <a href={activity.url} target="_blank" rel="noopener noreferrer" className="moodle-btn small">
@@ -476,6 +477,7 @@ export function MoodlePage({ onClose }) {
                         <div className="deadline-info">
                           <h4>{deadline.name}</h4>
                           <p>{deadline.course_name}</p>
+                          {deadline.priority && <span className="priority-badge">Prioridade</span>}
                         </div>
                         <div className="deadline-status">
                           <span className={status.class}>{status.label}</span>

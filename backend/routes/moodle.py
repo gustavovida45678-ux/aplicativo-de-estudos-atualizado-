@@ -5,6 +5,8 @@ import requests
 import os
 import json
 import re
+import asyncio
+import threading
 from urllib.parse import urlparse
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -816,6 +818,7 @@ def _sync_all(user_id=None):
             "course_name": a.get("course_name", ""),
             "due_date": a.get("due_date"),
             "url": a.get("url", ""),
+            "priority": bool(a.get("priority")),
         })
 
     # 4b) Eventos do calendário -> prazos extras e avisos
@@ -894,7 +897,7 @@ def moodle_get_announcements(current_user: dict = Depends(_current_user_optional
 
 
 @router.post("/sync")
-def moodle_sync(current_user: dict = Depends(_current_user_optional)):
+async def moodle_sync(current_user: dict = Depends(_current_user_optional)):
     user_id = _uid(current_user)
     cfg = _load_config(user_id)
     if not cfg:
@@ -903,10 +906,7 @@ def moodle_sync(current_user: dict = Depends(_current_user_optional)):
         data = _sync_all(user_id)
     except HTTPException as e:
         raise HTTPException(status_code=502, detail=f"Falha ao sincronizar com o Moodle: {e.detail}")
-    _cache_set("courses", data["courses"], user_id)
-    _cache_set("activities", data["activities"], user_id)
-    _cache_set("deadlines", data["deadlines"], user_id)
-    _cache_set("announcements", data["announcements"], user_id)
+    _store_sync_and_auto(user_id, data)
     return {
         "success": True,
         "synced": True,
@@ -920,6 +920,68 @@ def moodle_sync(current_user: dict = Depends(_current_user_optional)):
             "announcements": len(data["announcements"]),
         },
     }
+
+
+def _store_sync_and_auto(user_id, data):
+    """Grava o sync e dispara a RESOLUÇÃO AUTOMÁTICA das atividades NOVAS
+    das disciplinas prioritárias (Sistemas Digitais, Estrutura de Dados,
+    Álgebra Linear) em segundo plano."""
+    _mark_resolved(data, user_id)
+    _cache_set("courses", data["courses"], user_id)
+    _cache_set("activities", data["activities"], user_id)
+    _cache_set("deadlines", data["deadlines"], user_id)
+    _cache_set("announcements", data["announcements"], user_id)
+    new_prio = _new_priority_activities(user_id, data)
+    if new_prio:
+        _spawn_auto_resolve(user_id, new_prio[:3])
+
+
+def _mark_resolved(data, user_id):
+    """Marca activities com 'resolved': a resolução já está pronta no cache."""
+    for a in data.get("activities", []):
+        k = a.get("id") or a.get("cmid")
+        if k is not None and _cache_get(f"study__{k}", user_id):
+            a["resolved"] = True
+
+
+def _new_priority_activities(user_id, data):
+    """Atividades das disciplinas prioritárias que NÃO existiam no sync anterior."""
+    prev = _cache_get("activities", user_id) or []
+    prev_ids = set()
+    for a in prev:
+        k = a.get("cmid") or a.get("id")
+        if k is not None:
+            prev_ids.add(k)
+    return [
+        a for a in data.get("activities", [])
+        if a.get("priority") and (a.get("cmid") or a.get("id")) not in prev_ids
+    ]
+
+
+def _spawn_auto_resolve(user_id, activities):
+    def _run():
+        try:
+            asyncio.run(_auto_resolve(user_id, activities))
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+async def _auto_resolve(user_id, new_activities):
+    """Gera a resolução (passo a passo + resumo + exercícios) de cada
+    atividade nova prioritária e marca como resolvida."""
+    for act in new_activities:
+        try:
+            await _generate_study(user_id, act)
+            k = act.get("id") or act.get("cmid")
+            acts = _cache_get("activities", user_id) or []
+            for a in acts:
+                if (a.get("id") or a.get("cmid")) == k:
+                    a["resolved"] = True
+            _cache_set("activities", acts, user_id)
+        except Exception:
+            continue
 
 
 @router.post("/connect")
@@ -961,10 +1023,7 @@ def moodle_connect(req: ConnectRequest, current_user: dict = Depends(_current_us
         warnings = []
         try:
             synced = _sync_all(user_id)
-            _cache_set("courses", synced["courses"], user_id)
-            _cache_set("activities", synced["activities"], user_id)
-            _cache_set("deadlines", synced["deadlines"], user_id)
-            _cache_set("announcements", synced["announcements"], user_id)
+            _store_sync_and_auto(user_id, synced)
             errors = synced.get("errors", [])
             warnings = synced.get("warnings", [])
         except Exception as e:
@@ -1209,7 +1268,22 @@ async def moodle_study(req: StudyRequest, current_user: dict = Depends(_current_
             _cache_set(f"scan__{req.activity_id}", scan, user_id)
         except HTTPException:
             raise
-    text = scan["text"]
+
+    return await _generate_study(user_id, activity, scan)
+
+
+async def _generate_study(user_id, activity, scan=None):
+    """Gera resolução + resumo + exercícios de uma atividade e guarda no cache."""
+    study_key = f"study__{activity.get('id') or activity.get('cmid')}"
+    if not scan:
+        scan = _cache_get(f"scan__{activity.get('id') or activity.get('cmid')}", user_id)
+    if not scan:
+        try:
+            text, names = _scan_activity(user_id, activity)
+            scan = {"text": text, "names": names}
+            _cache_set(f"scan__{activity.get('id') or activity.get('cmid')}", scan, user_id)
+        except HTTPException:
+            raise
 
     from backend.routes.summary import (
         _chat_with_emergent_fallback,
@@ -1222,13 +1296,12 @@ async def moodle_study(req: StudyRequest, current_user: dict = Depends(_current_
 
     topic = (activity.get("course_name") or "Disciplina")
     name = activity.get("name") or "Atividade"
+    text = scan["text"]
     max_chars = 8000
 
     # As 3 chamadas de IA rodam em paralelo (antes eram sequenciais e o
     # tempo total estourava o limite de resposta do Render -> erro generico
     # no app). Se uma falhar, as outras continuam e o erro vai no campo errors.
-    import asyncio
-
     async def _gen(prompt_builder, system, temperature, max_tokens):
         return await _chat_with_emergent_fallback(
             chat_service,
@@ -1296,7 +1369,7 @@ async def moodle_study(req: StudyRequest, current_user: dict = Depends(_current_
         raise HTTPException(status_code=502, detail=detail)
 
     result = {
-        "activity_id": req.activity_id,
+        "activity_id": activity.get("id") or activity.get("cmid"),
         "activity_name": name,
         "course_name": topic,
         "files": scan.get("names", []),

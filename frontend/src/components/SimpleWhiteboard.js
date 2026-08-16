@@ -126,7 +126,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#0d1117";
+    ctx.fillStyle = cameraActive ? "#000000" : "#0d1117";
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
 
@@ -137,14 +137,24 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     
     strokesRef.current.forEach(stroke => {
       if (stroke.points.length < 2) return;
-      ctx.strokeStyle = stroke.color;
+      // Traços de borracha feitos na câmera (#000) seguem a cor do fundo atual
+      ctx.strokeStyle = stroke.color === "#000000" ? (cameraActive ? "#000000" : "#0d1117") : stroke.color;
       ctx.lineWidth = stroke.size;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+      const pts = stroke.points;
       ctx.beginPath();
-      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-      for (let i = 1; i < stroke.points.length; i++) {
-        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+      ctx.moveTo(pts[0].x, pts[0].y);
+      if (pts.length === 2) {
+        ctx.lineTo(pts[1].x, pts[1].y);
+      } else {
+        // Curvas suaves pelos pontos médios: escrita natural, como num quadro
+        for (let i = 1; i < pts.length - 1; i++) {
+          const mx = (pts[i].x + pts[i + 1].x) / 2;
+          const my = (pts[i].y + pts[i + 1].y) / 2;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+        }
+        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
       }
       ctx.stroke();
     });
@@ -703,8 +713,8 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
 
     strokesRef.current.push({
       points: [last, { x, y }],
-      color: isEraser ? "#0d1117" : color,
-      size: isEraser ? size * 3 : size
+      color: isEraser ? "#000000" : color,
+      size: isEraser ? size * 3 : Math.max(size, 4)
     });
     lastHandPointRef.current = { x, y };
     redraw();
@@ -1101,77 +1111,26 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
         )}
 
         {cameraActive && (
-          <div className="video-preview-container" style={{
-            position: "absolute",
-            top: "10px",
-            right: "10px",
-            zIndex: 50,
-            width: "160px",
-            borderRadius: "10px",
-            overflow: "hidden",
-            border: "2px solid #30363d",
-            background: "#0d1117",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
-          }}>
+          <div className="magic-video-layer" aria-hidden="true">
             <video
               ref={videoRef}
               autoPlay
               muted
               playsInline
-              className="video-preview"
-              style={{ transform: "scaleX(-1)", width: "100%", height: "auto", display: "block" }}
+              style={{ transform: "scaleX(-1)" }}
             />
-            <div className="video-overlay" style={{
-              position: "absolute",
-              bottom: "8px",
-              left: "8px",
-              right: "8px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "6px 12px",
-              background: "rgba(13, 17, 23, 0.9)",
-              border: "1px solid #30363d",
-              borderRadius: "20px",
-              backdropFilter: "blur(10px)",
-              fontSize: "11px",
-              color: "#e2e8f0",
-              pointerEvents: "none"
-            }}>
-              <Zap size={12} style={{ color: "#58a6ff", marginRight: "6px" }} />
-              <span>{currentGesture === "none" ? "Aguardando gesto..." : `Gesto: ${currentGesture}`}</span>
-            </div>
           </div>
         )}
 
-        {cameraActive && handPosition && (
-          <div
-            className={`hand-cursor-overlay ${currentGesture === "fist" ? "eraser" : ""}`}
-            style={{
-              left: handPosition.x * scale + pan.x,
-              top: handPosition.y * scale + pan.y,
-            }}
-          />
-        )}
-
         {cameraActive && (
-          <div className="gesture-guide" style={{
-            position: "absolute",
-            bottom: "20px",
-            left: "20px",
-            zIndex: 50,
-            background: "rgba(13, 17, 23, 0.92)",
-            border: "1px solid #30363d",
-            borderRadius: "12px",
-            padding: "10px 14px",
-            fontSize: "12px",
-            color: "#e2e8f0",
-            pointerEvents: "none"
-          }}>
-            <strong style={{ display: "block", marginBottom: "4px", color: "#58a6ff" }}>Gestos</strong>
-            <div>☝️ Apontar / 🤏 Pinça = escrever</div>
-            <div>✊ Punho = borracha</div>
-            <div>✋ Mão aberta = parar</div>
+          <div className="magic-hint">
+            {cameraStatus === "error" ? (
+              <><AlertCircle size={12} style={{ color: "#f85149", marginRight: 6 }} />Erro na câmera</>
+            ) : cameraStatus === "none" ? (
+              <><Zap size={12} style={{ color: "#f59e0b", marginRight: 6 }} />Mão fora do quadro</>
+            ) : (
+              <><Zap size={12} style={{ color: "#58a6ff", marginRight: 6 }} />{currentGesture === "none" ? "Aguardando gesto..." : `Escrevendo (${currentGesture})`}</>
+            )}
           </div>
         )}
 

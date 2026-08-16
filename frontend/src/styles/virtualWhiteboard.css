@@ -1406,7 +1406,48 @@ input[type="range"].stroke-slider {
 .simple-whiteboard .tool-btn.active {
   background: rgba(88, 166, 255, 0.22);
   color: #58a6ff;
-  border-color: #58a6ff;
+}
+
+/* --- Quadro mágico: câmera invisível cobrindo a lousa inteira --- */
+.magic-video-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.magic-video-layer video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.magic-hint {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: rgba(13, 17, 23, 0.85);
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #e2e8f0;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .simple-whiteboard .tool-btn.danger {
   background: rgba(239, 68, 68, 0.12);

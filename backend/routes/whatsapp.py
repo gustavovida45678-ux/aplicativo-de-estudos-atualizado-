@@ -436,3 +436,24 @@ async def logout(_user=Depends(_current_user_optional)):
         return {"ok": status_code == 200, **data}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@router.get("/debug-reply")
+async def debug_reply():
+    """Reproduz a geracao de resposta da Secretaria e retorna o erro real."""
+    try:
+        if os.environ.get("FCC_BASE_URL") and os.environ.get("FCC_AUTH_TOKEN"):
+            provider_type = ProviderType.FCC
+        else:
+            provider_type = "auto"
+        result = await chat_service.chat(
+            message=_build_ai_message("oi clara, me ajuda a organizar meus estudos", "Eri", []),
+            provider_type=provider_type,
+            system_prompt=SECRETARY_SYSTEM_PROMPT,
+            temperature=0.6,
+            max_tokens=600,
+        )
+        return {"ok": True, "provider": (result or {}).get("provider"), "model": (result or {}).get("model"), "reply": (result or {}).get("content", "")[:300]}
+    except Exception as e:
+        import traceback as _tb
+        return {"ok": False, "error": f"{type(e).__name__}: {e}\n{_tb.format_exc()[-1500:]}"}

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import httpx
 
 from utils.auth import get_current_user
-from services import chat_service
+from services.chat_service import chat_service
 from services.providers import ProviderType
 
 logger = logging.getLogger("whatsapp")

@@ -3,7 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import secrets
 from models.user import (
-    User, UserCreate, UserLogin, UserResponse, Token,
+    User, UserCreate, UserLogin, GuestAccess, UserResponse, Token,
     RegisterResponse, VerifyEmailRequest, ResendVerificationRequest
 )
 from utils.auth import (
@@ -156,6 +156,49 @@ async def resend_verification(payload: ResendVerificationRequest):
         raise HTTPException(500, "Erro ao reenviar confirmação")
 
 
+@router.post("/guest", response_model=Token)
+async def guest_access(payload: GuestAccess):
+    """Guest access: create or update user by email (no password/verification needed)."""
+    try:
+        email = payload.email.lower().strip()
+        name = payload.name.strip()
+
+        user = await db.users.find_one({"email": email})
+        if user:
+            if not user.get("is_active", True):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Usuário inativo"
+                )
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"name": name, "email_verified": True}}
+            )
+        else:
+            new_user = User(
+                email=email,
+                name=name,
+                hashed_password="",
+                email_verified=True,
+            )
+            user_dict = new_user.model_dump()
+            user_dict['created_at'] = user_dict['created_at'].isoformat()
+            await db.users.insert_one(user_dict)
+
+        access_token = create_access_token(data={"sub": email})
+        logger.info(f"Guest access granted: {email}")
+        return Token(access_token=access_token, token_type="bearer")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in guest access: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro no acesso rápido"
+        )
+
+
 @router.post("/login", response_model=Token)
 async def login(credentials: UserLogin):
     """Login user and return JWT token (only if email verified)."""
@@ -229,4 +272,53 @@ async def get_all_users(current_user: dict = Depends(get_current_active_user)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Erro ao buscar usuários"
+        )
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, current_user: dict = Depends(get_current_active_user)):
+    """Delete a user and all their data (admin dashboard)"""
+    try:
+        if user_id == current_user.get("id"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Você não pode excluir sua própria conta enquanto logado"
+            )
+
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuário não encontrado"
+            )
+
+        email = user["email"]
+
+        # Remove o usuário e todos os dados associados
+        await db.users.delete_one({"id": user_id})
+
+        # Coleções adaptativas são indexadas por email
+        for collection in (
+            "adaptive_skill_mastery",
+            "adaptive_attempts",
+            "adaptive_errors",
+            "adaptive_reviews",
+            "adaptive_sessions",
+        ):
+            await db[collection].delete_many({"user_id": email})
+
+        # Cronograma/agenda indexado pelo id do usuário
+        await db.subjects.delete_many({"user_id": user_id})
+        await db.tasks.delete_many({"user_id": user_id})
+
+        logger.info(f"User deleted: {email} (by {current_user['email']})")
+        return {"success": True, "message": "Usuário removido com todos os dados"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro ao excluir usuário"
         )

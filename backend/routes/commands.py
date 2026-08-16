@@ -4,9 +4,17 @@ import logging
 import os
 from datetime import datetime
 from models.command import CommandRequest, CommandResponse
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    EMERGENT_AVAILABLE = True
+except ImportError:
+    LlmChat = None
+    UserMessage = None
+    EMERGENT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+if not EMERGENT_AVAILABLE:
+    logger.warning("emergentintegrations nao instalado - endpoint de comandos IA indisponivel")
 router = APIRouter()
 
 def get_api_key(x_custom_api_key: Optional[str] = None):
@@ -111,8 +119,8 @@ Você DEVE retornar APENAS um JSON válido neste formato:
 1. "tema escuro" / "modo escuro"
 → {"action_type": "frontend", "command_category": "theme", "specific_action": "set_dark_theme", "parameters": {"theme": "dark", "description": "Ativa modo escuro para melhor experiência noturna", "reason": "Reduz fadiga visual"}, "preview_description": "Tema escuro será ativado"}
 
-2. "adicionar tarefa de estudar limites" / "criar tarefa calc1"
-→ {"action_type": "frontend", "command_category": "task", "specific_action": "add_task", "parameters": {"subject": "calc1", "task": "Estudar limites", "priority": "high", "description": "Nova tarefa de estudo adicionada ao sistema", "reason": "Organização de estudos"}, "preview_description": "Tarefa 'Estudar limites' será adicionada"}
+2. "adicionar tarefa de estudar derivadas" / "criar tarefa calc2"
+→ {"action_type": "frontend", "command_category": "task", "specific_action": "add_task", "parameters": {"subject": "calc2", "task": "Estudar derivadas parciais", "priority": "high", "description": "Nova tarefa de estudo adicionada ao sistema", "reason": "Organização de estudos"}, "preview_description": "Tarefa 'Estudar derivadas parciais' será adicionada"}
 
 3. "ir para exercícios" / "abrir exercicios"
 → {"action_type": "frontend", "command_category": "navigation", "specific_action": "navigate_to_exercises", "parameters": {"tab": "exercises", "description": "Navegação para área de prática", "reason": "Acesso rápido via comando"}, "preview_description": "Abrindo sistema de exercícios"}
@@ -121,7 +129,7 @@ Você DEVE retornar APENAS um JSON válido neste formato:
 → {"action_type": "both", "command_category": "improvement", "specific_action": "optimize_performance", "parameters": {"actions": ["clear_cache", "compress_images", "lazy_load"], "description": "Aplicar otimizações de performance", "reason": "Melhorar velocidade da aplicação"}, "preview_description": "Otimizações de performance serão aplicadas"}
 
 5. "criar rotina de estudo de cálculo"
-→ {"action_type": "frontend", "command_category": "automation", "specific_action": "create_study_routine", "parameters": {"subject": "calc1", "frequency": "daily", "tasks": ["revisar teoria", "fazer 5 exercícios", "anotar dúvidas"], "description": "Rotina automatizada de estudos", "reason": "Consistência nos estudos"}, "preview_description": "Rotina diária de Cálculo 1 será criada"}
+→ {"action_type": "frontend", "command_category": "automation", "specific_action": "create_study_routine", "parameters": {"subject": "calc2", "frequency": "daily", "tasks": ["revisar teoria", "fazer 5 exercícios", "anotar dúvidas"], "description": "Rotina automatizada de estudos", "reason": "Consistência nos estudos"}, "preview_description": "Rotina diária de Cálculo será criada"}
 
 6. "corrigir problema no cronograma" / "bug na agenda"
 → {"action_type": "both", "command_category": "bug_fix", "specific_action": "fix_schedule_bug", "parameters": {"issue": "schedule_sync", "fix": "refresh_data", "description": "Correção de sincronização de dados", "reason": "Garantir consistência"}, "preview_description": "Problema no cronograma será corrigido"}
@@ -158,7 +166,7 @@ Você DEVE retornar APENAS um JSON válido neste formato:
 ⚙️ PARÂMETROS COMUNS:
 
 **Matérias (subject):**
-- calc1, calc2, calc3, calcnum, math
+- calc2, calc3, calcnum, ed1, sdig, math
 
 **Prioridades (priority):**
 - low, medium, high, urgent
@@ -250,7 +258,7 @@ PRESET_COMMANDS = {
         "action_type": "frontend",
         "command_category": "task",
         "specific_action": "add_task",
-        "parameters": {"subject": "calc1", "task": "Nova tarefa de estudo", "description": "Tarefa adicionada via comando"},
+        "parameters": {"subject": "calc2", "task": "Nova tarefa de estudo", "description": "Tarefa adicionada via comando"},
         "preview_description": "Adicionar nova tarefa de estudo"
     },
     "/help": {
@@ -301,6 +309,15 @@ async def execute_command(
             return CommandResponse(
                 success=False,
                 result="⚠️ Comandos com IA requerem configuração de API key. Use comandos com '/' (ex: /tema-escuro) ou configure sua chave API.",
+                action_type="frontend",
+                changes=None,
+                preview=None
+            )
+        
+        if not EMERGENT_AVAILABLE:
+            return CommandResponse(
+                success=False,
+                result="Comandos com IA indisponiveis neste deploy (biblioteca emergentintegrations ausente).",
                 action_type="frontend",
                 changes=None,
                 preview=None

@@ -3,37 +3,30 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from models.schedule import Subject, SubjectInDB, Task, TaskInDB, TaskResponse
 from typing import List
 import os
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# MongoDB connection
-mongo_url = os.environ.get('MONGO_URL')
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME', 'study_schedule_db')]
+# Lazy MongoDB connection - only connect when needed
+_client = None
+_db = None
+
+def get_db():
+    global _client, _db
+    if _client is None:
+        mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
+        if mongo_url:
+            _client = AsyncIOMotorClient(mongo_url)
+            _db = _client[os.environ.get('DB_NAME', 'study_app')]
+        else:
+            _db = None
+    return _db
 
 # Initial subjects data
 INITIAL_SUBJECTS = [
-    {
-        "subject_id": "calc1",
-        "name": "Cálculo 1",
-        "color": "#3b82f6",
-        "icon": "∫",
-        "topics": [
-            {"id": 1, "title": "Limites e Continuidade", "completed": False},
-            {"id": 2, "title": "Derivadas - Definição e Regras Básicas", "completed": False},
-            {"id": 3, "title": "Regra da Cadeia e Derivadas Implícitas", "completed": False},
-            {"id": 4, "title": "Aplicações de Derivadas - Máximos e Mínimos", "completed": False},
-            {"id": 5, "title": "Teorema do Valor Médio", "completed": False},
-            {"id": 6, "title": "Integrais Indefinidas", "completed": False},
-            {"id": 7, "title": "Integrais Definidas e Teorema Fundamental", "completed": False},
-            {"id": 8, "title": "Técnicas de Integração - Substituição", "completed": False},
-            {"id": 9, "title": "Técnicas de Integração - Por Partes", "completed": False},
-            {"id": 10, "title": "Aplicações de Integrais - Áreas", "completed": False},
-        ],
-    },
     {
         "subject_id": "calc2",
         "name": "Cálculo 2",
@@ -88,17 +81,43 @@ INITIAL_SUBJECTS = [
             {"id": 40, "title": "Integração Numérica - Regra de Simpson", "completed": False},
         ],
     },
+    {
+        "subject_id": "ed1",
+        "name": "Estrutura de Dados",
+        "color": "#f59e0b",
+        "icon": "{ }",
+        "topics": [
+            {"id": 41, "title": "Programação Estruturada e Modular", "completed": False},
+            {"id": 42, "title": "Introdução à Análise de Algoritmos", "completed": False},
+            {"id": 43, "title": "Vetores e Strings", "completed": False},
+            {"id": 44, "title": "Matrizes Multidimensionais", "completed": False},
+            {"id": 45, "title": "Estruturas Estáticas e Dinâmicas", "completed": False},
+            {"id": 46, "title": "Pilhas e Filas", "completed": False},
+            {"id": 47, "title": "Listas Encadeadas", "completed": False},
+            {"id": 48, "title": "Árvores", "completed": False},
+        ],
+    },
+    {
+        "subject_id": "sdig",
+        "name": "Sistemas Digitais",
+        "color": "#06b6d4",
+        "icon": "01",
+        "topics": [
+            {"id": 49, "title": "Aplicações da Eletrônica Digital na Engenharia Elétrica", "completed": False},
+            {"id": 50, "title": "Sistemas de Numeração e Conversões", "completed": False},
+            {"id": 51, "title": "Portas e Funções Lógicas", "completed": False},
+            {"id": 52, "title": "Álgebra de Boole e Simplificação (Karnaugh)", "completed": False},
+            {"id": 53, "title": "Circuitos Combinacionais (projetos e códigos)", "completed": False},
+            {"id": 54, "title": "Codificadores e Decodificadores", "completed": False},
+            {"id": 55, "title": "Flip-Flops", "completed": False},
+            {"id": 56, "title": "Registradores e Contadores", "completed": False},
+            {"id": 57, "title": "Conversores D/A e A/D, Multiplex e Memórias", "completed": False},
+            {"id": 58, "title": "Famílias de Circuitos Lógicos (TTL e CMOS)", "completed": False},
+        ],
+    },
 ]
 
 INITIAL_TASKS = [
-    {
-        "id": 1,
-        "subject": "calc1",
-        "task": "Resolver lista de limites",
-        "dueDate": "2026-03-25",
-        "completed": False,
-        "priority": "high",
-    },
     {
         "id": 2,
         "subject": "calc2",
@@ -123,39 +142,109 @@ INITIAL_TASKS = [
         "completed": False,
         "priority": "medium",
     },
+    {
+        "id": 5,
+        "subject": "ed1",
+        "task": "Implementar pilha com alocação dinâmica",
+        "dueDate": "2026-09-30",
+        "completed": False,
+        "priority": "high",
+    },
+    {
+        "id": 6,
+        "subject": "sdig",
+        "task": "Simplificar função lógica com mapa de Karnaugh",
+        "dueDate": "2026-09-07",
+        "completed": False,
+        "priority": "high",
+    },
 ]
 
 async def initialize_data():
-    """Initialize database with default data if empty"""
+    """Initialize database with default data (idempotent upsert)"""
+    db = get_db()
+    if db is None:
+        logger.warning("MongoDB not configured, skipping data initialization")
+        return
     try:
-        # Check if subjects exist
-        subjects_count = await db.subjects.count_documents({"user_id": "default"})
-        if subjects_count == 0:
-            logger.info("Initializing subjects data...")
-            for subject_data in INITIAL_SUBJECTS:
-                subject_data["user_id"] = "default"
-                await db.subjects.insert_one(subject_data)
-            logger.info(f"Initialized {len(INITIAL_SUBJECTS)} subjects")
-        
-        # Check if tasks exist
-        tasks_count = await db.tasks.count_documents({"user_id": "default"})
-        if tasks_count == 0:
-            logger.info("Initializing tasks data...")
-            for task_data in INITIAL_TASKS:
-                task_data["user_id"] = "default"
-                await db.tasks.insert_one(task_data)
-            logger.info(f"Initialized {len(INITIAL_TASKS)} tasks")
+        # Upsert each subject, preserving any existing topic completion state
+        for subject_data in INITIAL_SUBJECTS:
+            existing = await db.subjects.find_one({
+                "user_id": "default",
+                "subject_id": subject_data["subject_id"],
+            })
+            if existing:
+                existing_topics = {t["id"]: t for t in existing.get("topics", [])}
+                merged_topics = [
+                    existing_topics.get(t["id"], t) for t in subject_data["topics"]
+                ]
+                await db.subjects.update_one(
+                    {"user_id": "default", "subject_id": subject_data["subject_id"]},
+                    {"$set": {
+                        "name": subject_data["name"],
+                        "color": subject_data["color"],
+                        "icon": subject_data["icon"],
+                        "topics": merged_topics,
+                    }},
+                )
+            else:
+                insert_data = dict(subject_data)
+                insert_data["user_id"] = "default"
+                await db.subjects.insert_one(insert_data)
+        logger.info(f"Upserted {len(INITIAL_SUBJECTS)} subjects")
+
+        # Remove subjects (and only their tasks) that are no longer in the initial data
+        known_subject_ids = {s["subject_id"] for s in INITIAL_SUBJECTS}
+        existing_subjects = await db.subjects.find(
+            {"user_id": "default"}, {"subject_id": 1}
+        ).to_list(100)
+        removed_ids = {
+            s["subject_id"] for s in existing_subjects
+        } - known_subject_ids
+        if removed_ids:
+            await db.tasks.delete_many({
+                "user_id": "default",
+                "subject": {"$in": list(removed_ids)},
+            })
+            removed = await db.subjects.delete_many({
+                "user_id": "default",
+                "subject_id": {"$in": list(removed_ids)},
+            })
+            logger.info(f"Removed {removed.deleted_count} stale subjects: {sorted(removed_ids)}")
+
+        # Insert each task only if it does not exist yet
+        for task_data in INITIAL_TASKS:
+            existing = await db.tasks.find_one({
+                "user_id": "default",
+                "id": task_data["id"],
+            })
+            if not existing:
+                insert_data = dict(task_data)
+                insert_data["user_id"] = "default"
+                await db.tasks.insert_one(insert_data)
+        logger.info(f"Ensured {len(INITIAL_TASKS)} tasks")
     except Exception as e:
         logger.error(f"Error initializing data: {e}")
 
 @router.on_event("startup")
 async def startup_event():
-    await initialize_data()
+    # Never block server startup on MongoDB. If the database is unreachable
+    # (e.g. misconfigured MONGODB_URI or IP allowlist), the server must still
+    # bind its port; otherwise Render kills the instance (502).
+    try:
+        await asyncio.wait_for(initialize_data(), timeout=5)
+    except asyncio.TimeoutError:
+        logger.warning("MongoDB initialization timed out during startup (db unreachable?)")
+    except Exception as e:
+        logger.warning(f"MongoDB initialization failed during startup: {e}")
 
 # Subjects endpoints
 @router.get("/subjects", response_model=List[Subject])
 async def get_subjects():
     """Get all subjects with topics"""
+    db = get_db()
+    if db is None:
+        return []
     try:
         subjects = await db.subjects.find({"user_id": "default"}, {"_id": 0, "user_id": 0}).to_list(100)
         return subjects
@@ -166,6 +255,9 @@ async def get_subjects():
 @router.put("/subjects/{subject_id}/topics/{topic_id}/toggle")
 async def toggle_topic(subject_id: str, topic_id: int):
     """Toggle topic completion status"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         # Find the subject
         subject = await db.subjects.find_one({"user_id": "default", "subject_id": subject_id})
@@ -206,6 +298,9 @@ async def toggle_topic(subject_id: str, topic_id: int):
 @router.get("/tasks", response_model=List[TaskResponse])
 async def get_tasks():
     """Get all tasks"""
+    db = get_db()
+    if db is None:
+        return []
     try:
         tasks = await db.tasks.find({"user_id": "default"}, {"_id": 0, "user_id": 0}).to_list(1000)
         return tasks
@@ -216,6 +311,9 @@ async def get_tasks():
 @router.post("/tasks", response_model=TaskResponse)
 async def create_task(task: Task):
     """Create a new task"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         # Get the highest task ID
         all_tasks = await db.tasks.find({"user_id": "default"}).to_list(1000)
@@ -239,6 +337,9 @@ async def create_task(task: Task):
 @router.put("/tasks/{task_id}/toggle")
 async def toggle_task(task_id: int):
     """Toggle task completion status"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         task = await db.tasks.find_one({"user_id": "default", "id": task_id})
         if not task:
@@ -264,6 +365,9 @@ async def toggle_task(task_id: int):
 @router.delete("/tasks/{task_id}")
 async def delete_task(task_id: int):
     """Delete a task"""
+    db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
     try:
         result = await db.tasks.delete_one({"user_id": "default", "id": task_id})
         if result.deleted_count == 0:

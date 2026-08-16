@@ -1,14 +1,29 @@
-from fastapi import FastAPI, APIRouter
+import os
+import sys
+import logging
+import uuid
+from pathlib import Path
+from datetime import datetime, timezone
+
+ROOT_DIR = Path(__file__).parent
+
+# Ensure the backend directory is importable when the app is started as
+# `uvicorn backend.server:app` from the repository root (Render/Procfile).
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+# Repo root is added so the local `emergentintegrations` shim (kept at the
+# repository root) is importable even when Render runs from backend/.
+if str(ROOT_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR.parent))
+
 from dotenv import load_dotenv
+load_dotenv(ROOT_DIR / '.env')
+
+from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List
-import uuid
-from datetime import datetime, timezone
 from routes.schedule import router as schedule_router
 from routes.chat import router as chat_router
 from routes.study import router as study_router
@@ -18,19 +33,32 @@ from routes.math import router as math_router
 from routes.auth import router as auth_router
 from routes.exercise_generator import router as exercise_generator_router
 from routes.feedback import router as feedback_router
+from routes.moodle import router as moodle_router
+from routes.judge import router as judge_router
+from routes.adaptive import router as adaptive_router
+from routes.summary import router as summary_router
+from services.adaptive_store import configure_store
 
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # MongoDB connection (suporta MONGO_URL e MONGODB_URI - Render Atlas)
 mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
-if not mongo_url:
-    raise RuntimeError("MONGO_URL (ou MONGODB_URI) não configurado nas variáveis de ambiente")
-
 db_name = os.environ.get('DB_NAME', 'study_app')
-client = AsyncIOMotorClient(mongo_url)
-db = client[db_name]
+logger.info(
+    "Startup env check -> MONGO_URL set: %s | MONGODB_URI set: %s | DB_NAME: %s",
+    bool(os.environ.get('MONGO_URL')),
+    bool(os.environ.get('MONGODB_URI')),
+    db_name,
+)
+client = AsyncIOMotorClient(mongo_url) if mongo_url else None
+db = client[db_name] if client else None
+
+# Persistência do sistema adaptativo (fallback em memória quando sem Mongo)
+configure_store(db)
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -54,6 +82,17 @@ class StatusCheckCreate(BaseModel):
 @api_router.get("/")
 async def root():
     return {"message": "Hello World"}
+
+@api_router.get("/health")
+async def health():
+    import asyncio as _asyncio
+    if client is None:
+        return {"status": "degraded", "mongo": "MONGO_URL/MONGODB_URI not set"}
+    try:
+        await _asyncio.wait_for(client.admin.command("ping"), timeout=3)
+        return {"status": "ok", "mongo": "ok"}
+    except Exception as e:
+        return {"status": "degraded", "mongo": f"error: {e}"}
 
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
@@ -88,6 +127,10 @@ api_router.include_router(exercise_generator_router, prefix="/exercises", tags=[
 api_router.include_router(commands_router, prefix="/commands", tags=["commands"])
 api_router.include_router(math_router, prefix="/math", tags=["math"])
 api_router.include_router(feedback_router, prefix="/feedback", tags=["feedback"])
+api_router.include_router(moodle_router, tags=["moodle"])
+api_router.include_router(judge_router, tags=["judge"])
+api_router.include_router(adaptive_router, prefix="/adaptive", tags=["adaptive"])
+api_router.include_router(summary_router, prefix="/summary", tags=["summary"])
 app.include_router(api_router)
 
 # Include schedule router with /api/schedule prefix
@@ -97,8 +140,14 @@ app.include_router(schedule_api_router)
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "https://aplicativo-de-estudos-atualizado-9ixn.onrender.com",
+        "https://aplicativo-de-estudos-atualizado.onrender.com",
+        "https://frontend-*.onrender.com",
+        "http://localhost:3000",
+        "*",
+    ],
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -108,8 +157,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    if client is not None:
+        client.close()

@@ -69,9 +69,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     
     # Get user from database
-    mongo_url = os.environ['MONGO_URL']
+    mongo_url = os.environ.get('MONGO_URL') or os.environ.get('MONGODB_URI')
     client = AsyncIOMotorClient(mongo_url)
-    db = client[os.environ['DB_NAME']]
+    db = client[os.environ.get('DB_NAME', 'study_app')]
     
     user = await db.users.find_one({"email": email}, {"_id": 0})
     client.close()

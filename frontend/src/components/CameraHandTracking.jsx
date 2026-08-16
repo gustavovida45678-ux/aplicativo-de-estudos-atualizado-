@@ -117,6 +117,7 @@ export function CameraHandTracking({
   const detectGesture = (landmarks) => {
     const wrist = landmarks[0];
     const thumbTip = landmarks[4];
+    const thumbIp = landmarks[3];
     const indexTip = landmarks[8];
     const indexPip = landmarks[6];
     const middleTip = landmarks[12];
@@ -135,19 +136,25 @@ export function CameraHandTracking({
 
     const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
 
-    if (extendedCount <= 1) {
-      return "fist";
+    // Escrita tem prioridade: indicador esticado = escrever,
+    // mesmo que outros dedos também estejam levemente abertos.
+    if (indexExtended && extendedCount <= 2 && pinchDist > 0.05) {
+      return "point";
     }
 
-    if (pinchDist < 0.05 && indexExtended && !middleExtended) {
+    if (pinchDist < 0.05 && indexExtended) {
       return "pinch";
     }
 
-    if (extendedCount >= 3) {
+    if (extendedCount === 0) {
+      return "fist";
+    }
+
+    if (extendedCount >= 4) {
       return "open";
     }
 
-    if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+    if (indexExtended) {
       return "point";
     }
 

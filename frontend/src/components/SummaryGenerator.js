@@ -520,15 +520,15 @@ export default function SummaryGenerator() {
               </div>
 
               <div style={{ marginBottom: 24 }}>
-                <h3 style={{ color: "#e2e8f0", fontSize: 16, marginBottom: 8 }}>Resumo Geral</h3>
-                <div style={{ color: "#cbd5e1", lineHeight: 1.7, fontSize: 15 }}>
+                <h3 style={{ color: "#e2e8f0", fontSize: 19, marginBottom: 10 }}>Resumo Geral</h3>
+                <div style={{ color: "#d5d9e2", lineHeight: 1.8, fontSize: 18 }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.summary?.general_summary || ""}</ReactMarkdown>
                 </div>
               </div>
 
               {result.summary?.topics?.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
-                  <h3 style={{ color: "#e2e8f0", fontSize: 16, marginBottom: 12 }}>Tópicos</h3>
+                  <h3 style={{ color: "#e2e8f0", fontSize: 19, marginBottom: 12 }}>Tópicos</h3>
                   {result.summary.topics.map((topic, i) => (
                     <div key={i} style={{
                       background: "#15131f", borderRadius: 12, marginBottom: 10,
@@ -550,51 +550,51 @@ export default function SummaryGenerator() {
                           }}>
                             {topic.priority}
                           </span>
-                          <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: 15 }}>{topic.name}</span>
+                          <span style={{ color: "#e2e8f0", fontWeight: 600, fontSize: 18 }}>{topic.name}</span>
                         </div>
                         {expandedTopics[i] ? <ChevronUp size={18} color="#64748b" /> : <ChevronDown size={18} color="#64748b" />}
                       </button>
                       {expandedTopics[i] && (
                         <div style={{ padding: "0 16px 16px" }}>
-                          <div style={{ color: "#cbd5e1", lineHeight: 1.7, marginBottom: 12 }}>
+                          <div style={{ color: "#d5d9e2", lineHeight: 1.8, marginBottom: 12, fontSize: 17 }}>
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{topic.explanation || ""}</ReactMarkdown>
                           </div>
                           {topic.key_concepts?.length > 0 && (
                             <div style={{ marginBottom: 10 }}>
-                              <strong style={{ color: "#818cf8", fontSize: 13 }}>Conceitos-chave:</strong>
+                              <strong style={{ color: "#818cf8", fontSize: 16 }}>Conceitos-chave:</strong>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
                                 {topic.key_concepts.map((c, j) => (
-                                  <span key={j} style={{ background: "#6366f120", color: "#818cf8", padding: "3px 10px", borderRadius: 16, fontSize: 13 }}>{c}</span>
+                                  <span key={j} style={{ background: "#6366f120", color: "#818cf8", padding: "4px 12px", borderRadius: 16, fontSize: 15 }}>{c}</span>
                                 ))}
                               </div>
                             </div>
                           )}
                           {topic.formulas?.length > 0 && (
                             <div style={{ marginBottom: 10 }}>
-                              <strong style={{ color: "#f59e0b", fontSize: 13 }}>Fórmulas:</strong>
+                              <strong style={{ color: "#f59e0b", fontSize: 16 }}>Fórmulas:</strong>
                               <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
                                 {topic.formulas.map((f, j) => (
-                                  <li key={j} style={{ color: "#fbbf24", fontSize: 14 }}>{f}</li>
+                                  <li key={j} style={{ color: "#fbbf24", fontSize: 16 }}>{f}</li>
                                 ))}
                               </ul>
                             </div>
                           )}
                           {topic.examples?.length > 0 && (
                             <div style={{ marginBottom: 10 }}>
-                              <strong style={{ color: "#22c55e", fontSize: 13 }}>Exemplos:</strong>
+                              <strong style={{ color: "#22c55e", fontSize: 16 }}>Exemplos:</strong>
                               <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
                                 {topic.examples.map((e, j) => (
-                                  <li key={j} style={{ color: "#86efac", fontSize: 14 }}>{e}</li>
+                                  <li key={j} style={{ color: "#86efac", fontSize: 16 }}>{e}</li>
                                 ))}
                               </ul>
                             </div>
                           )}
                           {topic.common_errors?.length > 0 && (
                             <div>
-                              <strong style={{ color: "#ef4444", fontSize: 13 }}>Erros Comuns:</strong>
+                              <strong style={{ color: "#ef4444", fontSize: 16 }}>Erros Comuns:</strong>
                               <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
                                 {topic.common_errors.map((e, j) => (
-                                  <li key={j} style={{ color: "#fca5a5", fontSize: 14 }}>{e}</li>
+                                  <li key={j} style={{ color: "#fca5a5", fontSize: 16 }}>{e}</li>
                                 ))}
                               </ul>
                             </div>
@@ -608,13 +608,13 @@ export default function SummaryGenerator() {
 
               {result.summary?.keywords?.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
-                  <h3 style={{ color: "#e2e8f0", fontSize: 16, marginBottom: 12 }}>Palavras-chave</h3>
+                  <h3 style={{ color: "#e2e8f0", fontSize: 19, marginBottom: 12 }}>Palavras-chave</h3>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
                     {result.summary.keywords.map((kw, i) => (
                       <div key={i} style={{ background: "#15131f", borderRadius: 10, padding: 14, border: "1px solid #2d2a3e" }}>
-                        <div style={{ color: "#818cf8", fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{kw.word}</div>
-                        <div style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.5 }}>{kw.definition}</div>
-                        {kw.example && <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 6, fontStyle: "italic" }}>Ex: {kw.example}</div>}
+                        <div style={{ color: "#818cf8", fontWeight: 700, fontSize: 17, marginBottom: 4 }}>{kw.word}</div>
+                        <div style={{ color: "#d5d9e2", fontSize: 16, lineHeight: 1.5 }}>{kw.definition}</div>
+                        {kw.example && <div style={{ color: "#94a3b8", fontSize: 14, marginTop: 6, fontStyle: "italic" }}>Ex: {kw.example}</div>}
                       </div>
                     ))}
                   </div>

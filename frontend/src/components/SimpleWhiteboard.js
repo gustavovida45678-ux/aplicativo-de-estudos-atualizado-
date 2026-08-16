@@ -60,6 +60,8 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   const videoRef = useRef(null);
   const cameraDrawingRef = useRef(false);
   const lastHandPointRef = useRef(null);
+  const handLostAtRef = useRef(null);
+  const smoothPointRef = useRef(null);
 
   // Mapa mental
   const nodesRef = useRef([]);
@@ -624,18 +626,46 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   // ---------------- Câmera / rastreamento de mão ----------------
   const handleCameraGesture = (gesture, landmarks) => {
     setCurrentGesture(gesture);
+
+    if (!landmarks || gesture === "none") {
+      // Mão saiu do quadro: registra o instante (traço continua se voltar rápido)
+      handLostAtRef.current = Date.now();
+      return;
+    }
+
     const indexTip = landmarks[8];
     const canvasRect = canvasRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
 
-    const x = (indexTip.x * canvasRect.width - pan.x) / scale;
-    const y = (indexTip.y * canvasRect.height - pan.y) / scale;
+    // Vídeo é espelhado (scaleX(-1)): inverte X para o cursor acompanhar a mão
+    const rawX = (1 - indexTip.x) * canvasRect.width;
+    const rawY = indexTip.y * canvasRect.height;
+
+    // Suavização (média móvel) para reduzir o tremor e desenhar letras limpas
+    if (smoothPointRef.current) {
+      smoothPointRef.current.x = smoothPointRef.current.x * 0.4 + rawX * 0.6;
+      smoothPointRef.current.y = smoothPointRef.current.y * 0.4 + rawY * 0.6;
+    } else {
+      smoothPointRef.current = { x: rawX, y: rawY };
+    }
+
+    const x = (smoothPointRef.current.x - pan.x) / scale;
+    const y = (smoothPointRef.current.y - pan.y) / scale;
     setHandPosition({ x, y });
 
-    // "open" ou sem gesto encerra o traço
-    if (gesture === "open" || gesture === "none") {
+    // Se a mão ficou fora do quadro por muito tempo, começa um traço novo
+    const lostMs = handLostAtRef.current ? Date.now() - handLostAtRef.current : 0;
+    handLostAtRef.current = null;
+    if (lostMs > 600) {
       cameraDrawingRef.current = false;
       lastHandPointRef.current = null;
+    }
+
+    // "open" encerra o traço
+    if (gesture === "open") {
+      cameraDrawingRef.current = false;
+      lastHandPointRef.current = null;
+      smoothPointRef.current = null;
       return;
     }
 
@@ -927,7 +957,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
           {cameraActive && (
             <span className="camera-status-chip" title="Estado da câmera">
               {cameraStatus === "error" ? <AlertCircle size={14} /> : <Zap size={14} />}
-              {cameraStatus === "error" ? "Erro" : cameraStatus === "active" || cameraStatus === "detected" || cameraStatus === "gesture" ? (cameraStatus === "gesture" ? `Gesto: ${currentGesture}` : "Mão ok") : "Aguardando..."}
+              {cameraStatus === "error" ? "Erro" : cameraStatus === "active" || cameraStatus === "detected" || cameraStatus === "gesture" ? (cameraStatus === "gesture" ? `Gesto: ${currentGesture}` : "Mão ok") : cameraStatus === "none" ? "Mão fora do quadro" : "Aguardando..."}
             </span>
           )}
         </div>

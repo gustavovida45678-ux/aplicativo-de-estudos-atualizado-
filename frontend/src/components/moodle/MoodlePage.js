@@ -394,18 +394,18 @@ export function MoodlePage({ onClose }) {
           <div className="moodle-content">
             {loading.activities ? (
               <div className="moodle-loading"><Loader2 size={32} className="spin" /><p>Carregando atividades...</p></div>
-            ) : activities.length === 0 ? (
+            ) : activities.filter(a => a.priority).length === 0 ? (
               <div className="moodle-empty">
                 <FolderOpen size={48} color="#64748b" />
-                <h3>Nenhuma atividade encontrada</h3>
-                <p>As atividades aparecerão aqui após a sincronização.</p>
+                <h3>Nenhuma atividade prioritária</h3>
+                <p>Atividades de Sistemas Digitais, Estrutura de Dados e Álgebra Linear aparecerão aqui.</p>
                 <button className="moodle-btn secondary" onClick={syncMoodle} disabled={loading.sync}>
                   <RefreshCw size={14} className={loading.sync ? 'spin' : ''} /> Atualizar
                 </button>
               </div>
             ) : (
               <div className="activities-list">
-                {activities.map((activity, i) => (
+                {activities.filter(a => a.priority).map((activity, i) => (
                   <div key={activity.id || i} className="activity-card">
                     <div className="activity-icon">
                       {activity.type === 'assign' && <FolderOpen size={20} color="#3b82f6" />}

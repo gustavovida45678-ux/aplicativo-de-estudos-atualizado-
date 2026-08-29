@@ -49,6 +49,7 @@ import {
   CameraOff,
   Zap,
   AlertCircle,
+  Image,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import "../styles/virtualWhiteboard.css";
@@ -79,6 +80,7 @@ import {
   makeFormula,
   makeTable,
   makeChart,
+  makeAIImage,
   loadState,
   saveState,
   getSavedSubjects,
@@ -125,7 +127,7 @@ import {
 import { exportPNG, exportPDF, exportSVG, sceneBBox } from "./whiteboard/export";
 import { generateMindMapElements } from "./whiteboard/ai";
 import { renderChartSVGHTML, renderTableHTML, renderFormulaHTML } from "./whiteboard/overlay";
-import { FormulaModal, TableModal, ChartModal } from "./WhiteboardModals";
+import { FormulaModal, TableModal, ChartModal, AIImageModal } from "./WhiteboardModals";
 
 const TEXT_FONTS = ["Inter", "Arial", "Georgia", "Courier New", "Comic Sans MS", "Times New Roman"];
 
@@ -329,6 +331,10 @@ function VirtualWhiteboard({ onExit }) {
   const [chartType, setChartType] = useState("bar");
   const [chartLabels, setChartLabels] = useState("");
   const [chartValues, setChartValues] = useState("");
+
+  const [aiPrompt, setAiPrompt] = useState(null);
+  const [aiImagePrompt, setAiImagePrompt] = useState("");
+  const [aiImageSize, setAiImageSize] = useState("512x512");
 
   const clipboardRef = useRef([]);
 
@@ -1466,6 +1472,17 @@ function VirtualWhiteboard({ onExit }) {
         return;
       }
 
+      if (t === TOOLS.AIIMAGE) {
+        e.preventDefault();
+        e.stopPropagation();
+        setAiPrompt({ x: point.x, y: point.y });
+        try {
+          canvasRef.current.releasePointerCapture(e.pointerId);
+        } catch (err) {}
+        setTool(TOOLS.SELECT);
+        return;
+      }
+
       if (t === TOOLS.SHAPE || t === TOOLS.ARROW) {
         beginGesture();
         const st = t === TOOLS.ARROW ? SHAPES.ARROW : shapeTypeRef.current;
@@ -2073,6 +2090,44 @@ function VirtualWhiteboard({ onExit }) {
     setChartPrompt(null);
   }, [chartPrompt, chartType, chartLabels, chartValues, beginGesture, commitElements, endGesture, selectElements]);
 
+  const commitAIImage = useCallback(async () => {
+    if (!aiPrompt || !aiImagePrompt.trim()) return;
+    setAiBusy(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "https://aplicativo-de-estudos-atualizado-s.onrender.com";
+      const response = await fetch(`${apiUrl}/api/chat/generate-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: aiImagePrompt,
+          size: aiImageSize,
+        }),
+      });
+      const data = await response.json();
+      if (data.imageUrl) {
+        const [w, h] = aiImageSize.split("x").map(Number);
+        const el = makeAIImage(data.imageUrl, aiImagePrompt, aiPrompt.x, aiPrompt.y, {
+          width: w,
+          height: h,
+          color: strokeColorRef.current,
+        });
+        beginGesture();
+        commitElements([...elementsRef.current, el]);
+        endGesture(true);
+        selectElements([el.id]);
+      } else {
+        toast({ title: "Erro", description: data.error || "Falha ao gerar imagem" });
+      }
+    } catch (e) {
+      console.error("Erro ao gerar imagem:", e);
+      toast({ title: "Erro", description: "Falha ao gerar imagem com IA" });
+    } finally {
+      setAiBusy(false);
+      setAiPrompt(null);
+      setAiImagePrompt("");
+    }
+  }, [aiPrompt, aiImagePrompt, aiImageSize, beginGesture, commitElements, endGesture, selectElements, toast]);
+
   const renderChartSVG = useCallback((el) => {
     const html = renderChartSVGHTML(el);
     const inner = { __html: html };
@@ -2511,6 +2566,9 @@ function VirtualWhiteboard({ onExit }) {
           </button>
           <button className={`tool-btn ${tool === TOOLS.CHART ? "active" : ""}`} onClick={() => setTool(TOOLS.CHART)} title="Gráfico">
             <BarChart3 size={20} />
+          </button>
+          <button className={`tool-btn ${tool === TOOLS.AIIMAGE ? "active" : ""}`} onClick={() => setTool(TOOLS.AIIMAGE)} title="Gerar Imagem com IA (ex: porta lógica OR)">
+            <Image size={20} />
           </button>
         </div>
 
@@ -3309,6 +3367,16 @@ function VirtualWhiteboard({ onExit }) {
         onLabels={setChartLabels}
         onValues={setChartValues}
         onSubmit={commitChart}
+      />
+      <AIImageModal
+        open={!!aiPrompt}
+        onClose={() => setAiPrompt(null)}
+        prompt={aiImagePrompt}
+        onPromptChange={setAiImagePrompt}
+        onSubmit={commitAIImage}
+        busy={aiBusy}
+        size={aiImageSize}
+        onSizeChange={setAiImageSize}
       />
 
       {/* ---------- Barra de status ---------- */}

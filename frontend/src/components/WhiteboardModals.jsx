@@ -1,5 +1,5 @@
 import React from "react";
-import { Sigma, Table, BarChart3, X, Loader2 } from "lucide-react";
+import { Sigma, Table, BarChart3, X, Loader2, Image, Sparkles } from "lucide-react";
 
 export function FormulaModal({ open, onClose, latex, onChange, onSubmit, busy }) {
   if (!open) return null;
@@ -131,6 +131,57 @@ export function ChartModal({ open, onClose, chartType, labels, values, onType, o
           <button className="mini-btn" onClick={onClose}>Cancelar</button>
           <button className="mini-btn primary" onClick={onSubmit}>
             <BarChart3 size={14} /> Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AIImageModal({ open, onClose, prompt, onPromptChange, onSubmit, busy, size, onSizeChange }) {
+  if (!open) return null;
+  return (
+    <div className="wb-modal-overlay" onClick={onClose}>
+      <div className="wb-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="wb-modal-header">
+          <h3>
+            <Image size={18} /> Gerar Imagem com IA
+          </h3>
+          <button className="wb-modal-close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <p className="wb-modal-desc">Descreva a imagem que deseja gerar. Ex: "porta lógica OR", "diagrama de Venn", "fluxograma de algoritmo"</p>
+        <input
+          autoFocus
+          value={prompt}
+          onChange={(e) => onPromptChange(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+          placeholder="Ex: porta lógica OR, diagrama de circuito, mapa mental de algoritmos"
+          className="wb-modal-input"
+        />
+        <div style={{ marginTop: "12px", marginBottom: "12px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#7d8590" }}>
+            Tamanho:
+            <select value={size} onChange={(e) => onSizeChange(e.target.value)} className="shape-select">
+              <option value="512x512">512x512 (Quadrado)</option>
+              <option value="768x512">768x512 (Paisagem)</option>
+              <option value="512x768">512x768 (Retrato)</option>
+            </select>
+          </label>
+        </div>
+        <div className="wb-modal-footer">
+          <button className="mini-btn" onClick={onClose}>Cancelar</button>
+          <button className="mini-btn primary" onClick={onSubmit} disabled={busy || !prompt.trim()}>
+            {busy ? (
+              <>
+                <Loader2 size={14} className="spin" /> Gerando...
+              </>
+            ) : (
+              <>
+                <Sparkles size={14} /> Gerar Imagem
+              </>
+            )}
           </button>
         </div>
       </div>

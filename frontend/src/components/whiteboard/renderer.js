@@ -564,6 +564,30 @@ export function renderChartElement(ctx, el) {
   }
 }
 
+export function renderAIImageElement(ctx, el) {
+  const { x, y, width = 300, height = 300, imageUrl } = el;
+  if (!imageUrl) return;
+  
+  const img = new Image();
+  img.src = imageUrl;
+  img.onload = () => {
+    ctx.drawImage(img, x, y, width, height);
+  };
+  
+  // Draw placeholder while loading
+  ctx.strokeStyle = "#22d3ee";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 10]);
+  ctx.strokeRect(x, y, width, height);
+  ctx.setLineDash([]);
+  
+  ctx.fillStyle = "#22d3ee";
+  ctx.font = "14px Inter, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Imagem IA", x + width / 2, y + height / 2);
+}
+
 export function renderElements(ctx, elements, mapById, scale = 1, zoomIndependent = false) {
   // Camada 1: conectores
   for (const el of elements) {
@@ -596,6 +620,10 @@ export function renderElements(ctx, elements, mapById, scale = 1, zoomIndependen
   // Camada 7: gráficos
   for (const el of elements) {
     if (el.type === "chart") renderChartElement(ctx, el);
+  }
+  // Camada 7.5: imagens IA
+  for (const el of elements) {
+    if (el.type === "aiimage") renderAIImageElement(ctx, el);
   }
   // Camada 8: nos
   for (const el of elements) {

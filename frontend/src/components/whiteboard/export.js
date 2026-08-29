@@ -9,6 +9,7 @@ import {
   renderFormulaElement,
   renderTableElement,
   renderChartElement,
+  renderAIImageElement,
 } from "./renderer";
 import { SHAPES } from "./core";
 
@@ -301,6 +302,14 @@ function chartToSvg(el) {
   return parts.join("\n    ");
 }
 
+function aiImageToSvg(el) {
+  const { x, y, width = 300, height = 300, imageUrl } = el;
+  if (!imageUrl) return "";
+  // For SVG export, we can't easily embed external images, so we draw a placeholder
+  return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="none" stroke="#22d3ee" stroke-width="2" stroke-dasharray="10,10"/>
+<text x="${x + width / 2}" y="${y + height / 2}" font-size="14" fill="#22d3ee" text-anchor="middle" dominant-baseline="middle">Imagem IA</text>`;
+}
+
 export function exportSVG(elements) {
   const bbox = sceneBBox(elements);
   const mapById = Object.fromEntries(elements.map((e) => [e.id, e]));
@@ -316,6 +325,7 @@ export function exportSVG(elements) {
     else if (el.type === "formula") parts.push(formulaToSvg(el));
     else if (el.type === "table") parts.push(tableToSvg(el));
     else if (el.type === "chart") parts.push(chartToSvg(el));
+    else if (el.type === "aiimage") parts.push(aiImageToSvg(el));
     else if (el.type === "node") parts.push(nodeToSvg(el));
   }
   const svg = `<?xml version="1.0" encoding="UTF-8"?>

@@ -434,22 +434,43 @@ async def chat_with_image(
 async def generate_image(data: dict):
     """
     Generate image using supported providers.
-    Note: Only Gemini and OpenRouter (DALL-E) support image generation currently.
+    Supports OpenRouter (DALL-E) and other image generation models.
     """
     try:
         prompt = data.get("prompt", "")
         if not prompt:
             raise HTTPException(status_code=400, detail="Prompt é obrigatório")
         
-        provider = data.get("provider", "gemini")
+        provider = data.get("provider", "openrouter")
         model = data.get("model")
         custom_api_key = data.get("custom_api_key")
+        size = data.get("size", "512x512")
         
-        # For now, return info about image generation capabilities
+        from backend.services.providers import ProviderType
+        from backend.services.chat_service import chat_service
+        
+        provider_type = ProviderType(provider)
+        
+        # For OpenRouter, use DALL-E model
+        if provider_type == ProviderType.OPENROUTER:
+            model = model or "dall-e-3"
+        elif provider_type == ProviderType.GEMINI:
+            model = model or "gemini/gemini-1.5-pro"
+        
+        result = await chat_service.generate_image(
+            prompt=prompt,
+            provider_type=provider_type,
+            model_key=model,
+            custom_api_key=custom_api_key,
+            size=size,
+        )
+        
         return {
-            "message": "Geração de imagens disponível via Gemini (Imagen) e OpenRouter (DALL-E). Configure a chave API correspondente.",
-            "providers_supporting_images": ["gemini", "openrouter"],
-            "prompt": prompt
+            "success": True,
+            "imageUrl": result.get("image_url") or result.get("url"),
+            "prompt": prompt,
+            "provider": result.get("provider"),
+            "model": result.get("model"),
         }
         
     except HTTPException:

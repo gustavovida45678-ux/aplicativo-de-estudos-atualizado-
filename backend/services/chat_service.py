@@ -628,6 +628,93 @@ class ChatService:
             logger.error(f"Error in vision chat with {provider_config.name}: {e}")
             raise
 
+    async def generate_image(
+        self,
+        prompt: str,
+        provider_type: ProviderType,
+        model_key: Optional[str] = None,
+        custom_api_key: Optional[str] = None,
+        size: str = "512x512",
+    ) -> Dict[str, Any]:
+        """Generate image using supported providers (OpenRouter DALL-E, etc.)"""
+        provider_config = get_provider_config(provider_type)
+        if not provider_config:
+            raise ValueError(f"Provider {provider_type} not configured")
+        
+        if not model_key:
+            if provider_type == ProviderType.OPENROUTER:
+                model_key = "dall-e-3"
+            else:
+                model_key = get_default_model(provider_type)
+        
+        model_id = get_model_full_id(provider_type, model_key)
+        if not model_id:
+            raise ValueError(f"Model {model_key} not found for provider {provider_type}")
+        
+        api_key = custom_api_key
+        if not api_key:
+            api_keys = self._get_api_keys(provider_type)
+            api_key = api_keys[0] if api_keys else None
+        if not api_key and provider_config.requires_api_key:
+            raise ValueError(f"API key required for {provider_config.name}")
+        
+        params = {
+            "model": model_id,
+            "prompt": prompt,
+            "size": size,
+            "n": 1,
+            "response_format": "url",
+        }
+        
+        if api_key:
+            params["api_key"] = api_key
+        if provider_type == ProviderType.OPENROUTER:
+            params["api_base"] = "https://openrouter.ai/api/v1"
+        elif provider_config.base_url:
+            params["api_base"] = provider_config.base_url
+        
+        try:
+            logger.info(f"Generating image with {provider_config.name} / {model_id}")
+            
+            # Use OpenAI's image generation format for OpenRouter
+            if provider_type == ProviderType.OPENROUTER:
+                import httpx
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                }
+                async with httpx.AsyncClient(timeout=120) as client:
+                    resp = await client.post(
+                        "https://openrouter.ai/api/v1/images/generations",
+                        json=params,
+                        headers=headers,
+                    )
+                if resp.status_code != 200:
+                    raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {resp.text[:300]}")
+                payload = resp.json()
+                image_url = (payload.get("data") or [{}])[0].get("url", "")
+                return {
+                    "image_url": image_url,
+                    "provider": "OpenRouter",
+                    "model": model_id,
+                }
+            
+            # For other providers, use LiteLLM acompletion with image generation
+            # Note: LiteLLM may not support all providers for image generation
+            response = await acompletion(**params)
+            image_url = ""
+            if response.data and len(response.data) > 0:
+                image_url = response.data[0].url
+            
+            return {
+                "image_url": image_url,
+                "provider": provider_config.name,
+                "model": model_id,
+            }
+        except Exception as e:
+            logger.error(f"Error generating image with {provider_config.name}: {e}")
+            raise
+
 
 # Singleton instance
 chat_service = ChatService()

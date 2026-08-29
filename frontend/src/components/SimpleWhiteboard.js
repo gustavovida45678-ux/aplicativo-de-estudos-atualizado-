@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2, Camera, CameraOff, Zap, AlertCircle, Highlighter, Brush, Undo2, Redo2, Eye, EyeOff, Crosshair, ScanText, FlipHorizontal2, Volume2, Sparkles } from "lucide-react";
+import { PenTool, Eraser, Trash2, Download, RotateCcw, X, Minus, Plus, Type, Save, Loader2, BookMarked, Network, Expand, Shrink, GitFork, Pencil, Minimize2, Camera, CameraOff, Zap, AlertCircle, Highlighter, Brush, Undo2, Redo2, Eye, EyeOff, Crosshair, ScanText, FlipHorizontal2, Volume2, Sparkles, Image } from "lucide-react";
 import { BRUSH_TYPES, brushWidth, renderStroke } from "../lib/brush";
 import {
   CALIB_TARGETS,
@@ -9,6 +9,8 @@ import {
   applyCalibration,
 } from "../lib/calibration";
 import { recognizeStrokes } from "../lib/handwriting";
+import { detectShapeFromStroke, shapeFromDetection } from "./whiteboard/shapeDetect";
+import { makeShape, makeAIImage } from "./whiteboard/core";
 import { useToast } from "@/hooks/use-toast";
 import { CameraHandTracking } from "./CameraHandTracking";
 
@@ -82,6 +84,17 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
   const nodesRef = useRef([]);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const selectedNodeIdRef = useRef(null);
+
+  // Auto-fix shapes
+  const [autoFix, setAutoFix] = useState(true);
+  const autoFixRef = useRef(true);
+  useEffect(() => { autoFixRef.current = autoFix; }, [autoFix]);
+
+  // AI Image generation
+  const [aiPrompt, setAiPrompt] = useState(null);
+  const [aiImagePrompt, setAiImagePrompt] = useState("");
+  const [aiImageSize, setAiImageSize] = useState("512x512");
+  const [aiBusy, setAiBusy] = useState(false);
   const setSelectedNode = (id) => {
     selectedNodeIdRef.current = id;
     setSelectedNodeId(id);
@@ -516,6 +529,14 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
       startTextEdit(pt.x, pt.y);
       return;
     }
+    if (tool === "aiimage") {
+      e.preventDefault();
+      e.stopPropagation();
+      const pt = getPoint(e);
+      setAiPrompt({ x: pt.x, y: pt.y });
+      setAiImagePrompt("");
+      return;
+    }
     e.preventDefault();
     const pt = getPoint(e);
     if (tool === "eraser") {
@@ -561,6 +582,33 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     lastPointRef.current = null;
     dragNodeRef.current = null;
     dragOffsetRef.current = null;
+    
+    // Auto-fix shapes (convert hand-drawn shapes to perfect geometric shapes)
+    if (autoFixRef.current && (tool === "pen" || tool === "eraser")) {
+      const currentStroke = strokesRef.current[strokesRef.current.length - 1];
+      if (currentStroke && currentStroke.points.length >= 6) {
+        const detection = detectShapeFromStroke(currentStroke);
+        if (detection) {
+          // Replace the stroke with a perfect shape
+          strokesRef.current.pop();
+          const shape = shapeFromDetection(detection, color, "transparent", size);
+          const perfectShape = makeShape(
+            detection.type,
+            detection.x,
+            detection.y,
+            detection.width,
+            detection.height,
+            color,
+            "transparent",
+            size
+          );
+          strokesRef.current.push(perfectShape);
+          redraw();
+          toast({ title: "Forma corrigida", description: `Transformado em ${detection.type === "square" ? "quadrado perfeito" : detection.type}` });
+        }
+      }
+    }
+    
     if (recognitionModeRef.current && (tool === "pen" || tool === "eraser")) {
       scheduleRecognition();
     }
@@ -616,6 +664,36 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
       setRecognition({ ...res, working: false });
     } catch (e) {
       setRecognition({ working: false, error: String(e && e.message ? e.message : e) });
+    }
+  };
+
+  const commitAIImage = async () => {
+    if (!aiPrompt || !aiImagePrompt.trim()) return;
+    setAiBusy(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "https://aplicativo-de-estudos-atualizado-s.onrender.com";
+      const response = await fetch(`${apiUrl}/api/chat/generate-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: aiImagePrompt, size: aiImageSize }),
+      });
+      const data = await response.json();
+      if (data.imageUrl) {
+        const [w, h] = aiImageSize.split("x").map(Number);
+        const el = makeAIImage(data.imageUrl, aiImagePrompt, aiPrompt.x, aiPrompt.y, { width: w, height: h });
+        strokesRef.current.push(el);
+        redraw();
+        toast({ title: "Imagem gerada", description: aiImagePrompt });
+      } else {
+        toast({ title: "Erro", description: data.error || "Falha ao gerar imagem" });
+      }
+    } catch (e) {
+      console.error("Erro ao gerar imagem:", e);
+      toast({ title: "Erro", description: "Falha ao gerar imagem com IA" });
+    } finally {
+      setAiBusy(false);
+      setAiPrompt(null);
+      setAiImagePrompt("");
     }
   };
 
@@ -1192,6 +1270,25 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
 
         <div className="tool-divider" />
 
+        <div className="tool-group">
+          <button
+            className={`tool-btn ${tool === "aiimage" ? "active" : ""}`}
+            onClick={() => setTool("aiimage")}
+            title="Gerar Imagem com IA (ex: porta lógica OR)"
+          >
+            <Image size={20} />
+          </button>
+          <button
+            className={`tool-btn ${autoFix ? "active" : ""}`}
+            onClick={() => setAutoFix(!autoFix)}
+            title="Corrigir formas automaticamente (IA detecta quadrados, círculos, etc.)"
+          >
+            <Sparkles size={20} />
+          </button>
+        </div>
+
+        <div className="tool-divider" />
+
         <div className="tool-group actions">
           <button onClick={clearCanvas} title="Limpar tudo"><Trash2 size={20} /></button>
           <button onClick={recognizeEverything} title="Reconhecer toda a escrita da lousa como texto"><ScanText size={20} /></button>
@@ -1330,6 +1427,38 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {aiPrompt && (
+          <div className="recognition-panel" style={{ maxWidth: "400px" }}>
+            <div className="recognition-header">
+              <Image size={14} />
+              <span>Gerar Imagem com IA</span>
+              <button className="recognition-close" onClick={() => { setAiPrompt(null); setAiImagePrompt(""); }} title="Fechar"><X size={14} /></button>
+            </div>
+            <input
+              autoFocus
+              value={aiImagePrompt}
+              onChange={(e) => setAiImagePrompt(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && commitAIImage()}
+              placeholder="Ex: porta lógica OR, diagrama de circuito, fluxograma"
+              className="wb-modal-input"
+              style={{ width: "100%", marginBottom: "8px", background: "#0d1117", border: "1px solid #30363d", color: "#e6edf3", padding: "8px 12px", borderRadius: "6px" }}
+            />
+            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#7d8590" }}>
+                Tamanho:
+                <select value={aiImageSize} onChange={(e) => setAiImageSize(e.target.value)} style={{ background: "#0d1117", border: "1px solid #30363d", color: "#e6edf3", padding: "4px 8px", borderRadius: "4px" }}>
+                  <option value="512x512">512x512</option>
+                  <option value="768x512">768x512</option>
+                  <option value="512x768">512x768</option>
+                </select>
+              </label>
+            </div>
+            <button onClick={commitAIImage} disabled={aiBusy || !aiImagePrompt.trim()} style={{ width: "100%", padding: "10px", background: aiBusy ? "#3b82f6" : "#22d3ee", border: "none", borderRadius: "6px", color: "#0d1117", fontWeight: "bold", cursor: aiBusy ? "not-allowed" : "pointer" }}>
+              {aiBusy ? <><Loader2 size={14} className="spin" /> Gerando...</> : <><Sparkles size={14} /> Gerar Imagem</>}
+            </button>
           </div>
         )}
 

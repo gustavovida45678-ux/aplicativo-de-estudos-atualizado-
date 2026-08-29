@@ -87,6 +87,30 @@ export default function CommandPalette() {
         localStorage.setItem('focus_subject', subject);
         return `🎯 Foco definido em: ${subject}`;
       }
+    },
+    {
+      cmd: '/image [prompt]',
+      description: 'Gera imagem com IA (ex: /image porta lógica OR)',
+      action: async (args) => {
+        if (args.length === 0) return 'Use: /image [descrição da imagem]';
+        const prompt = args.join(' ');
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || "https://aplicativo-de-estudos-atualizado-s.onrender.com";
+          const response = await fetch(`${apiUrl}/api/chat/generate-image`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt, size: "512x512" }),
+          });
+          const data = await response.json();
+          if (data.imageUrl) {
+            return `✅ Imagem gerada: ${prompt}\n${data.imageUrl}`;
+          } else {
+            return `❌ Erro: ${data.error || 'Falha ao gerar imagem'}`;
+          }
+        } catch (e) {
+          return `❌ Erro ao gerar imagem: ${e.message}`;
+        }
+      }
     }
   ];
 

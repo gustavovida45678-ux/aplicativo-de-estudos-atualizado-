@@ -12,6 +12,7 @@ export const TOOLS = {
   FORMULA: "formula",
   TABLE: "table",
   CHART: "chart",
+  AIIMAGE: "aiimage",
 };
 
 export const SHAPES = {
@@ -177,6 +178,9 @@ export function elementBBox(el, allElements) {
   if (el.type === "chart") {
     return { x: el.x, y: el.y, width: el.width || 200, height: el.height || 150 };
   }
+  if (el.type === "aiimage") {
+    return { x: el.x, y: el.y, width: el.width || 300, height: el.height || 300 };
+  }
   if (el.type === "group") {
     const ids = new Set(el.children || []);
     let box = null;
@@ -298,6 +302,22 @@ export function makeChart(chartType, labels, values, x, y, opts = {}) {
     chartType: chartType || "bar",
     labels: labels || [],
     values: values || [],
+    x,
+    y,
+    width: w,
+    height: h,
+    color: opts.color || "#22d3ee",
+  };
+}
+
+export function makeAIImage(imageUrl, prompt, x, y, opts = {}) {
+  const w = opts.width || 300;
+  const h = opts.height || 300;
+  return {
+    id: uid(),
+    type: "aiimage",
+    imageUrl,
+    prompt,
     x,
     y,
     width: w,

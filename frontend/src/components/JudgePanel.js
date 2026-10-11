@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import confetti from 'canvas-confetti';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import {
   Code2, Star, CheckCircle2, XCircle, Loader2, ArrowLeft,
   FileCode2, Play, Send, Trophy, ListOrdered, Sparkles, Youtube,
@@ -698,7 +702,13 @@ const JudgePanel = () => {
                          color: msg.role === 'user' ? '#93c5fd' : '#d4d4d4',
                          border: '1px solid ' + (msg.role === 'user' ? '#3b82f6' : '#333'),
                        }}>
-                         {msg.content}
+                         <ReactMarkdown 
+  remarkPlugins={[remarkGfm, remarkMath]} 
+  rehypePlugins={[rehypeKatex]}
+  className="text-sm"
+>
+  {msg.content}
+</ReactMarkdown>
                        </div>
                      </div>
                    ))

@@ -52,6 +52,31 @@ export default function ExerciseGenerator() {
 
     setIsGenerating(true);
     
+    // Try backend API first
+    try {
+      const formData = new FormData();
+      formData.append('reference_text', exerciseInput);
+      formData.append('number_of_exercises', numberOfExercises.toString());
+      formData.append('mode', activeMode);
+      if (selectedImage) {
+        formData.append('image', selectedImage);
+      }
+      
+      const response = await axios.post(`${API}/exercises/generate`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000
+      });
+      
+      if (response.data?.exercises?.length > 0) {
+        setGeneratedExercises(response.data.exercises);
+        toast.success(`${response.data.exercises.length} exercícios gerados com IA!`);
+        setIsGenerating(false);
+        return;
+      }
+    } catch (backendError) {
+      console.warn('Backend generation failed, using local fallback:', backendError.message);
+    }
+    
     // Local/offline fallback: generate exercises from input text
     const generateLocalExercises = (inputText, count, mode) => {
       const keywords = inputText.toLowerCase()

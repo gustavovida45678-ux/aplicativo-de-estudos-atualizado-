@@ -11,6 +11,9 @@ import {
 import axios from 'axios';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import html2canvas from 'html2canvas';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -1240,7 +1243,7 @@ Contexto do tópico: ${topic?.keywords?.join(', ') || ''}`;
 
           {answer && (
             <div className="materials-doubt-answer">
-              <ReactMarkdown>{answer}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{answer}</ReactMarkdown>
             </div>
           )}
         </div>

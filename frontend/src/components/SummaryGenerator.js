@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { BACKEND_URL } from "../lib/backendUrl";
+import FormulaMatematica from "./FormulaMatematica";
 
 const API = `${BACKEND_URL}/api/summary`;
 
@@ -522,7 +523,7 @@ export default function SummaryGenerator() {
               <div style={{ marginBottom: 24 }}>
                 <h3 style={{ color: "#e2e8f0", fontSize: 19, marginBottom: 10 }}>Resumo Geral</h3>
                 <div style={{ color: "#d5d9e2", lineHeight: 1.8, fontSize: 18 }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.summary?.general_summary || ""}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{result.summary?.general_summary || ""}</ReactMarkdown>
                 </div>
               </div>
 
@@ -557,7 +558,7 @@ export default function SummaryGenerator() {
                       {expandedTopics[i] && (
                         <div style={{ padding: "0 16px 16px" }}>
                           <div style={{ color: "#d5d9e2", lineHeight: 1.8, marginBottom: 12, fontSize: 17 }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{topic.explanation || ""}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{topic.explanation || ""}</ReactMarkdown>
                           </div>
                           {topic.key_concepts?.length > 0 && (
                             <div style={{ marginBottom: 10 }}>
@@ -721,7 +722,7 @@ export default function SummaryGenerator() {
                         }}>
                           <div style={{ color: "#e2e8f0", fontWeight: 700, marginBottom: 8 }}>Resposta Correta: {ex.correct_answer}</div>
                           <div style={{ color: "#cbd5e1", lineHeight: 1.7, fontSize: 14 }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{ex.explanation || ""}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{ex.explanation || ""}</ReactMarkdown>
                           </div>
                           {ex.solution_steps?.length > 0 && (
                             <div style={{ marginTop: 12 }}>

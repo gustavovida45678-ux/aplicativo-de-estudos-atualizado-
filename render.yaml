@@ -1,19 +1,38 @@
 services:
   - type: web
-    name: lousa-digital
+    name: aplicativo-estudos-frontend
     env: node
     plan: free
-    root: .
-    buildCommand: npm install
+    rootDir: frontend
+    buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
+      - key: REACT_APP_BACKEND_URL
+        value: https://api-python-backend.onrender.com
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: api-python-backend
+    env: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn server:app --host 0.0.0.0 --port $PORT --app-dir .
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: DB_NAME
+        value: study_app
       - key: SUPABASE_URL
         value: https://pwiefrivtdypnvqzimwv.supabase.co
       - key: SUPABASE_KEY
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
-      - key: DB_NAME
-        value: study_app
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0

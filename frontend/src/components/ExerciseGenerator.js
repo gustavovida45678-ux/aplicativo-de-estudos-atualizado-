@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { Upload, Image as ImageIcon, X, Sparkles, FileText, BookOpen, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { InlineMath, BlockMath } from 'react-katex';
 import { BACKEND_URL } from '../lib/backendUrl';
 
 const API = `${BACKEND_URL}/api`;
@@ -18,6 +19,51 @@ export default function ExerciseGenerator() {
   const [generatedExercises, setGeneratedExercises] = useState([]);
   const [numberOfExercises, setNumberOfExercises] = useState(3);
   const fileInputRef = useRef(null);
+
+  const renderMathContent = (content) => {
+    if (!content) return null;
+
+    const parts = [];
+    let lastIndex = 0;
+    const mathRegex = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
+    let match;
+
+    while ((match = mathRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(
+          <span key={`text-${lastIndex}`}>
+            {content.substring(lastIndex, match.index)}
+          </span>
+        );
+      }
+
+      if (match[1]) {
+        parts.push(
+          <div key={`math-${match.index}`} className="my-4">
+            <BlockMath math={match[1]} />
+          </div>
+        );
+      } else if (match[2]) {
+        parts.push(
+          <span key={`math-${match.index}`}>
+            <InlineMath math={match[2]} />
+          </span>
+        );
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push(
+        <span key={`text-${lastIndex}`}>
+          {content.substring(lastIndex)}
+        </span>
+      );
+    }
+
+    return parts.length > 0 ? parts : content;
+  };
 
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
@@ -251,7 +297,7 @@ export default function ExerciseGenerator() {
               {/* Question */}
               <div className="bg-white/5 rounded-lg p-4 mb-4">
                 <p className="text-gray-300 leading-relaxed">
-                  {exercise.question}
+                  {renderMathContent(exercise.question)}
                 </p>
               </div>
 
@@ -259,14 +305,16 @@ export default function ExerciseGenerator() {
               {exercise.options && (
                 <div className="space-y-2 mb-4">
                   {exercise.options.map((option, optIndex) => (
-                    <div 
+                    <div
                       key={optIndex}
                       className="bg-white/5 rounded-lg p-3 border border-white/10 hover:border-blue-500/50 transition"
                     >
                       <span className="text-blue-400 font-medium mr-2">
-                        {String.fromCharCode(65 + optIndex)})
+                        {String.fromCharCode(65 + optIndex)}
                       </span>
-                      <span className="text-gray-300">{option}</span>
+                      <span className="text-gray-300">
+                        {renderMathContent(option)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -303,10 +351,10 @@ export default function ExerciseGenerator() {
                           {exercise.solution.prerequisites.map((prereq, idx) => (
                             <div key={idx} className="bg-blue-800/20 rounded p-2">
                               <p className="text-blue-300 font-medium text-sm">
-                                • {prereq.topic}
+                                • {renderMathContent(prereq.topic)}
                               </p>
                               <p className="text-gray-400 text-xs ml-4 mt-1">
-                                {prereq.description}
+                                {renderMathContent(prereq.description)}
                               </p>
                             </div>
                           ))}
@@ -333,11 +381,11 @@ export default function ExerciseGenerator() {
                                 {step.title}
                               </h6>
                               <p className="text-gray-300 text-sm leading-relaxed mb-2">
-                                {step.content}
+                                {renderMathContent(step.content)}
                               </p>
                               {step.calculation && (
                                 <div className="bg-black/30 rounded p-2 mt-2 font-mono text-sm text-blue-300">
-                                  {step.calculation}
+                                  {renderMathContent(step.calculation)}
                                 </div>
                               )}
                             </div>
@@ -349,7 +397,9 @@ export default function ExerciseGenerator() {
                     {/* Legacy simple solution (fallback) */}
                     {typeof exercise.solution === 'string' && (
                       <div className="text-gray-300 space-y-2">
-                        <p className="text-sm leading-relaxed">{exercise.solution}</p>
+                        <p className="text-sm leading-relaxed">
+                          {renderMathContent(exercise.solution)}
+                        </p>
                       </div>
                     )}
                   </div>

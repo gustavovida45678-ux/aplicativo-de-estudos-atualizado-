@@ -12,6 +12,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
+import { InlineMath, BlockMath } from 'react-katex';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   CartesianGrid, Cell, PieChart, Pie, Legend,
@@ -27,6 +28,51 @@ import { SIMULADOS_CRONOGRAMA } from '../data/simuladosCronograma';
 import { BACKEND_URL } from '../lib/backendUrl';
 
 const API = `${BACKEND_URL}/api/study`;
+
+const renderMathContent = (content) => {
+  if (!content) return null;
+
+  const parts = [];
+  let lastIndex = 0;
+  const mathRegex = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
+  let match;
+
+  while ((match = mathRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={`text-${lastIndex}`}>
+          {content.substring(lastIndex, match.index)}
+        </span>
+      );
+    }
+
+    if (match[1]) {
+      parts.push(
+        <div key={`math-${match.index}`} className="my-4">
+          <BlockMath math={match[1]} />
+        </div>
+      );
+    } else if (match[2]) {
+      parts.push(
+        <span key={`math-${match.index}`}>
+          <InlineMath math={match[2]} />
+        </span>
+      );
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(
+      <span key={`text-${lastIndex}`}>
+        {content.substring(lastIndex)}
+      </span>
+    );
+  }
+
+  return parts.length > 0 ? parts : content;
+};
 
 const yt = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
 
@@ -65,7 +111,7 @@ const findSimuladoForTopic = (topic, discipline) => {
 const EVALUATION_MODELS = {
   ed: {
     title: 'Mecanismo de Avaliação - Estrutura de Dados',
-    formula: 'Média = (Lista × 2,0 + Simulado × 3,0 + Prova × 5,0) ÷ 10',
+    formula: '$$\\text{Média} = \\frac{(\\text{Lista} \\times 2,0) + (\\text{Simulado} \\times 3,0) + (\\text{Prova} \\times 5,0)}{10}$$',
     pass: 6.0,
     parts: [
       { id: 'lista', label: 'Lista de exercícios', weight: 2.0 },
@@ -81,7 +127,7 @@ const EVALUATION_MODELS = {
   },
   sd: {
     title: 'Mecanismo de Avaliação - Sistemas Digitais',
-    formula: 'MB1 = (VAE1 + PB1) ÷ 2  •  MB2 = (VAE2 + PRO + PB2) ÷ 3  •  MS = (MB1 + MB2) ÷ 2',
+    formula: '$$\\begin{aligned} \\text{MB1} &= \\frac{\\text{VAE1} + \\text{PB1}}{2} \\\\ \\text{MB2} &= \\frac{\\text{VAE2} + \\text{PRO} + \\text{PB2}}{3} \\\\ \\text{MS} &= \\frac{\\text{MB1} + \\text{MB2}}{2} \\end{aligned}$$',
     pass: 6.0,
     parts: [
       { id: 'vae1', label: 'VAE1 - Avaliações parciais 1º Bimestre', weight: null },
@@ -99,7 +145,7 @@ const EVALUATION_MODELS = {
   },
   al: {
     title: 'Mecanismo de Avaliação - Álgebra Linear',
-    formula: 'Média = (Avaliação 1 + Avaliação 2 + Prova Final) ÷ 3',
+    formula: '$$\\text{Média} = \\frac{\\text{Avaliação 1} + \\text{Avaliação 2} + \\text{Prova Final}}{3}$$',
     pass: 6.0,
     parts: [
       { id: 'a1', label: 'Avaliação 1', weight: null },
@@ -114,7 +160,7 @@ const EVALUATION_MODELS = {
   },
   rl: {
     title: 'Mecanismo de Avaliação - Raciocínio Lógico',
-    formula: 'Média = (Avaliação 1 + Avaliação 2 + Prova Final) ÷ 3',
+    formula: '$$\\text{Média} = \\frac{\\text{Avaliação 1} + \\text{Avaliação 2} + \\text{Prova Final}}{3}$$',
     pass: 6.0,
     parts: [
       { id: 'a1', label: 'Avaliação 1', weight: null },
@@ -1062,7 +1108,7 @@ const ExercisePractice = ({ topicInfo, onBack, onAnswer, localExercises }) => {
 
       <div className="materials-practice-question">
         <div className="materials-practice-number">{currentIndex + 1}</div>
-        <p className="materials-practice-text">{ex.question}</p>
+        <p className="materials-practice-text">{renderMathContent(ex.question)}</p>
 
         <div className="materials-practice-options">
           {ex.options.map((option, index) => {
@@ -1081,7 +1127,9 @@ const ExercisePractice = ({ topicInfo, onBack, onAnswer, localExercises }) => {
                 disabled={showResult}
               >
                 <span className="materials-practice-option-letter">{String.fromCharCode(65 + index)}</span>
-                <span className="materials-practice-option-text">{option}</span>
+                <span className="materials-practice-option-text">
+                  {renderMathContent(option)}
+                </span>
                 {showResult && isCorrect && <CheckCircle2 size={18} className="ok" />}
                 {isWrong && <X size={18} className="no" />}
               </button>
@@ -1240,7 +1288,7 @@ Contexto do tópico: ${topic?.keywords?.join(', ') || ''}`;
 
           {answer && (
             <div className="materials-doubt-answer">
-              <ReactMarkdown>{answer}</ReactMarkdown>
+              <ReactMarkdown>{renderMathContent(answer)}</ReactMarkdown>
             </div>
           )}
         </div>
@@ -1921,7 +1969,9 @@ const StudyMaterials = () => {
                         </span>
                         <div>
                           <h3>{model.title}</h3>
-                          <p className="materials-avaliacao-formula">{model.formula}</p>
+                          <p className="materials-avaliacao-formula">
+                            {renderMathContent(model.formula)}
+                          </p>
                         </div>
                       </div>
 

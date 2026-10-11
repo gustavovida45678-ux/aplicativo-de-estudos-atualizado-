@@ -1263,125 +1263,45 @@ const StudyMaterials = () => {
   const [generatingTopic, setGeneratingTopic] = useState(null);
 
   const generateExercises = async (topic, discipline) => {
-    // Local/offline fallback: generate exercises from topic data without backend
-    const generateLocalExercises = (topic, discipline) => {
-      const keywords = topic.keywords || [];
-      const videoTitles = topic.videoaulas?.map(v => v.title) || [];
-      const reviewTitles = topic.revisoes?.map(r => r.title) || [];
-      const exTitles = topic.exercicios?.map(e => e.name) || [];
-      
-      const templates = [
-        {
-          question: `Qual das seguintes alternativas melhor descreve o conceito principal de "${topic.name}"?`,
-          options: [
-            `Um conceito avançado sem aplicação prática`,
-            `Um tema fundamental que envolve ${keywords.slice(0, 3).join(', ') || 'conceitos-chave da disciplina'}`,
-            `Um tópico isolado sem relação com outras matérias`,
-            `Uma revisão de conteúdo básico do ensino médio`
-          ],
-          correct_answer: 1,
-          explanation: `O tópico "${topic.name}" aborda ${keywords.slice(0, 3).join(', ') || 'conceitos essenciais da disciplina'}. É um tema central para a compreensão da ${discipline.name}.`,
-          difficulty: 'Fácil',
-          topic: topic.name
-        },
-        {
-          question: `Ao estudar "${topic.name}", qual das seguintes habilidades é mais importante desenvolver?`,
-          options: [
-            `Memorização de fórmulas sem entendimento`,
-            `Capacidade de aplicar ${keywords[0] || 'conceitos fundamentais'} na resolução de problemas`,
-            `Leitura rápida sem anotações`,
-            `Foco apenas na teoria sem prática`
-          ],
-          correct_answer: 1,
-          explanation: `O estudo de "${topic.name}" exige a aplicação prática de ${keywords[0] || 'conceitos fundamentais'}. A resolução de exercícios (${exTitles.join(', ') || 'listas de exercícios'}) é essencial para consolidar o aprendizado.`,
-          difficulty: 'Médio',
-          topic: topic.name
-        },
-        {
-          question: `Qual das videoaulas abaixo seria mais relevante para entender "${topic.name}"?`,
-          options: [
-            videoTitles[0] || `Introdução a ${topic.name}`,
-            `História da ${discipline.name} no Brasil`,
-            `Carreiras em ${discipline.name}`,
-            `Ferramentas de produtividade para estudantes`
-          ],
-          correct_answer: 0,
-          explanation: `A videoaula "${videoTitles[0] || 'Introdução ao tópico'}" aborda diretamente os conceitos de "${topic.name}". Assista também às revisões: ${reviewTitles.slice(0, 2).join(' e ') || 'revisões disponíveis'}.`,
-          difficulty: 'Fácil',
-          topic: topic.name
-        },
-        {
-          question: `Para se preparar para a avaliação de "${topic.name}", qual estratégia é mais eficaz?`,
-          options: [
-            `Estudar apenas na véspera da prova`,
-            `Resolver exercícios das listas: ${exTitles.slice(0, 2).join(' e ') || 'exercícios disponíveis'} e revisar ${reviewTitles[0] || 'as revisões'}`,
-            `Ler apenas o resumo sem praticar`,
-            `Copiar anotações de colegas sem entender`
-          ],
-          correct_answer: 1,
-          explanation: `A melhor preparação combina prática ativa (resolução de exercícios) com revisão teórica. As listas de exercícios (${exTitles.join(', ') || 'disponíveis na plataforma'}) cobrem os principais tipos de questões.`,
-          difficulty: 'Médio',
-          topic: topic.name
-        },
-        {
-          question: `Qual conceito-chave de "${topic.name}" está frequentemente presente nas provas do IFG Jataí?`,
-          options: [
-            `${keywords[0] || 'Conceito fundamental do tópico'}`,
-            `História da instituição`,
-            `Datas de feriados acadêmicos`,
-            `Regimento interno do campus`
-          ],
-          correct_answer: 0,
-          explanation: `As provas do IFG Jataí focam nos conceitos técnicos. "${keywords[0] || 'O conceito principal'}" é um dos tópicos mais cobrados em "${topic.name}". Revise também: ${keywords.slice(1, 3).join(', ') || 'outros conceitos do tópico'}.`,
-          difficulty: 'Médio',
-          topic: topic.name
-        }
-      ];
-
-      return templates.slice(0, 5).map((t, i) => ({
-        ...t,
-        correct_answer: t.correct_answer,
-        options: t.options,
-        explanation: `${t.explanation}\n\n💡 Dica: Pratique com as listas de exercícios (${exTitles.join(', ') || 'disponíveis'}) e assista às videoaulas (${videoTitles.slice(0, 2).join(', ') || 'disponíveis'}).`,
-        generated: true,
-        source: `Gerado localmente a partir dos dados do tópico "${topic.name}"`
-      }));
-    };
+    if (!BACKEND_URL) {
+      toast.error('Backend não configurado.');
+      return;
+    }
 
     setGeneratingTopic(topic.id);
-    
-    // First try local generation (works offline)
-    const localExercises = generateLocalExercises(topic, discipline);
-    const key = `generated_${topic.id}`;
-    const merged = [...(JSON.parse(localStorage.getItem(key) || '[]')), ...localExercises];
-    localStorage.setItem(key, JSON.stringify(merged));
-    
-    toast.success(`${localExercises.length} exercícios gerados localmente! (funciona offline)`);
-    setPracticing({
-      topicId: null,
-      topicKey: topic.id,
-      name: `${topic.name} (Gerado localmente)`,
-      subject: topic.subject,
-      localExercises: merged,
-    });
-    setActiveTab('exercises');
-    setGeneratingTopic(null);
-    return;
 
-    // Backend generation (requires API key) - commented out for offline use
-    // if (!BACKEND_URL) {
-    //   toast.error('Backend não configurado.');
-    //   return;
-    // }
-    // try {
-    //   const matched = findSimuladoForTopic(topic, discipline);
-    //   if (matched) {
-    //     // ... existing simulado code
-    //   }
-    //   // ... existing backend API call code
-    // } catch (e) {
-    //   // fallback to local
-    // }
+    try {
+      const matched = findSimuladoForTopic(topic, discipline);
+      if (matched) {
+        // Handle simulado case if needed
+        // For now, proceed with regular exercise generation
+      }
+
+      const res = await axios.get(`${API}/topics/${topic.topicId}/exercises`);
+      const exercises = res.data.exercises || [];
+
+      if (exercises.length === 0) {
+        throw new Error('Nenhum exercício disponível para este tópico.');
+      }
+
+      const key = `generated_${topic.id}`;
+      localStorage.setItem(key, JSON.stringify(exercises));
+
+      toast.success(`${exercises.length} exercícios carregados do backend!`);
+      setPracticing({
+        topicId: topic.topicId,
+        topicKey: topic.id,
+        name: topic.name,
+        subject: topic.subject,
+        localExercises: exercises,
+      });
+      setActiveTab('exercises');
+    } catch (e) {
+      console.error('Error loading exercises:', e);
+      toast.error('Erro ao carregar exercícios. Verifique a conexão com o backend.');
+    } finally {
+      setGeneratingTopic(null);
+    }
   };
 
   useEffect(() => {

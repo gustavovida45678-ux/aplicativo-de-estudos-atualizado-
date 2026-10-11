@@ -6,6 +6,7 @@ import { Upload, Image as ImageIcon, X, Sparkles, FileText, BookOpen, Lightbulb 
 import { toast } from 'sonner';
 import axios from 'axios';
 import { BACKEND_URL } from '../lib/backendUrl';
+import FormulaMatematica from './FormulaMatematica';
 
 const API = `${BACKEND_URL}/api`;
 

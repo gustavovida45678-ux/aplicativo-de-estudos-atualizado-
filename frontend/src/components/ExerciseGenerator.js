@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { InlineMath, BlockMath } from 'react-katex';
 import { BACKEND_URL } from '../lib/backendUrl';
+import FormulaMatematica from './FormulaMatematica';
 
 const API = `${BACKEND_URL}/api`;
 

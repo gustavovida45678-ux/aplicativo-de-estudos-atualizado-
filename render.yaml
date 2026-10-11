@@ -5,7 +5,7 @@ services:
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npx serve -s build -l $PORT
     envVars:
       - key: REACT_APP_BACKEND_URL
         value: https://api-python-backend.onrender.com

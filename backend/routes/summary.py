@@ -617,13 +617,17 @@ DISTRIBUIÇÃO POR IMPORTÂNCIA:
 - 30% → tópicos de MÉDIA prioridade
 - 20% → tópicos complementares
 
+⚠️ REGRA CRÍTICA: O campo "explanation" deve conter APENAS a explicação PONTUAL do exercício (por que a alternativa está correta/incorreta), NÃO o resumo geral do tópico. Não repita o conteúdo do resumo. Seja direto: explique APENAS o raciocínio da questão.
+
 Para cada exercício, inclua:
-- Pergunta clara e objetiva
-- Alternativas (para múltipla escolha) ou resposta esperada
-- Resposta correta
-- Explicação DIDÁTICA ensinando POR QUE a resposta está correta
-- Passo a passo da resolução
-- Tópico relacionado
+- Pergunta clara e objetiva (campo "question")
+- Alternativas para múltipla escolha (campo "options") ou resposta esperada
+- Resposta correta (campo "correct_answer": "A", "B", "C", "D", "V", "F", etc.)
+- Explicação FOCADA NA QUESTÃO (campo "explanation"): explique apenas por que a resposta está certa e as outras erradas, 2-3 frases no máximo
+- Passo a passo da resolução (campo "solution_steps": array de strings curtas)
+- Tópico específico do material (campo "topic")
+- Nível de dificuldade (campo "difficulty")
+- Conceito principal testado (campo "concept_used")
 
 Responda EXATAMENTE com este JSON (sem markdown, sem ```):
 
@@ -634,26 +638,26 @@ Responda EXATAMENTE com este JSON (sem markdown, sem ```):
       "type": "multipla_escolha",
       "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
       "correct_answer": "A",
-      "explanation": "Explicação didática de POR QUE esta resposta está correta, ensinando o conceito",
+      "explanation": "A alternativa A está correta porque [razão direta]. As alternativas B, C, D estão incorretas porque [razão breve].",
       "solution_steps": [
-        "Passo 1: ...",
-        "Passo 2: ...",
-        "Passo 3: ..."
+        "Passo 1: identificar o conceito X no material",
+        "Passo 2: aplicar a fórmula Y",
+        "Passo 3: concluir que a resposta é A"
       ],
-      "topic": "Tópico relacionado",
+      "topic": "Tópico específico do material",
       "difficulty": "Médio",
       "concept_used": "Conceito principal testado"
     }}
   ]
 }}
 
-REGRAS:
+REGRAS OBRIGATÓRIAS:
 1. Exercícios devem estar RELACIONADOS ao material
 2. Não invente conteúdo ausente no material
 3. VARIE as respostas corretas (não use sempre a mesma letra)
-4. Explique o PORQUÊ, não apenas o QUÊ
+4. O campo "explanation" deve ser CURTO e FOCADO na questão, NÃO um resumo do tópico
 5. Retorne APENAS o JSON válido
-6. IMPORTANTE: TODO campo de texto (question, correct_answer, explanation, topic, difficulty, concept_used, cada item de options e solution_steps) deve ser uma STRING de texto puro, nunca objeto, lista ou JSON aninhado. options e solution_steps contêm APENAS strings. NUNCA escreva literalmente "object Object" na resposta."""
+6. IMPORTANTE: TODO campo de texto deve ser STRING pura, nunca objeto/lista/JSON aninhado. NUNCA escreva "object Object"."""
 
 
 def _build_fallback_summary(text: str, file_names: list) -> dict:

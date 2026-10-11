@@ -11,6 +11,9 @@ import {
 import axios from 'axios';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import html2canvas from 'html2canvas';
 import { InlineMath, BlockMath } from 'react-katex';
 import {

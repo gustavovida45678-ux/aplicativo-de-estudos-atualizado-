@@ -1,6 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import {
   CheckCircle2, XCircle, HelpCircle, Lightbulb, ArrowRight,
   Flag, Clock, Award, TrendingDown, TrendingUp, CalendarClock, Brain, Maximize2, Minimize2,
@@ -239,7 +242,7 @@ export default function AdaptiveSession({ session, onFinish }) {
           {!feedback ? (
             <>
               <div className="prose prose-invert max-w-none">
-                <ReactMarkdown>{q?.question || ""}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{q?.question || ""}</ReactMarkdown>
               </div>
 
               {isMc ? (
@@ -322,7 +325,7 @@ export default function AdaptiveSession({ session, onFinish }) {
                     {feedback.correct ? "ACERTOU" : feedback.result === "dont_know" ? "REGISTRADO — VOCÊ NÃO SABIA" : "ERROU"}
                   </p>
                   <div className="prose prose-invert prose-sm mt-1 max-w-none text-muted-foreground">
-                    <ReactMarkdown>{feedback.explanation || ""}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{feedback.explanation || ""}</ReactMarkdown>
                   </div>
                 </div>
               </div>

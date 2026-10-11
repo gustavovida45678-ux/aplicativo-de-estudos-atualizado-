@@ -3,6 +3,10 @@ import { Send, X, MessageCircle, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { BACKEND_URL } from '../lib/backendUrl';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 const API = BACKEND_URL;
 
@@ -146,7 +150,13 @@ Por favor, explique de forma CLARA e DETALHADA, usando linguagem simples. Se hou
                   : 'bg-cyan-50 text-gray-800 rounded-bl-none border border-cyan-200'
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              <ReactMarkdown 
+  remarkPlugins={[remarkGfm, remarkMath]} 
+  rehypePlugins={[rehypeKatex]}
+  className="text-sm"
+>
+  {msg.content}
+</ReactMarkdown>
               <span className="text-xs opacity-60 mt-1 block">
                 {msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </span>

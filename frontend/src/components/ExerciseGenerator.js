@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Upload, Image as ImageIcon, X, Sparkles, FileText, BookOpen, Lightbulb } from 'lucide-react';
+import { Upload, Image as ImageIcon, X, Sparkles, FileText, BookOpen, Lightbulb, File } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -14,8 +14,9 @@ const API = `${BACKEND_URL}/api`;
 export default function ExerciseGenerator() {
   const [activeMode, setActiveMode] = useState('similar'); // similar or create
   const [exerciseInput, setExerciseInput] = useState('');
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const [fileType, setFileType] = useState(null); // 'image' or 'pdf'
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedExercises, setGeneratedExercises] = useState([]);
   const [numberOfExercises, setNumberOfExercises] = useState(3);
@@ -26,7 +27,7 @@ export default function ExerciseGenerator() {
 
     const parts = [];
     let lastIndex = 0;
-    const mathRegex = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
+    const mathRegex = /(\$\$)(.*?)\1|(\$)(.*?)\3/g;
     let match;
 
     while ((match = mathRegex.exec(content)) !== null) {
@@ -38,16 +39,27 @@ export default function ExerciseGenerator() {
         );
       }
 
-      if (match[1]) {
+      let mathContent;
+      let isDisplay;
+
+      if (match[1]) { // $$ case
+        mathContent = match[2];
+        isDisplay = true;
+      } else { // $ case
+        mathContent = match[4];
+        isDisplay = false;
+      }
+
+      if (isDisplay) {
         parts.push(
           <div key={`math-${match.index}`} className="my-4">
-            <BlockMath math={match[1]} />
+            <BlockMath math={mathContent} />
           </div>
         );
-      } else if (match[2]) {
+      } else {
         parts.push(
           <span key={`math-${match.index}`}>
-            <InlineMath math={match[2]} />
+            <InlineMath math={mathContent} />
           </span>
         );
       }
@@ -66,47 +78,62 @@ export default function ExerciseGenerator() {
     return parts.length > 0 ? parts : content;
   };
 
-  const handleImageSelect = (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
-        toast.error('Por favor, selecione uma imagem');
+      const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf';
+      
+      if (!isImage && !isPdf) {
+        toast.error('Por favor, selecione uma imagem ou PDF');
         return;
       }
-      
-      setSelectedImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        toast.error('Arquivo muito grande. Máximo: 10MB');
+        return;
+      }
+
+      setSelectedFile(file);
+      setFileType(isImage ? 'image' : 'pdf');
+
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setFilePreview(reader.result);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        // For PDF, show file info
+        setFilePreview(`📄 ${file.name}`);
+      }
     }
   };
 
-  const clearImage = () => {
-    setSelectedImage(null);
-    setImagePreview(null);
+  const clearFile = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    setFileType(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
   const generateExercises = async () => {
-    if (!exerciseInput.trim() && !selectedImage) {
-      toast.error('Digite um exercício ou faça upload de uma imagem');
+    if (!exerciseInput.trim() && !selectedFile) {
+      toast.error('Digite um exercício ou faça upload de uma imagem/PDF');
       return;
     }
 
     setIsGenerating(true);
 
-    // Try backend API first
     try {
       const formData = new FormData();
       formData.append('reference_text', exerciseInput);
       formData.append('number_of_exercises', numberOfExercises.toString());
       formData.append('mode', activeMode);
-      if (selectedImage) {
-        formData.append('image', selectedImage);
+      if (selectedFile) {
+        formData.append('file', selectedFile);
       }
 
       const response = await axios.post(`${API}/exercises/generate`, formData, {
@@ -168,8 +195,8 @@ export default function ExerciseGenerator() {
         
         <p className="text-gray-400 text-sm mb-4">
           {activeMode === 'similar' 
-            ? 'Forneça um exercício exemplo (texto ou imagem) para gerar exercícios semelhantes' 
-            : 'Descreva o tipo de exercício que deseja criar ou envie uma imagem de exemplo'}
+            ? 'Forneça um exercício exemplo (texto, imagem ou PDF) para gerar exercícios semelhantes' 
+            : 'Descreva o tipo de exercício que deseja criar ou envie uma imagem/PDF de exemplo'}
         </p>
 
         {/* Text Input */}
@@ -187,32 +214,42 @@ export default function ExerciseGenerator() {
           />
         </div>
 
-        {/* Image Upload */}
+        {/* File Upload (Image or PDF) */}
         <div className="mb-4">
           <label className="block text-gray-300 text-sm font-medium mb-2">
-            <ImageIcon className="inline mr-1" size={16} />
-            Ou faça upload de uma imagem
+            <Upload className="inline mr-1" size={16} />
+            Ou faça upload de uma imagem ou PDF
           </label>
           
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            onChange={handleImageSelect}
+            accept="image/*,.pdf"
+            onChange={handleFileSelect}
             className="hidden"
           />
 
-          {imagePreview ? (
+          {filePreview ? (
             <div className="relative inline-block">
-              <img 
-                src={imagePreview} 
-                alt="Preview" 
-                className="max-w-xs rounded-lg border border-white/20"
-              />
+              {fileType === 'image' ? (
+                <img 
+                  src={filePreview} 
+                  alt="Preview" 
+                  className="max-w-xs rounded-lg border border-white/20"
+                />
+              ) : (
+                <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-6 flex items-center gap-3 max-w-xs">
+                  <File size={32} className="text-red-400" />
+                  <div>
+                    <p className="text-red-300 font-medium text-sm">{filePreview}</p>
+                    <p className="text-gray-400 text-xs">PDF selecionado</p>
+                  </div>
+                </div>
+              )}
               <button
-                onClick={clearImage}
+                onClick={clearFile}
                 className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition"
-                data-testid="clear-image-btn"
+                data-testid="clear-file-btn"
               >
                 <X size={16} />
               </button>
@@ -221,11 +258,11 @@ export default function ExerciseGenerator() {
             <button
               onClick={() => fileInputRef.current?.click()}
               className="w-full py-8 border-2 border-dashed border-white/20 rounded-lg hover:border-blue-500 hover:bg-white/5 transition flex flex-col items-center justify-center text-gray-400 hover:text-blue-400"
-              data-testid="upload-image-btn"
+              data-testid="upload-file-btn"
             >
               <Upload size={32} className="mb-2" />
-              <span>Clique para fazer upload de uma imagem</span>
-              <span className="text-xs mt-1">PNG, JPG, WebP até 5MB</span>
+              <span>Clique para fazer upload de uma imagem ou PDF</span>
+              <span className="text-xs mt-1">PNG, JPG, WebP, PDF até 10MB</span>
             </button>
           )}
         </div>
@@ -251,7 +288,7 @@ export default function ExerciseGenerator() {
         {/* Generate Button */}
         <Button
           onClick={generateExercises}
-          disabled={isGenerating || (!exerciseInput.trim() && !selectedImage)}
+          disabled={isGenerating || (!exerciseInput.trim() && !selectedFile)}
           className={`w-full py-3 text-lg font-semibold ${
             activeMode === 'similar' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
           }`}
@@ -287,7 +324,7 @@ export default function ExerciseGenerator() {
             >
               {/* Exercise Header */}
               <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-bold text-white">
+                <h4 className="text-lg font-bold text-weight">
                   Exercício {index + 1}
                 </h4>
                 <Badge className="bg-blue-600">
@@ -390,7 +427,7 @@ export default function ExerciseGenerator() {
                                 </div>
                               )}
                             </div>
-                          ))}
+                          ))
                         </div>
                       </div>
                     )}

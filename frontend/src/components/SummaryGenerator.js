@@ -12,6 +12,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { BACKEND_URL } from "../lib/backendUrl";
 import FormulaMatematica from "./FormulaMatematica";
+import { processMarkdownWithMath } from "../lib/mathFormatter";
 
 const API = `${BACKEND_URL}/api/summary`;
 
@@ -523,7 +524,7 @@ export default function SummaryGenerator() {
               <div style={{ marginBottom: 24 }}>
                 <h3 style={{ color: "#e2e8f0", fontSize: 19, marginBottom: 10 }}>Resumo Geral</h3>
                 <div style={{ color: "#d5d9e2", lineHeight: 1.8, fontSize: 18 }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{result.summary?.general_summary || ""}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{processMarkdownWithMath(result.summary?.general_summary || "")}</ReactMarkdown>
                 </div>
               </div>
 
@@ -558,7 +559,7 @@ export default function SummaryGenerator() {
                       {expandedTopics[i] && (
                         <div style={{ padding: "0 16px 16px" }}>
                           <div style={{ color: "#d5d9e2", lineHeight: 1.8, marginBottom: 12, fontSize: 17 }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{topic.explanation || ""}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{processMarkdownWithMath(topic.explanation || "")}</ReactMarkdown>
                           </div>
                           {topic.key_concepts?.length > 0 && (
                             <div style={{ marginBottom: 10 }}>
@@ -575,7 +576,9 @@ export default function SummaryGenerator() {
                               <strong style={{ color: "#f59e0b", fontSize: 16 }}>Fórmulas:</strong>
                               <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
                                 {topic.formulas.map((f, j) => (
-                                  <li key={j} style={{ color: "#fbbf24", fontSize: 16 }}>{f}</li>
+                                  <li key={j} style={{ color: "#fbbf24", fontSize: 16 }}>
+                                    <FormulaMatematica formula={f} bloco={false} />
+                                  </li>
                                 ))}
                               </ul>
                             </div>
@@ -585,7 +588,9 @@ export default function SummaryGenerator() {
                               <strong style={{ color: "#22c55e", fontSize: 16 }}>Exemplos:</strong>
                               <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
                                 {topic.examples.map((e, j) => (
-                                  <li key={j} style={{ color: "#86efac", fontSize: 16 }}>{e}</li>
+                                  <li key={j} style={{ color: "#86efac", fontSize: 16 }}>
+                                    <FormulaMatematica formula={e} bloco={false} />
+                                  </li>
                                 ))}
                               </ul>
                             </div>
@@ -664,7 +669,7 @@ export default function SummaryGenerator() {
                   </div>
 
                   <div style={{ color: "#e2e8f0", fontSize: 15, fontWeight: 600, marginBottom: 14, lineHeight: 1.5 }}>
-                    {i + 1}. {ex.question}
+                    {i + 1}. <FormulaMatematica formula={ex.question} bloco={false} />
                   </div>
 
                   {ex.options?.length > 0 && (
@@ -695,7 +700,7 @@ export default function SummaryGenerator() {
                             {showResult && isCorrect ? <CheckCircle2 size={18} color="#22c55e" /> :
                              showResult && isSelected ? <AlertTriangle size={18} color="#ef4444" /> :
                              <Circle size={18} color="#64748b" />}
-                            {opt}
+                            <FormulaMatematica formula={opt} bloco={false} />
                           </button>
                         );
                       })}
@@ -720,16 +725,16 @@ export default function SummaryGenerator() {
                           marginTop: 12, padding: 16, background: "#1e1b2e",
                           borderRadius: 10, border: "1px solid #2d2a3e",
                         }}>
-                          <div style={{ color: "#e2e8f0", fontWeight: 700, marginBottom: 8 }}>Resposta Correta: {ex.correct_answer}</div>
+                          <div style={{ color: "#e2e8f0", fontWeight: 700, marginBottom: 8 }}>Resposta Correta: <FormulaMatematica formula={ex.correct_answer} bloco={false} /></div>
                           <div style={{ color: "#cbd5e1", lineHeight: 1.7, fontSize: 14 }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{ex.explanation || ""}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{processMarkdownWithMath(ex.explanation || "")}</ReactMarkdown>
                           </div>
                           {ex.solution_steps?.length > 0 && (
                             <div style={{ marginTop: 12 }}>
                               <strong style={{ color: "#818cf8", fontSize: 13 }}>Passo a passo:</strong>
                               <ol style={{ margin: "6px 0 0", paddingLeft: 20 }}>
                                 {ex.solution_steps.map((step, j) => (
-                                  <li key={j} style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}>{step}</li>
+                                  <li key={j} style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}><FormulaMatematica formula={step} bloco={false} /></li>
                                 ))}
                               </ol>
                             </div>

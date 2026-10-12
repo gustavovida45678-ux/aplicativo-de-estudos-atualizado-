@@ -446,7 +446,7 @@ function VirtualWhiteboard({ onExit }) {
             lastHandPointRef.current.y,
             x,
             y,
-            "#000000",
+            "#808080",
             strokeWidthRef.current * 3,
             "eraser"
           );

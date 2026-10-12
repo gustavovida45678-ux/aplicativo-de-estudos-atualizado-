@@ -19,7 +19,7 @@ export function strokesToOcrCanvas(strokes) {
   let count = 0;
   for (const s of strokes) {
     if (!s.points || s.points.length < 2) continue;
-    if (s.color === "#0d1117" || s.color === "#000000") continue;
+    if (s.color === "#0d1117" || s.color === "#808080") continue;
     for (const p of s.points) {
       if (p.x < minX) minX = p.x;
       if (p.y < minY) minY = p.y;
@@ -43,14 +43,14 @@ export function strokesToOcrCanvas(strokes) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.strokeStyle = "#000000";
+  ctx.strokeStyle = "#808080";
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.lineWidth = Math.max(4, 3.2 * scale);
 
   for (const s of strokes) {
     if (!s.points || s.points.length < 2) continue;
-    if (s.color === "#0d1117" || s.color === "#000000") continue;
+    if (s.color === "#0d1117" || s.color === "#808080") continue;
     ctx.beginPath();
     s.points.forEach((p, i) => {
       const x = (p.x - minX + pad) * scale;

@@ -154,7 +154,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = cameraActive ? "#000000" : "#0d1117";
+    ctx.fillStyle = cameraActive ? "#808080" : "#0d1117";
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
 
@@ -166,7 +166,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
     strokesRef.current.forEach(stroke => {
       if (stroke.points.length < 2) return;
       // Traços de borracha feitos na câmera (#000) seguem a cor do fundo atual
-      ctx.strokeStyle = stroke.color === "#000000" ? (cameraActive ? "#000000" : "#0d1117") : stroke.color;
+      ctx.strokeStyle = stroke.color === "#808080" ? (cameraActive ? "#808080" : "#0d1117") : stroke.color;
       ctx.lineWidth = stroke.size;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -914,7 +914,7 @@ function SimpleWhiteboard({ onExit, onMinimize, minimized }) {
 
     strokesRef.current.push({
       points: [last, { x, y }],
-      color: isEraser ? "#000000" : color,
+      color: isEraser ? "#808080" : color,
       size: isEraser ? size * 3 : Math.max(size, 5)
     });
     lastHandPointRef.current = { x, y };

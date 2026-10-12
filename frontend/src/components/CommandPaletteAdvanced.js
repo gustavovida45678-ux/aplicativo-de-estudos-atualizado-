@@ -125,13 +125,13 @@ export default function CommandPaletteAdvanced({ onNavigate, onThemeChange }) {
       if (changes.theme === 'dark') {
         // Mudanças MUITO visíveis
         document.documentElement.classList.add('dark');
-        document.body.style.backgroundColor = '#000000';
+        document.body.style.backgroundColor = '#1A1A1A';
         document.body.style.color = '#ffffff';
         
         // Mudar TODOS os elementos visíveis
         const main = document.querySelector('.App');
         if (main) {
-          main.style.backgroundColor = '#000000';
+          main.style.backgroundColor = '#1A1A1A';
           main.style.color = '#ffffff';
         }
         
@@ -141,12 +141,12 @@ export default function CommandPaletteAdvanced({ onNavigate, onThemeChange }) {
       } else if (changes.theme === 'light') {
         document.documentElement.classList.remove('dark');
         document.body.style.backgroundColor = '#ffffff';
-        document.body.style.color = '#000000';
+        document.body.style.color = '#1A1A1A';
         
         const main = document.querySelector('.App');
         if (main) {
           main.style.backgroundColor = '#ffffff';
-          main.style.color = '#000000';
+          main.style.color = '#1A1A1A';
         }
         
         alert('☀️ TEMA CLARO APLICADO!\nA TELA DEVE ESTAR BRANCA AGORA!');

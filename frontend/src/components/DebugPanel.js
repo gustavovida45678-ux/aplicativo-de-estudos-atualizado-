@@ -50,7 +50,7 @@ export default function DebugPanel({ onNavigate }) {
 
   const testTema = () => {
     addLog('🎨 TESTE: Mudando para tema escuro...', 'info');
-    document.body.style.backgroundColor = '#000000';
+    document.body.style.backgroundColor = '#1A1A1A';
     document.body.style.color = '#ffffff';
     addLog('✅ TEMA ESCURO APLICADO! Tela deve estar preta!', 'success');
   };
@@ -58,7 +58,7 @@ export default function DebugPanel({ onNavigate }) {
   const testTemaClaro = () => {
     addLog('☀️ TESTE: Mudando para tema claro...', 'info');
     document.body.style.backgroundColor = '#ffffff';
-    document.body.style.color = '#000000';
+    document.body.style.color = '#1A1A1A';
     addLog('✅ TEMA CLARO APLICADO! Tela deve estar branca!', 'success');
   };
 

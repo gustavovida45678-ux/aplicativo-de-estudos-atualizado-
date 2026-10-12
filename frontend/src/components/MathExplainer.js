@@ -329,7 +329,9 @@ export default function MathExplainer() {
 
     const parts = [];
     let lastIndex = 0;
-    const mathRegex = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
+    // Better regex that handles content properly
+    // Match $$...$$ or $...$ greedily
+    const mathRegex = /(\$\$)(.*?)\1|(\$)(.*?)\3/g;
     let match;
 
     while ((match = mathRegex.exec(content)) !== null) {
@@ -341,16 +343,27 @@ export default function MathExplainer() {
         );
       }
 
-      if (match[1]) {
+      let mathContent;
+      let isDisplay;
+
+      if (match[1]) { // $$ case
+        mathContent = match[2];
+        isDisplay = true;
+      } else { // $ case
+        mathContent = match[4];
+        isDisplay = false;
+      }
+
+      if (isDisplay) {
         parts.push(
           <div key={`math-${match.index}`} className="my-4">
-            <BlockMath math={match[1]} />
+            <BlockMath math={mathContent} />
           </div>
         );
-      } else if (match[2]) {
+      } else {
         parts.push(
           <span key={`math-${match.index}`}>
-            <InlineMath math={match[2]} />
+            <InlineMath math={mathContent} />
           </span>
         );
       }

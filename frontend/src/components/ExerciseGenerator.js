@@ -257,7 +257,7 @@ export default function ExerciseGenerator() {
           ) : (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-full py-8 border-2 border-dashed border-white/20 rounded-lg hover:border-blue-500 hover:bg-white/5 transition flex flex-col items-center justify-center text-gray-400 hover:text-blue-400"
+              className="w-full py-8 border-2 border-dashed border-white/20 rounded-lg hover:border-blue-500 hover:bg-white/5 transition flex flex-col items-center justify-center text-gray-400 hover:text-white"
               data-testid="upload-file-btn"
             >
               <Upload size={32} className="mb-2" />
@@ -427,7 +427,7 @@ export default function ExerciseGenerator() {
                                 </div>
                               )}
                             </div>
-                          ))
+                          ))}
                         </div>
                       </div>
                     )}

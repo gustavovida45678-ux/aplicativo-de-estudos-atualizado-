@@ -110,6 +110,19 @@ class ProvidersResponse(BaseModel):
     configured_count: int
     total_count: int
 
+GENERAL_SYSTEM_PROMPT = (
+    "Você é um assistente virtual racional, útil e profissional. "
+    "Responda em português do Brasil, com linguagem clara, direta e educada. "
+    "Seja objetivo, mas também acolhedor e útil. "
+    "Entenda a intenção do usuário antes de responder, faça perguntas curtas quando necessário e "
+    "evite respostas vagas ou genéricas. "
+    "Não invente dados, não faça suposições sem base, e sempre priorize clareza, lógica e solução prática. "
+    "Quando a dúvida for ambígua, peça uma informação extra de forma breve. "
+    "Em atendimento ao cliente, mantenha tom racional, confiável e orientado à resolução. "
+    "Em explicações acadêmicas, use raciocínio passo a passo e exemplos simples. "
+    "Responda em poucos parágrafos; se necessário, use listas curtas e objetivos."
+)
+
 TEACHER_SYSTEM_PROMPT = (
     "Você é o Professor Virtual do aplicativo de estudos. Você conhece o histórico do aluno "
     "(erros recentes, domínio por tópico, tempo de estudo) e usa isso para personalizar a ajuda. "
@@ -250,24 +263,20 @@ async def chat(
     - "auto" resolves to the first provider that has an API key configured.
     """
     try:
-        # Resolve provider (auto-detection when "auto" or unavailable "ollama")
         provider_type = resolve_provider_type(message.provider.lower(), x_custom_api_key or message.custom_api_key)
-        
-        # Determine API key priority: custom header > request body > env
         api_key = x_custom_api_key or message.custom_api_key
-        
-        # Call chat service
+        system_prompt = message.system_prompt or GENERAL_SYSTEM_PROMPT
+
         result = await chat_service.chat(
             message=message.message,
             provider_type=provider_type,
             model_key=message.model,
             custom_api_key=api_key,
-            system_prompt=message.system_prompt,
+            system_prompt=system_prompt,
             temperature=message.temperature,
             max_tokens=message.max_tokens,
         )
-        
-        # Create response messages
+
         user_message_obj = {
             "id": str(int(datetime.now().timestamp() * 1000)),
             "role": "user",
@@ -325,6 +334,7 @@ async def chat_stream(
     try:
         provider_type = resolve_provider_type(message.provider.lower(), x_custom_api_key or message.custom_api_key)
         api_key = x_custom_api_key or message.custom_api_key
+        system_prompt = message.system_prompt or GENERAL_SYSTEM_PROMPT
         
         async def generate():
             try:
@@ -333,7 +343,7 @@ async def chat_stream(
                     provider_type=provider_type,
                     model_key=message.model,
                     custom_api_key=api_key,
-                    system_prompt=message.system_prompt,
+                    system_prompt=system_prompt,
                     temperature=message.temperature,
                     max_tokens=message.max_tokens,
                     stream=True,
@@ -379,15 +389,13 @@ async def chat_with_image(
         provider_type = resolve_provider_type(provider, x_custom_api_key or custom_api_key)
         api_key = x_custom_api_key or custom_api_key
         
-        # Read and encode image
         image_contents = await image.read()
         image_base64 = base64.b64encode(image_contents).decode('utf-8')
         logger.info(f"📷 Image received: {len(image_contents)} bytes, provider: {provider}")
         
-        # Default system prompt for math images
         if not system_prompt:
-            system_prompt = "Você é um assistente que analisa imagens de exercícios matemáticos. Resolva seguindo o padrão didático padrão."
-        
+            system_prompt = GENERAL_SYSTEM_PROMPT
+
         result = await chat_service.chat_with_image(
             message=message,
             image_base64=image_base64,
@@ -451,7 +459,6 @@ async def generate_image(data: dict):
         
         provider_type = ProviderType(provider)
         
-        # For OpenRouter, use DALL-E model
         if provider_type == ProviderType.OPENROUTER:
             model = model or "dall-e-3"
         elif provider_type == ProviderType.GEMINI:

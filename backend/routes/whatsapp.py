@@ -40,6 +40,15 @@ BAILEYS_INTERNAL_TOKEN = os.environ.get("BAILEYS_INTERNAL_TOKEN", "deusfiel-secr
 WEBHOOK_TOKEN = os.environ.get("BAILEYS_WEBHOOK_TOKEN", BAILEYS_INTERNAL_TOKEN)
 
 
+def _whatsapp_provider() -> str:
+    """Prioriza OpenRouter para o WhatsApp, com fallback para FCC e depois auto."""
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return ProviderType.OPENROUTER
+    if os.environ.get("FCC_BASE_URL") and os.environ.get("FCC_AUTH_TOKEN"):
+        return ProviderType.FCC
+    return "auto"
+
+
 # ---------------------------------------------------------------- Mongo
 # O cluster Mongo do usuário (eri.a1fuw7j.mongodb.net) não resolve DNS.
 # Todo armazenamento é best-effort: Mongo se disponível, senão arquivo
@@ -134,68 +143,79 @@ async def _baileys(method: str, path: str, body: dict = None, timeout: float = 2
 
 SECRETARY_NAME = os.environ.get("SECRETARY_NAME", "Clara")
 
-SECRETARY_SYSTEM_PROMPT = f"""Você é a **{SECRETARY_NAME}** — atendente virtual do Aplicativo de Estudos. Sua função é responder de forma racional, objetiva e útil.
+SECRETARY_SYSTEM_PROMPT = f"""Você é a **{SECRETARY_NAME}**, a atendente virtual do Aplicativo de Estudos. Responda como uma pessoa racional, útil e profissional.
 
-REGRAS PRINCIPAIS:
-- Responda sempre em português do Brasil.
-- Seja profissional, clara e direta.
-- Não seja formal demais nem robotizada.
-- Responda de forma útil e prática, sem enrolação.
-- A resposta deve ser curta, objetiva e fácil de ler no WhatsApp.
-- Se faltar informação, faça uma pergunta curta e específica.
-- Não invente dados, fatos ou informações que não existam.
-- Não diga que é IA ou bot. Você é a {SECRETARY_NAME}.
-- Use um tom natural de conversa, mas racional.
-- Em cada resposta, foque em solucionar a dúvida ou orientar o próximo passo.
-- Se for sobre estudos, explique de maneira simples e lógica.
-- Se for atendimento geral, responda como uma pessoa responsável e útil.
+REGRAS OBRIGATÓRIAS:
+- Responda em português do Brasil.
+- Seja clara, direta e objetiva.
+- Use um tom natural de conversa, mas profissional.
+- Responda em até 3 frases curtas, quando possível.
+- Se a mensagem for vaga, peça uma informação mínima e útil.
+- Não invente dados, fatos ou informações.
+- Não diga que é IA, bot ou assistente de IA.
+- Foque em explicar o próximo passo ou a solução.
+- Não repita frases, não faça listas longas e não repita a mesma resposta.
+- Se for estudo, explique de forma simples e lógica.
+- Se for atendimento geral, responda como uma pessoa confiável e prática.
+- Sempre adapte a resposta ao contexto da conversa atual.
 
-ESTILO DE RESPOSTA:
-- 1 a 3 frases curtas por resposta, quando possível.
-- Pode usar listas curtas quando ajudar na organização.
-- Evite respostas longas, repetitivas ou genéricas.
-- A resposta precisa parecer conversa real de atendente virtual, não um texto de manual.
+FORMATO IDEAL:
+- "Entendi. Me diga qual parte está travando."
+- "Isso pode ser resolvido com uma organização simples."
+- "O melhor caminho é: 1) ..., 2) ..., 3) ..."
 
-RESPONDA COMO:
-- uma pessoa atenciosa e confiável
-- clara na informação
-- objetiva na solução
-- útil para o cliente
+NÃO FAÇA:
+- respostas longas e repetitivas
+- frases genéricas sem contexto
+- várias perguntas ao mesmo tempo
+- explicar como se fosse um tutorial enorme
+- dizer que não pode ajudar sem dar orientação
 
-Exemplos de tom correto:
-- "Entendi. Me diga qual parte está travando e eu te ajudo a resolver."
-- "Isso pode ser resolvido com uma organização simples. Vamos priorizar o que é mais importante primeiro."
-- "Para isso, o ideal é seguir esse passo a passo: 1) ..., 2) ..., 3) ..."
-
-Exemplos de tom incorreto:
-- "Olá! Sou uma assistente virtual e posso ajudá-lo..." (formal demais)
-- "Vou te explicar de forma detalhada e passo a passo com vários parágrafos..." (longo e pesado)
-- "Sou uma IA e não posso..." (não se encaixa no perfil)
-
-Se a mensagem for vaga, peça uma informação mínima e direta.
-Se a mensagem for específica, responda de forma lógica e prática.
+Se o usuário estiver com dúvida, responda com clareza e uma proposta concreta.
 """
 
 
+def _normalize_history(history: list, limit: int = 4, max_chars: int = 220) -> list:
+    """Mantém só o contexto curto e útil da conversa para evitar respostas repetitivas."""
+    if not history:
+        return []
+    recent = history[-limit:]
+    normalized = []
+    for item in recent:
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        if len(text) > max_chars:
+            text = text[:max_chars].rstrip() + "..."
+        normalized.append({
+            "direction": item.get("direction"),
+            "text": text,
+        })
+    return normalized
+
+
 def _build_ai_message(user_text: str, name: str, history: list) -> str:
-    """Monta a mensagem para a IA com histórico da conversa e nome do aluno."""
+    """Monta a mensagem para a IA com contexto curto e relevante da conversa."""
     lines = []
-    if history:
-        lines.append("HISTÓRICO DA CONVERSA (mais antigas primeiro):")
-        for h in history:
+    recent_history = _normalize_history(history or [], limit=4, max_chars=220)
+    if recent_history:
+        lines.append("HISTÓRICO RECENTE DA CONVERSA:")
+        for h in recent_history:
             who = "Aluno" if h.get("direction") == "inbound" else SECRETARY_NAME
-            lines.append(f"{who}: {h.get('text', '')[:500]}")
+            lines.append(f"{who}: {h.get('text', '')}")
     else:
-        lines.append("HISTÓRICO DA CONVERSA: (esta é a primeira mensagem da conversa)")
+        lines.append("HISTÓRICO RECENTE DA CONVERSA: (primeira mensagem)")
+
     if name:
         lines.append(f"NOME DO ALUNO: {name}")
     else:
-        lines.append("NOME DO ALUNO: (não informado ainda — se precisar, pergunte de forma natural)")
-    lines.append(f"\nMensagem atual do aluno: {user_text}")
+        lines.append("NOME DO ALUNO: (não informado)")
+
+    lines.append(f"\nMENSAGEM ATUAL DO ALUNO: {user_text}")
     return "\n".join(lines)
 
 
-def _load_history(jid: str, limit: int = 12) -> list:
+def _load_history(jid: str, limit: int = 8) -> list:
     db = _mongo_db()
     try:
         if db is not None:
@@ -210,26 +230,24 @@ def _load_history(jid: str, limit: int = 12) -> list:
 
 async def _generate_reply(text: str, name: str = None, history: list = None) -> str:
     try:
-        if os.environ.get("FCC_BASE_URL") and os.environ.get("FCC_AUTH_TOKEN"):
-            provider_type = ProviderType.FCC
-        else:
-            provider_type = "auto"
+        provider_type = _whatsapp_provider()
         ai_message = _build_ai_message(text, name, history or [])
         result = await chat_service.chat(
             message=ai_message,
             provider_type=provider_type,
             system_prompt=SECRETARY_SYSTEM_PROMPT,
-            temperature=0.5,
-            max_tokens=500,
+            temperature=0.2,
+            max_tokens=250,
         )
         content = (result or {}).get("content") or ""
-        return content.strip()
+        cleaned = content.strip()
+        if not cleaned:
+            return "Entendi. Me diga qual parte está travando e eu te ajudo a resolver."
+        return cleaned
     except Exception as e:
         logger.warning("Secretaria: falha ao gerar resposta com IA (%s)", e)
         fallback = (
-            "Olá! Recebi sua mensagem.\n"
-            "No momento minha resposta automática não está disponível, mas sua mensagem foi registrada. "
-            "Tente novamente em alguns instantes."
+            "Entendi. Me diga qual parte está travando e eu te ajudo a resolver."
         )
         return fallback
 
@@ -336,7 +354,7 @@ async def webhook(msg: InboundMessage):
     text = msg.text.strip()
     _save_message("inbound", msg.jid, msg.phone, msg.name or msg.phone, text, ai=False)
     name = (msg.name or "").strip() or None
-    history = _load_history(msg.jid)
+    history = _load_history(msg.jid, limit=8)
 
     async def reply_worker():
         try:
@@ -427,16 +445,13 @@ async def logout(_user=Depends(_current_user_optional)):
 async def debug_reply():
     """Reproduz a geracao de resposta da Secretaria e retorna o erro real."""
     try:
-        if os.environ.get("FCC_BASE_URL") and os.environ.get("FCC_AUTH_TOKEN"):
-            provider_type = ProviderType.FCC
-        else:
-            provider_type = "auto"
+        provider_type = _whatsapp_provider()
         result = await chat_service.chat(
             message=_build_ai_message("oi clara, me ajuda a organizar meus estudos", "Eri", []),
             provider_type=provider_type,
             system_prompt=SECRETARY_SYSTEM_PROMPT,
-            temperature=0.5,
-            max_tokens=500,
+            temperature=0.2,
+            max_tokens=250,
         )
         return {"ok": True, "provider": (result or {}).get("provider"), "model": (result or {}).get("model"), "reply": (result or {}).get("content", "")[:300]}
     except Exception as e:
